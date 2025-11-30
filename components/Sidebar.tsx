@@ -29,7 +29,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, use
       {/* Header */}
       <div className={`h-16 flex items-center px-6 border-b ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
         <Hexagon className="w-8 h-8 text-indigo-600 fill-indigo-100 mr-2" />
-        <span className={`text-xl font-bold tracking-tight ${isDark ? 'text-white' : 'text-slate-800'}`}>NexCRM</span>
+        <span className={`text-xl font-bold tracking-tight ${isDark ? 'text-white' : 'text-slate-800'}`}>SyntaxLabCRM</span>
       </div>
 
       {/* Navigation */}
