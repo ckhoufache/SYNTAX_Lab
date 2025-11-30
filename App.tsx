@@ -5,8 +5,9 @@ import { Dashboard } from './components/Dashboard';
 import { Contacts } from './components/Contacts';
 import { Pipeline } from './components/Pipeline';
 import { Settings } from './components/Settings';
+import { Tasks } from './components/Tasks';
 import { ConfirmDialog } from './components/ConfirmDialog';
-import { ViewState, Contact, Deal, UserProfile, Theme, Task } from './types';
+import { ViewState, Contact, Deal, UserProfile, Theme, Task, DealStage, ProductPreset } from './types';
 import { mockTasks, mockDeals, mockContacts } from './services/mockData';
 
 const App: React.FC = () => {
@@ -22,10 +23,19 @@ const App: React.FC = () => {
     avatar: 'https://picsum.photos/id/64/100/100'
   });
 
+  // Product Presets State
+  const [productPresets, setProductPresets] = useState<ProductPreset[]>([
+    { id: 'beta', title: 'Beta Version', value: 500 },
+    { id: 'release', title: 'Release Version', value: 1500 }
+  ]);
+
   // State für Daten
   const [contacts, setContacts] = useState<Contact[]>(mockContacts);
   const [deals, setDeals] = useState<Deal[]>(mockDeals);
   const [tasks, setTasks] = useState<Task[]>(mockTasks);
+
+  // State für Pipeline Filter (Global, damit Dashboard ihn steuern kann)
+  const [pipelineVisibleStages, setPipelineVisibleStages] = useState<DealStage[]>(Object.values(DealStage));
 
   // State für Lösch-Dialog
   const [deleteIntent, setDeleteIntent] = useState<{ type: 'contact' | 'deal' | 'task', id: string } | null>(null);
@@ -49,6 +59,19 @@ const App: React.FC = () => {
   // --- Handlers Contacts ---
   const handleAddContact = (newContact: Contact) => {
     setContacts(prev => [newContact, ...prev]);
+    
+    // Automatisch Ghost-Deal erstellen
+    const ghostDeal: Deal = {
+      id: Math.random().toString(36).substr(2, 9),
+      title: 'Neuer Lead', // Platzhalter Titel
+      value: 0,
+      stage: DealStage.LEAD,
+      contactId: newContact.id,
+      dueDate: newContact.lastContact, // Datum des Hinzufügens
+      stageEnteredDate: new Date().toISOString().split('T')[0], // Datum des Status
+      isPlaceholder: true
+    };
+    setDeals(prev => [ghostDeal, ...prev]);
   };
 
   const handleUpdateContact = (updatedContact: Contact) => {
@@ -61,7 +84,12 @@ const App: React.FC = () => {
 
   // --- Handlers Deals ---
   const handleAddDeal = (newDeal: Deal) => {
-    setDeals(prev => [newDeal, ...prev]);
+    // Wenn manuell erstellt, auch das stageEnteredDate setzen
+    const dealWithDate = {
+        ...newDeal,
+        stageEnteredDate: new Date().toISOString().split('T')[0]
+    };
+    setDeals(prev => [dealWithDate, ...prev]);
   };
 
   const handleUpdateDeal = (updatedDeal: Deal) => {
@@ -78,11 +106,34 @@ const App: React.FC = () => {
   };
 
   const handleUpdateTask = (updatedTask: Task) => {
+    // 1. Task Update durchführen
     setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
+
+    // 2. AUTOMATISIERUNG: Wenn Task erledigt wird
+    if (updatedTask.isCompleted && updatedTask.relatedEntityId) {
+        // Prüfen, ob es einen Deal zu diesem Kontakt gibt, der auf "Kontaktiert" steht
+        const relatedDeal = deals.find(d => d.contactId === updatedTask.relatedEntityId);
+        
+        if (relatedDeal && relatedDeal.stage === DealStage.CONTACTED) {
+            // Deal auf Follow-up verschieben
+            const updatedDeal: Deal = {
+                ...relatedDeal,
+                stage: DealStage.FOLLOW_UP,
+                stageEnteredDate: new Date().toISOString().split('T')[0]
+            };
+            // Deal Update triggern
+            setDeals(prev => prev.map(d => d.id === updatedDeal.id ? updatedDeal : d));
+        }
+    }
   };
 
   const onRequestDeleteTask = (taskId: string) => {
     setDeleteIntent({ type: 'task', id: taskId });
+  };
+
+  // Spezielle Funktion für automatisches Löschen ohne Bestätigungsdialog (System-Aktion)
+  const handleAutoDeleteTask = (taskId: string) => {
+      setTasks(prev => prev.filter(t => t.id !== taskId));
   };
 
   const confirmDelete = () => {
@@ -90,6 +141,7 @@ const App: React.FC = () => {
 
     if (deleteIntent.type === 'contact') {
       setContacts(prev => prev.filter(c => c.id !== deleteIntent.id));
+      // Optional: Zugehörige Deals löschen? Vorerst nicht, um Datenverlust zu vermeiden.
     } else if (deleteIntent.type === 'deal') {
       setDeals(prev => prev.filter(d => d.id !== deleteIntent.id));
     } else if (deleteIntent.type === 'task') {
@@ -104,6 +156,15 @@ const App: React.FC = () => {
     setCurrentView('contacts');
   };
 
+  const handleNavigateToPipelineFilter = (stages: DealStage[]) => {
+    setPipelineVisibleStages(stages);
+    setCurrentView('pipeline');
+  };
+  
+  const handleNavigateToTasks = () => {
+      setCurrentView('tasks');
+  };
+
   const renderView = () => {
     switch (currentView) {
       case 'dashboard':
@@ -116,6 +177,8 @@ const App: React.FC = () => {
             onUpdateTask={handleUpdateTask}
             onDeleteTask={onRequestDeleteTask}
             onNavigateToContacts={handleNavigateToContacts}
+            onNavigateToPipeline={handleNavigateToPipelineFilter}
+            onNavigateToTasks={handleNavigateToTasks}
           />
         );
       case 'contacts':
@@ -137,6 +200,21 @@ const App: React.FC = () => {
             onAddDeal={handleAddDeal}
             onUpdateDeal={handleUpdateDeal}
             onDeleteDeal={onRequestDeleteDeal}
+            visibleStages={pipelineVisibleStages}
+            setVisibleStages={setPipelineVisibleStages}
+            productPresets={productPresets}
+            onAddTask={handleAddTask}
+            tasks={tasks}
+            onAutoDeleteTask={handleAutoDeleteTask}
+          />
+        );
+      case 'tasks':
+        return (
+          <Tasks 
+            tasks={tasks}
+            onAddTask={handleAddTask}
+            onUpdateTask={handleUpdateTask}
+            onDeleteTask={onRequestDeleteTask}
           />
         );
       case 'settings':
@@ -146,10 +224,12 @@ const App: React.FC = () => {
             onUpdateProfile={setUserProfile}
             currentTheme={theme}
             onUpdateTheme={setTheme}
+            productPresets={productPresets}
+            onUpdatePresets={setProductPresets}
           />
         );
       default:
-        return <Dashboard tasks={tasks} deals={deals} contacts={contacts} onAddTask={handleAddTask} onUpdateTask={handleUpdateTask} onDeleteTask={onRequestDeleteTask} onNavigateToContacts={handleNavigateToContacts} />;
+        return <Dashboard tasks={tasks} deals={deals} contacts={contacts} onAddTask={handleAddTask} onUpdateTask={handleUpdateTask} onDeleteTask={onRequestDeleteTask} onNavigateToContacts={handleNavigateToContacts} onNavigateToPipeline={handleNavigateToPipelineFilter} onNavigateToTasks={handleNavigateToTasks} />;
     }
   };
 

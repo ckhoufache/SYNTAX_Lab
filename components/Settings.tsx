@@ -1,19 +1,81 @@
+
 import React, { useState, useEffect } from 'react';
-import { Save, Check, Eye, EyeOff } from 'lucide-react';
-import { UserProfile, Theme } from '../types';
+import { Save, Check, Eye, EyeOff, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X } from 'lucide-react';
+import { UserProfile, Theme, ProductPreset } from '../types';
 
 interface SettingsProps {
   userProfile: UserProfile;
   onUpdateProfile: (profile: UserProfile) => void;
   currentTheme: Theme;
   onUpdateTheme: (theme: Theme) => void;
+  productPresets: ProductPreset[];
+  onUpdatePresets: (presets: ProductPreset[]) => void;
 }
+
+// Hilfskomponente für aufklappbare Sektionen
+const SettingsSection = ({ 
+    title, 
+    icon: Icon, 
+    children, 
+    isDark, 
+    description,
+    defaultOpen = false
+}: { 
+    title: string; 
+    icon: any; 
+    children: React.ReactNode; 
+    isDark: boolean; 
+    description?: string;
+    defaultOpen?: boolean;
+}) => {
+    const [isOpen, setIsOpen] = useState(defaultOpen);
+
+    return (
+        <div className={`rounded-xl shadow-sm border transition-all duration-200 overflow-hidden ${
+            isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
+        }`}>
+            <button 
+                onClick={() => setIsOpen(!isOpen)}
+                className={`w-full flex items-center justify-between p-6 transition-colors ${
+                    !isOpen && !isDark ? 'hover:bg-slate-50' : ''
+                } ${!isOpen && isDark ? 'hover:bg-slate-800' : ''}`}
+            >
+                <div className="flex items-center gap-4">
+                    <div className={`p-2 rounded-lg ${isDark ? 'bg-slate-800' : 'bg-indigo-50'}`}>
+                        <Icon className={`w-5 h-5 ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`} />
+                    </div>
+                    <div className="text-left">
+                        <h2 className={`text-lg font-bold ${isDark ? 'text-white' : 'text-slate-800'}`}>{title}</h2>
+                        {description && (
+                            <p className={`text-sm mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{description}</p>
+                        )}
+                    </div>
+                </div>
+                {isOpen ? (
+                    <ChevronUp className={`w-5 h-5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
+                ) : (
+                    <ChevronDown className={`w-5 h-5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
+                )}
+            </button>
+            
+            {isOpen && (
+                <div className={`px-6 pb-6 pt-2 animate-in slide-in-from-top-2 duration-200`}>
+                    <div className={`border-t pt-6 ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
+                        {children}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
 
 export const Settings: React.FC<SettingsProps> = ({ 
   userProfile, 
   onUpdateProfile, 
   currentTheme, 
-  onUpdateTheme 
+  onUpdateTheme,
+  productPresets,
+  onUpdatePresets
 }) => {
   const isDark = currentTheme === 'dark';
   const [formData, setFormData] = useState<UserProfile>(userProfile);
@@ -24,10 +86,24 @@ export const Settings: React.FC<SettingsProps> = ({
   
   const [showSaved, setShowSaved] = useState(false);
 
-  // Sync Profile Data
+  // Presets State
+  const [localPresets, setLocalPresets] = useState<ProductPreset[]>(productPresets);
+  const [newPresetTitle, setNewPresetTitle] = useState('');
+  const [newPresetValue, setNewPresetValue] = useState('');
+
+  // Edit Preset State
+  const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
+  const [editPresetTitle, setEditPresetTitle] = useState('');
+  const [editPresetValue, setEditPresetValue] = useState('');
+
+  // Sync Profile Data & Presets
   useEffect(() => {
     setFormData(userProfile);
   }, [userProfile]);
+
+  useEffect(() => {
+    setLocalPresets(productPresets);
+  }, [productPresets]);
 
   // Load API Key from LocalStorage on mount
   useEffect(() => {
@@ -46,7 +122,51 @@ export const Settings: React.FC<SettingsProps> = ({
     setApiKey(e.target.value);
   };
 
-  const handleSave = () => {
+  // Preset Handlers
+  const handleAddPreset = () => {
+      if (!newPresetTitle || !newPresetValue) return;
+      
+      const newPreset: ProductPreset = {
+          id: Math.random().toString(36).substr(2, 9),
+          title: newPresetTitle,
+          value: parseFloat(newPresetValue)
+      };
+
+      setLocalPresets([...localPresets, newPreset]);
+      setNewPresetTitle('');
+      setNewPresetValue('');
+  };
+
+  const handleDeletePreset = (id: string) => {
+      setLocalPresets(localPresets.filter(p => p.id !== id));
+  };
+
+  const handleStartEditPreset = (preset: ProductPreset) => {
+      setEditingPresetId(preset.id);
+      setEditPresetTitle(preset.title);
+      setEditPresetValue(preset.value.toString());
+  };
+
+  const handleCancelEditPreset = () => {
+      setEditingPresetId(null);
+      setEditPresetTitle('');
+      setEditPresetValue('');
+  };
+
+  const handleSaveEditPreset = () => {
+      if (!editingPresetId) return;
+      
+      const updatedPresets = localPresets.map(p => 
+          p.id === editingPresetId 
+          ? { ...p, title: editPresetTitle, value: parseFloat(editPresetValue) } 
+          : p
+      );
+      
+      setLocalPresets(updatedPresets);
+      handleCancelEditPreset();
+  };
+
+  const handleSaveAll = () => {
     // Profil speichern
     onUpdateProfile(formData);
     
@@ -56,6 +176,9 @@ export const Settings: React.FC<SettingsProps> = ({
     } else {
         localStorage.removeItem('gemini_api_key');
     }
+
+    // Presets speichern
+    onUpdatePresets(localPresets);
 
     setShowSaved(true);
     setTimeout(() => setShowSaved(false), 3000);
@@ -70,8 +193,6 @@ export const Settings: React.FC<SettingsProps> = ({
   }`;
 
   const labelClass = `block text-sm font-medium mb-2 ${isDark ? 'text-slate-300' : 'text-slate-700'}`;
-  const sectionClass = `rounded-xl shadow-sm border p-6 ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`;
-  const headerBorderClass = isDark ? 'border-slate-800' : 'border-slate-100';
 
   return (
     <div className={`flex-1 h-screen overflow-y-auto ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`}>
@@ -80,10 +201,15 @@ export const Settings: React.FC<SettingsProps> = ({
         <p className="text-slate-500 text-sm mt-1">Konfigurieren Sie Ihr CRM und API Verbindungen.</p>
       </header>
 
-      <main className="max-w-3xl mx-auto p-8 space-y-8 pb-20">
+      <main className="max-w-3xl mx-auto p-8 space-y-6 pb-20">
+        
         {/* Profile Section */}
-        <div className={sectionClass}>
-          <h2 className={`text-lg font-bold mb-4 pb-2 border-b ${headerBorderClass} ${isDark ? 'text-white' : 'text-slate-800'}`}>Profil</h2>
+        <SettingsSection 
+            title="Benutzerprofil" 
+            icon={User} 
+            isDark={isDark} 
+            description="Verwalten Sie Ihre persönlichen Informationen."
+        >
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className={labelClass}>Vorname</label>
@@ -116,11 +242,128 @@ export const Settings: React.FC<SettingsProps> = ({
               />
             </div>
           </div>
-        </div>
+        </SettingsSection>
+
+        {/* Product Presets Section */}
+        <SettingsSection 
+            title="Produkt Voreinstellungen" 
+            icon={Package} 
+            isDark={isDark}
+            description="Definieren Sie Standardprodukte und Preise für Ihre Pipeline."
+        >
+          <div className="space-y-3 mb-6">
+            {localPresets.map(preset => (
+                <div key={preset.id} className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
+                    
+                    {editingPresetId === preset.id ? (
+                        // Edit Mode
+                        <>
+                            <div className="flex-1 flex gap-2">
+                                <input 
+                                    type="text"
+                                    value={editPresetTitle}
+                                    onChange={(e) => setEditPresetTitle(e.target.value)}
+                                    className={`flex-1 text-sm ${inputClass}`}
+                                    placeholder="Produktname"
+                                    autoFocus
+                                />
+                                <input 
+                                    type="number"
+                                    value={editPresetValue}
+                                    onChange={(e) => setEditPresetValue(e.target.value)}
+                                    className={`w-24 text-sm ${inputClass}`}
+                                    placeholder="Preis"
+                                />
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <button 
+                                    onClick={handleSaveEditPreset}
+                                    className="p-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors"
+                                    title="Speichern"
+                                >
+                                    <Check className="w-4 h-4" />
+                                </button>
+                                <button 
+                                    onClick={handleCancelEditPreset}
+                                    className="p-2 bg-slate-200 text-slate-600 rounded-lg hover:bg-slate-300 transition-colors"
+                                    title="Abbrechen"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
+                        </>
+                    ) : (
+                        // View Mode
+                        <>
+                            <div className="flex-1">
+                                <p className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-800'}`}>{preset.title}</p>
+                            </div>
+                            <div className="font-mono text-sm font-bold text-indigo-600 bg-white/10 px-2 py-1 rounded">
+                                {preset.value} €
+                            </div>
+                            <div className="flex items-center gap-1 border-l pl-2 ml-2 border-slate-200/20">
+                                <button 
+                                    onClick={() => handleStartEditPreset(preset)}
+                                    className="text-slate-400 hover:text-indigo-500 p-1.5 rounded hover:bg-slate-200/20 transition-colors"
+                                    title="Bearbeiten"
+                                >
+                                    <Pencil className="w-4 h-4" />
+                                </button>
+                                <button 
+                                    onClick={() => handleDeletePreset(preset.id)}
+                                    className="text-slate-400 hover:text-red-500 p-1.5 rounded hover:bg-slate-200/20 transition-colors"
+                                    title="Entfernen"
+                                >
+                                    <Trash2 className="w-4 h-4" />
+                                </button>
+                            </div>
+                        </>
+                    )}
+                </div>
+            ))}
+            {localPresets.length === 0 && (
+                <p className="text-sm italic text-slate-400 text-center py-4">Keine Produkte definiert.</p>
+            )}
+          </div>
+
+          <div className="flex items-end gap-3 p-4 rounded-lg bg-slate-100/50 border border-slate-200">
+             <div className="flex-1">
+                 <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">Neues Produkt</label>
+                 <input 
+                    type="text"
+                    value={newPresetTitle}
+                    onChange={(e) => setNewPresetTitle(e.target.value)}
+                    placeholder="z.B. Enterprise"
+                    className={`text-sm ${inputClass}`}
+                 />
+             </div>
+             <div className="w-32">
+                 <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">Preis (€)</label>
+                 <input 
+                    type="number"
+                    value={newPresetValue}
+                    onChange={(e) => setNewPresetValue(e.target.value)}
+                    placeholder="0"
+                    className={`text-sm ${inputClass}`}
+                 />
+             </div>
+             <button 
+                onClick={handleAddPreset}
+                disabled={!newPresetTitle || !newPresetValue}
+                className="bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-indigo-700 text-white p-2 rounded-lg transition-colors"
+             >
+                 <Plus className="w-5 h-5" />
+             </button>
+          </div>
+        </SettingsSection>
 
         {/* API Section */}
-        <div className={sectionClass}>
-          <h2 className={`text-lg font-bold mb-4 pb-2 border-b ${headerBorderClass} ${isDark ? 'text-white' : 'text-slate-800'}`}>Integrationen</h2>
+        <SettingsSection 
+            title="Integrationen" 
+            icon={Share2} 
+            isDark={isDark}
+            description="Verbinden Sie externe Dienste wie Google Gemini AI."
+        >
           <div className="space-y-4">
              <div>
                 <label className={labelClass}>Google Gemini API Key</label>
@@ -155,11 +398,15 @@ export const Settings: React.FC<SettingsProps> = ({
                 </p>
              </div>
           </div>
-        </div>
+        </SettingsSection>
 
          {/* Appearance */}
-         <div className={sectionClass}>
-          <h2 className={`text-lg font-bold mb-4 pb-2 border-b ${headerBorderClass} ${isDark ? 'text-white' : 'text-slate-800'}`}>Erscheinungsbild</h2>
+         <SettingsSection 
+            title="Erscheinungsbild" 
+            icon={Palette} 
+            isDark={isDark}
+            description="Passen Sie das Design an Ihre Vorlieben an."
+        >
           <div className="flex items-center gap-4">
             
             {/* Light Option */}
@@ -197,18 +444,18 @@ export const Settings: React.FC<SettingsProps> = ({
             </div>
 
           </div>
-        </div>
+        </SettingsSection>
 
-        <div className="flex justify-end pt-4 items-center gap-4">
+        <div className="flex justify-end pt-4 items-center gap-4 sticky bottom-8">
             {showSaved && (
-                <span className="text-green-600 flex items-center gap-1.5 text-sm font-medium animate-in fade-in slide-in-from-right-4">
+                <div className="bg-green-100 text-green-700 px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium animate-in fade-in slide-in-from-bottom-2 shadow-sm border border-green-200">
                     <Check className="w-4 h-4" />
-                    Gespeichert!
-                </span>
+                    Einstellungen gespeichert
+                </div>
             )}
             <button 
-                onClick={handleSave}
-                className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-indigo-700 transition-colors flex items-center gap-2 shadow-lg shadow-indigo-200/50"
+                onClick={handleSaveAll}
+                className="bg-indigo-600 text-white px-8 py-2.5 rounded-lg font-medium hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-lg shadow-indigo-200/50 hover:shadow-indigo-200/70 hover:-translate-y-0.5"
             >
                 <Save className="w-4 h-4" />
                 Speichern

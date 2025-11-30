@@ -1,3 +1,4 @@
+
 import { Contact, Deal, DealStage, Task } from '../types';
 
 export const mockContacts: Contact[] = [
@@ -54,19 +55,64 @@ export const mockContacts: Contact[] = [
   },
 ];
 
+const today = new Date().toISOString().split('T')[0];
+const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
 export const mockDeals: Deal[] = [
   { id: '101', title: 'Enterprise Lizenz Q4', value: 45000, stage: DealStage.NEGOTIATION, contactId: '1', dueDate: '2023-11-15' },
   { id: '102', title: 'Cloud Migration Pilot', value: 12000, stage: DealStage.PROPOSAL, contactId: '2', dueDate: '2023-11-01' },
   { id: '103', title: 'Jahresvertrag Wartung', value: 5000, stage: DealStage.WON, contactId: '3', dueDate: '2023-10-10' },
-  { id: '104', title: 'Design Sprint', value: 8500, stage: DealStage.CONTACTED, contactId: '4', dueDate: '2023-11-20' },
+  { id: '104', title: 'Design Sprint', value: 8500, stage: DealStage.CONTACTED, contactId: '4', dueDate: '2023-11-20', stageEnteredDate: threeDaysAgo },
   { id: '105', title: 'Logistik Software Update', value: 22000, stage: DealStage.LEAD, contactId: '5', dueDate: '2023-12-01' },
+  { id: '106', title: 'StartUp Paket', value: 3000, stage: DealStage.LOST, contactId: '2', dueDate: '2023-09-01', lostDate: '2023-09-10' },
+  { id: '107', title: 'Follow-up Call', value: 0, stage: DealStage.FOLLOW_UP, contactId: '1', dueDate: '2023-11-01', stageEnteredDate: fiveDaysAgo, isPlaceholder: true },
 ];
 
 export const mockTasks: Task[] = [
-  { id: 't1', title: 'Follow-up Call mit Hans', type: 'call', dueDate: '2023-10-27', isCompleted: false, priority: 'high', relatedEntityId: '1' },
-  { id: 't2', title: 'Angebot an InnovateX senden', type: 'email', dueDate: '2023-10-27', isCompleted: false, priority: 'high', relatedEntityId: '2' },
-  { id: 't3', title: 'Meeting Vorbereitung AutoWerks', type: 'todo', dueDate: '2023-10-28', isCompleted: false, priority: 'medium', relatedEntityId: '3' },
-  { id: 't4', title: 'Weihnachtsgeschenke planen', type: 'todo', dueDate: '2023-11-01', isCompleted: false, priority: 'low' },
+  { 
+      id: 't1', 
+      title: 'Follow-up Call mit Hans', 
+      type: 'call', 
+      dueDate: '2023-10-27', 
+      isCompleted: false, 
+      priority: 'high', 
+      relatedEntityId: '1',
+      isAllDay: false,
+      startTime: '10:00',
+      endTime: '10:30'
+  },
+  { 
+      id: 't2', 
+      title: 'Angebot an InnovateX senden', 
+      type: 'email', 
+      dueDate: '2023-10-27', 
+      isCompleted: false, 
+      priority: 'high', 
+      relatedEntityId: '2',
+      isAllDay: true
+  },
+  { 
+      id: 't3', 
+      title: 'Meeting Vorbereitung AutoWerks', 
+      type: 'todo', 
+      dueDate: '2023-10-28', 
+      isCompleted: false, 
+      priority: 'medium', 
+      relatedEntityId: '3',
+      isAllDay: false,
+      startTime: '14:00',
+      endTime: '15:00'
+  },
+  { 
+      id: 't4', 
+      title: 'Weihnachtsgeschenke planen', 
+      type: 'todo', 
+      dueDate: '2023-11-01', 
+      isCompleted: false, 
+      priority: 'low',
+      isAllDay: true
+  },
 ];
 
 export const chartData = [

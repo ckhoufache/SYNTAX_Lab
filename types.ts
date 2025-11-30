@@ -1,12 +1,21 @@
-export type ViewState = 'dashboard' | 'contacts' | 'pipeline' | 'settings';
+
+export type ViewState = 'dashboard' | 'contacts' | 'pipeline' | 'settings' | 'tasks';
 export type Theme = 'light' | 'dark';
 
 export enum DealStage {
   LEAD = 'Lead',
   CONTACTED = 'Kontaktiert',
+  FOLLOW_UP = 'Follow-up',
   PROPOSAL = 'Angebot',
   NEGOTIATION = 'Verhandlung',
-  WON = 'Gewonnen'
+  WON = 'Gewonnen',
+  LOST = 'Verloren'
+}
+
+export interface ProductPreset {
+  id: string;
+  title: string;
+  value: number;
 }
 
 export interface UserProfile {
@@ -25,8 +34,8 @@ export interface Contact {
   email: string;
   avatar: string;
   lastContact: string;
-  linkedin?: string; // Neu: LinkedIn Profil URL
-  notes?: string;    // Neu: Notizen
+  linkedin?: string;
+  notes?: string;
 }
 
 export interface Deal {
@@ -36,6 +45,9 @@ export interface Deal {
   stage: DealStage;
   contactId: string;
   dueDate: string;
+  lostDate?: string;
+  stageEnteredDate?: string; // Wann wurde der aktuelle Status gesetzt?
+  isPlaceholder?: boolean;
 }
 
 export interface Task {
@@ -44,8 +56,12 @@ export interface Task {
   type: 'call' | 'email' | 'meeting' | 'todo';
   dueDate: string;
   isCompleted: boolean;
-  relatedEntityId?: string; // Could link to a contact or deal
+  relatedEntityId?: string;
   priority: 'low' | 'medium' | 'high';
+  // New Time Fields
+  isAllDay?: boolean;
+  startTime?: string; // Format "HH:mm"
+  endTime?: string;   // Format "HH:mm"
 }
 
 export interface DashboardStats {

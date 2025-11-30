@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { LayoutDashboard, Users, KanbanSquare, Settings, LogOut, Hexagon } from 'lucide-react';
+import { LayoutDashboard, Users, KanbanSquare, Settings, LogOut, Hexagon, ClipboardList } from 'lucide-react';
 import { ViewState, UserProfile, Theme } from '../types';
 
 interface SidebarProps {
@@ -56,6 +56,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, use
         >
           <KanbanSquare className="w-5 h-5" />
           <span className="font-medium">Pipeline</span>
+        </div>
+
+        <div 
+          onClick={() => onChangeView('tasks')}
+          className={navItemClass('tasks')}
+        >
+          <ClipboardList className="w-5 h-5" />
+          <span className="font-medium">Aufgaben</span>
         </div>
 
         <div 
