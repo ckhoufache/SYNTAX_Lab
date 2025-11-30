@@ -76,20 +76,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
       return 0;
   });
 
-  useEffect(() => {
-    const fetchBriefing = async () => {
-        if (!process.env.API_KEY && !localStorage.getItem('gemini_api_key')) {
-            setBriefing("Verbinden Sie Ihre API Key in den Einstellungen für tägliche KI-Insights.");
-            return;
-        }
-        setLoadingBriefing(true);
-        const text = await generateDailyBriefing(tasks, deals);
-        setBriefing(text);
-        setLoadingBriefing(false);
-    };
-    fetchBriefing();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const handleGenerateInsight = async () => {
+    if (!process.env.API_KEY && !localStorage.getItem('gemini_api_key')) {
+        setBriefing("Verbinden Sie Ihre API Key in den Einstellungen für tägliche KI-Insights.");
+        return;
+    }
+    setLoadingBriefing(true);
+    const text = await generateDailyBriefing(tasks, deals);
+    setBriefing(text);
+    setLoadingBriefing(false);
+  };
 
   const handleAddNewTask = (e: React.FormEvent) => {
     e.preventDefault();
@@ -178,13 +174,34 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <Sparkles className="w-32 h-32" />
           </div>
           <div className="relative z-10">
-            <div className="flex items-center gap-2 mb-2">
-              <Sparkles className="w-5 h-5 text-yellow-300" />
-              <h2 className="font-semibold text-lg">Smart Insight</h2>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-yellow-300" />
+                <h2 className="font-semibold text-lg">Smart Insight</h2>
+              </div>
+              
+              <button
+                onClick={handleGenerateInsight}
+                disabled={loadingBriefing}
+                className="bg-white/20 hover:bg-white/30 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-medium transition-colors backdrop-blur-sm border border-white/30 flex items-center gap-2"
+              >
+                 {loadingBriefing ? 'Analysiere...' : (briefing ? 'Neu analysieren' : 'Jetzt analysieren')}
+                 {!loadingBriefing && <Sparkles className="w-3.5 h-3.5" />}
+              </button>
             </div>
-            <p className="text-indigo-100 max-w-3xl leading-relaxed">
-              {loadingBriefing ? "Analysiere CRM Daten..." : briefing}
-            </p>
+            
+            <div className="min-h-[40px]">
+                {loadingBriefing ? (
+                    <div className="space-y-2 opacity-50 animate-pulse">
+                        <div className="h-4 bg-white/30 rounded w-3/4"></div>
+                        <div className="h-4 bg-white/30 rounded w-1/2"></div>
+                    </div>
+                ) : (
+                    <p className="text-indigo-100 max-w-3xl leading-relaxed whitespace-pre-line">
+                      {briefing || "Lassen Sie die KI Ihre aktuellen Aufgaben und Pipeline-Daten analysieren, um personalisierte Handlungsempfehlungen zu erhalten."}
+                    </p>
+                )}
+            </div>
           </div>
         </div>
 

@@ -38,8 +38,14 @@ export const generateDailyBriefing = async (tasks: Task[], deals: Deal[]): Promi
       contents: prompt,
     });
     return response.text || "Konnte keine Zusammenfassung erstellen.";
-  } catch (error) {
+  } catch (error: any) {
     console.error("Gemini Error:", error);
+    
+    // Spezifische Behandlung für Quota Exceeded (429)
+    if (error.message && (error.message.includes('429') || error.message.includes('RESOURCE_EXHAUSTED'))) {
+        return "Das KI-Nutzungslimit ist vorübergehend erreicht (Quota Exceeded). Bitte versuchen Sie es später erneut.";
+    }
+
     return "Fehler bei der Verbindung zum KI-Dienst. Prüfen Sie Ihren API Key.";
   }
 };

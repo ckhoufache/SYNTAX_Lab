@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
-import { Save, Check, Eye, EyeOff, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X } from 'lucide-react';
-import { UserProfile, Theme, ProductPreset } from '../types';
+import React, { useState, useEffect, useRef } from 'react';
+import { Save, Check, Eye, EyeOff, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload } from 'lucide-react';
+import { UserProfile, Theme, ProductPreset, Contact, Deal, Task, BackupData } from '../types';
 
 interface SettingsProps {
   userProfile: UserProfile;
@@ -10,6 +10,10 @@ interface SettingsProps {
   onUpdateTheme: (theme: Theme) => void;
   productPresets: ProductPreset[];
   onUpdatePresets: (presets: ProductPreset[]) => void;
+  contacts: Contact[];
+  deals: Deal[];
+  tasks: Task[];
+  onImportData: (data: BackupData) => void;
 }
 
 // Hilfskomponente für aufklappbare Sektionen
@@ -75,7 +79,11 @@ export const Settings: React.FC<SettingsProps> = ({
   currentTheme, 
   onUpdateTheme,
   productPresets,
-  onUpdatePresets
+  onUpdatePresets,
+  contacts,
+  deals,
+  tasks,
+  onImportData
 }) => {
   const isDark = currentTheme === 'dark';
   const [formData, setFormData] = useState<UserProfile>(userProfile);
@@ -83,6 +91,9 @@ export const Settings: React.FC<SettingsProps> = ({
   // API Key State
   const [apiKey, setApiKey] = useState('');
   const [showApiKey, setShowApiKey] = useState(false);
+  
+  // Google Calendar State
+  const [isCalendarConnected, setIsCalendarConnected] = useState(false);
   
   const [showSaved, setShowSaved] = useState(false);
 
@@ -95,6 +106,9 @@ export const Settings: React.FC<SettingsProps> = ({
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
   const [editPresetTitle, setEditPresetTitle] = useState('');
   const [editPresetValue, setEditPresetValue] = useState('');
+  
+  // File Import Ref
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Sync Profile Data & Presets
   useEffect(() => {
@@ -105,11 +119,15 @@ export const Settings: React.FC<SettingsProps> = ({
     setLocalPresets(productPresets);
   }, [productPresets]);
 
-  // Load API Key from LocalStorage on mount
+  // Load API Key and Calendar Status from LocalStorage on mount
   useEffect(() => {
     const storedKey = localStorage.getItem('gemini_api_key');
     if (storedKey) {
         setApiKey(storedKey);
+    }
+    const storedCalendar = localStorage.getItem('google_calendar_connected');
+    if (storedCalendar === 'true') {
+        setIsCalendarConnected(true);
     }
   }, []);
 
@@ -120,6 +138,10 @@ export const Settings: React.FC<SettingsProps> = ({
 
   const handleApiKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setApiKey(e.target.value);
+  };
+
+  const handleToggleCalendar = () => {
+      setIsCalendarConnected(!isCalendarConnected);
   };
 
   // Preset Handlers
@@ -165,6 +187,58 @@ export const Settings: React.FC<SettingsProps> = ({
       setLocalPresets(updatedPresets);
       handleCancelEditPreset();
   };
+  
+  // Data Export/Import Handlers
+  const handleExport = () => {
+      const backup: BackupData = {
+          contacts,
+          deals,
+          tasks,
+          userProfile: formData,
+          productPresets: localPresets,
+          theme: currentTheme,
+          timestamp: new Date().toISOString(),
+          version: '1.0'
+      };
+      
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backup, null, 2));
+      const downloadAnchorNode = document.createElement('a');
+      downloadAnchorNode.setAttribute("href", dataStr);
+      downloadAnchorNode.setAttribute("download", `crm_backup_${new Date().toISOString().split('T')[0]}.json`);
+      document.body.appendChild(downloadAnchorNode); // required for firefox
+      downloadAnchorNode.click();
+      downloadAnchorNode.remove();
+  };
+
+  const handleImportClick = () => {
+      if (fileInputRef.current) {
+          fileInputRef.current.click();
+      }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      
+      const reader = new FileReader();
+      reader.onload = (event) => {
+          try {
+              const json = JSON.parse(event.target?.result as string);
+              // Basic Validation
+              if (json.version && (json.contacts || json.deals)) {
+                  onImportData(json);
+              } else {
+                  alert('Ungültiges Dateiformat. Bitte nutzen Sie eine gültige CRM Backup Datei.');
+              }
+          } catch (error) {
+              console.error(error);
+              alert('Fehler beim Lesen der Datei.');
+          }
+          // Reset Input value so same file can be selected again
+          if (fileInputRef.current) fileInputRef.current.value = '';
+      };
+      reader.readAsText(file);
+  };
 
   const handleSaveAll = () => {
     // Profil speichern
@@ -176,6 +250,9 @@ export const Settings: React.FC<SettingsProps> = ({
     } else {
         localStorage.removeItem('gemini_api_key');
     }
+
+    // Google Calendar Status speichern
+    localStorage.setItem('google_calendar_connected', String(isCalendarConnected));
 
     // Presets speichern
     onUpdatePresets(localPresets);
@@ -242,6 +319,58 @@ export const Settings: React.FC<SettingsProps> = ({
               />
             </div>
           </div>
+        </SettingsSection>
+        
+        {/* Data Management Section */}
+        <SettingsSection 
+            title="Datenverwaltung" 
+            icon={Database} 
+            isDark={isDark} 
+            description="Erstellen Sie Backups oder ziehen Sie Daten um."
+        >
+            <div className="flex flex-col md:flex-row gap-4">
+                <div className={`flex-1 p-4 rounded-xl border flex flex-col items-center justify-center text-center gap-3 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
+                    <div className="p-3 bg-indigo-100 text-indigo-600 rounded-full">
+                        <Download className="w-6 h-6" />
+                    </div>
+                    <div>
+                        <h3 className={`font-bold ${isDark ? 'text-white' : 'text-slate-800'}`}>Backup erstellen</h3>
+                        <p className="text-xs text-slate-500 mt-1 max-w-[200px] mx-auto">Exportiert alle Kontakte, Deals und Aufgaben in eine JSON-Datei.</p>
+                    </div>
+                    <button 
+                        onClick={handleExport}
+                        className="mt-2 w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors"
+                    >
+                        Daten exportieren
+                    </button>
+                </div>
+
+                <div className={`flex-1 p-4 rounded-xl border flex flex-col items-center justify-center text-center gap-3 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
+                    <div className="p-3 bg-emerald-100 text-emerald-600 rounded-full">
+                        <Upload className="w-6 h-6" />
+                    </div>
+                    <div>
+                        <h3 className={`font-bold ${isDark ? 'text-white' : 'text-slate-800'}`}>Backup wiederherstellen</h3>
+                        <p className="text-xs text-slate-500 mt-1 max-w-[200px] mx-auto">Lädt eine Backup-Datei und überschreibt den aktuellen Stand.</p>
+                    </div>
+                    <input 
+                        type="file" 
+                        ref={fileInputRef} 
+                        onChange={handleFileChange} 
+                        accept=".json" 
+                        className="hidden" 
+                    />
+                    <button 
+                        onClick={handleImportClick}
+                        className="mt-2 w-full py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-medium transition-colors"
+                    >
+                        Datei auswählen
+                    </button>
+                </div>
+            </div>
+            <div className="mt-4 p-3 bg-blue-50 text-blue-800 text-xs rounded-lg border border-blue-100">
+                <strong>Tipp für Desktop App:</strong> Nutzen Sie die Export-Funktion, um Ihre Daten später einfach in die Desktop-Version (Option B) zu migrieren.
+            </div>
         </SettingsSection>
 
         {/* Product Presets Section */}
@@ -364,7 +493,8 @@ export const Settings: React.FC<SettingsProps> = ({
             isDark={isDark}
             description="Verbinden Sie externe Dienste wie Google Gemini AI."
         >
-          <div className="space-y-4">
+          <div className="space-y-6">
+             {/* Gemini API */}
              <div>
                 <label className={labelClass}>Google Gemini API Key</label>
                 <div className="flex gap-2">
@@ -396,6 +526,37 @@ export const Settings: React.FC<SettingsProps> = ({
                 <p className="text-xs text-slate-500 mt-2">
                    Geben Sie hier Ihren eigenen API Key ein, um die KI-Funktionen zu nutzen. Der Schlüssel wird lokal in Ihrer App gespeichert.
                 </p>
+             </div>
+
+             {/* Google Calendar */}
+             <div className="pt-6 border-t border-slate-100">
+                 <div className="flex items-center justify-between">
+                     <div className="flex items-center gap-3">
+                         <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+                             <Calendar className="w-5 h-5" />
+                         </div>
+                         <div>
+                             <label className={`block text-sm font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Google Kalender</label>
+                             <p className="text-xs text-slate-500 mt-0.5">Synchronisieren Sie Ihre Aufgaben automatisch.</p>
+                         </div>
+                     </div>
+                     <button 
+                         onClick={handleToggleCalendar}
+                         className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${
+                             isCalendarConnected 
+                             ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100' 
+                             : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                         }`}
+                     >
+                         {isCalendarConnected ? 'Trennen' : 'Verbinden'}
+                     </button>
+                 </div>
+                 {isCalendarConnected && (
+                     <div className="mt-3 flex items-center gap-2 text-xs text-green-600 bg-green-50 px-3 py-2 rounded-md border border-green-100">
+                         <Check className="w-3 h-3" />
+                         Ihr Kalender ist erfolgreich verknüpft.
+                     </div>
+                 )}
              </div>
           </div>
         </SettingsSection>

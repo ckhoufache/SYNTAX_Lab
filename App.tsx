@@ -7,32 +7,63 @@ import { Pipeline } from './components/Pipeline';
 import { Settings } from './components/Settings';
 import { Tasks } from './components/Tasks';
 import { ConfirmDialog } from './components/ConfirmDialog';
-import { ViewState, Contact, Deal, UserProfile, Theme, Task, DealStage, ProductPreset } from './types';
+import { ViewState, Contact, Deal, UserProfile, Theme, Task, DealStage, ProductPreset, BackupData } from './types';
 import { mockTasks, mockDeals, mockContacts } from './services/mockData';
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewState>('dashboard');
   
+  // --- PERSISTENZ HELPERS ---
+  const loadFromStorage = <T,>(key: string, fallback: T): T => {
+    const stored = localStorage.getItem(key);
+    if (stored) {
+      try {
+        return JSON.parse(stored);
+      } catch (e) {
+        console.error(`Fehler beim Laden von ${key}`, e);
+        return fallback;
+      }
+    }
+    return fallback;
+  };
+
+  const saveToStorage = (key: string, data: any) => {
+    localStorage.setItem(key, JSON.stringify(data));
+  };
+
+  // --- APP STATE ---
+  
   // App Settings State
-  const [theme, setTheme] = useState<Theme>('light');
-  const [userProfile, setUserProfile] = useState<UserProfile>({
+  const [theme, setTheme] = useState<Theme>(() => loadFromStorage('theme', 'light'));
+  
+  const [userProfile, setUserProfile] = useState<UserProfile>(() => loadFromStorage('userProfile', {
     firstName: 'Max',
     lastName: 'Mustermann',
     email: 'max@nex-crm.de',
     role: 'Admin',
     avatar: 'https://picsum.photos/id/64/100/100'
-  });
+  }));
 
   // Product Presets State
-  const [productPresets, setProductPresets] = useState<ProductPreset[]>([
+  const [productPresets, setProductPresets] = useState<ProductPreset[]>(() => loadFromStorage('productPresets', [
     { id: 'beta', title: 'Beta Version', value: 500 },
     { id: 'release', title: 'Release Version', value: 1500 }
-  ]);
+  ]));
 
-  // State für Daten
-  const [contacts, setContacts] = useState<Contact[]>(mockContacts);
-  const [deals, setDeals] = useState<Deal[]>(mockDeals);
-  const [tasks, setTasks] = useState<Task[]>(mockTasks);
+  // State für Daten (Lade aus LocalStorage oder nutze MockData als Startwert)
+  const [contacts, setContacts] = useState<Contact[]>(() => loadFromStorage('contacts', mockContacts));
+  const [deals, setDeals] = useState<Deal[]>(() => loadFromStorage('deals', mockDeals));
+  const [tasks, setTasks] = useState<Task[]>(() => loadFromStorage('tasks', mockTasks));
+
+  // --- EFFECT HOOKS FÜR AUTOMATISCHES SPEICHERN ---
+  
+  useEffect(() => saveToStorage('theme', theme), [theme]);
+  useEffect(() => saveToStorage('userProfile', userProfile), [userProfile]);
+  useEffect(() => saveToStorage('productPresets', productPresets), [productPresets]);
+  useEffect(() => saveToStorage('contacts', contacts), [contacts]);
+  useEffect(() => saveToStorage('deals', deals), [deals]);
+  useEffect(() => saveToStorage('tasks', tasks), [tasks]);
+
 
   // State für Pipeline Filter (Global, damit Dashboard ihn steuern kann)
   const [pipelineVisibleStages, setPipelineVisibleStages] = useState<DealStage[]>(Object.values(DealStage));
@@ -43,7 +74,7 @@ const App: React.FC = () => {
   // State für Navigation mit Filter (z.B. vom Dashboard zu Kontakten)
   const [contactFilterMode, setContactFilterMode] = useState<'all' | 'recent'>('all');
 
-  // Theme Effekt
+  // Theme Effekt (CSS Klasse setzen)
   useEffect(() => {
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
@@ -136,12 +167,46 @@ const App: React.FC = () => {
       setTasks(prev => prev.filter(t => t.id !== taskId));
   };
 
+  // --- BACKUP HANDLER ---
+  const handleImportData = (data: BackupData) => {
+    try {
+      if (data.contacts) setContacts(data.contacts);
+      if (data.deals) setDeals(data.deals);
+      if (data.tasks) setTasks(data.tasks);
+      if (data.userProfile) setUserProfile(data.userProfile);
+      if (data.productPresets) setProductPresets(data.productPresets);
+      if (data.theme) setTheme(data.theme);
+      
+      // Force persist immediately
+      saveToStorage('contacts', data.contacts || []);
+      saveToStorage('deals', data.deals || []);
+      saveToStorage('tasks', data.tasks || []);
+      saveToStorage('userProfile', data.userProfile);
+      saveToStorage('productPresets', data.productPresets || []);
+      saveToStorage('theme', data.theme || 'light');
+
+      alert('Daten wurden erfolgreich wiederhergestellt!');
+    } catch (e) {
+      console.error("Import Fehler", e);
+      alert('Fehler beim Importieren der Daten. Das Format scheint ungültig zu sein.');
+    }
+  };
+
   const confirmDelete = () => {
     if (!deleteIntent) return;
 
     if (deleteIntent.type === 'contact') {
-      setContacts(prev => prev.filter(c => c.id !== deleteIntent.id));
-      // Optional: Zugehörige Deals löschen? Vorerst nicht, um Datenverlust zu vermeiden.
+      const contactIdToDelete = deleteIntent.id;
+      
+      // 1. Kontakt löschen
+      setContacts(prev => prev.filter(c => c.id !== contactIdToDelete));
+      
+      // 2. Zugehörige Deals löschen (Kaskadierend)
+      setDeals(prev => prev.filter(d => d.contactId !== contactIdToDelete));
+      
+      // 3. Zugehörige Aufgaben löschen (Kaskadierend)
+      setTasks(prev => prev.filter(t => t.relatedEntityId !== contactIdToDelete));
+
     } else if (deleteIntent.type === 'deal') {
       setDeals(prev => prev.filter(d => d.id !== deleteIntent.id));
     } else if (deleteIntent.type === 'task') {
@@ -226,6 +291,11 @@ const App: React.FC = () => {
             onUpdateTheme={setTheme}
             productPresets={productPresets}
             onUpdatePresets={setProductPresets}
+            // Props for Data Management
+            contacts={contacts}
+            deals={deals}
+            tasks={tasks}
+            onImportData={handleImportData}
           />
         );
       default:
@@ -252,7 +322,7 @@ const App: React.FC = () => {
             'Aufgabe löschen?'
           }
           message={
-            deleteIntent?.type === 'contact' ? 'Möchten Sie diesen Kontakt wirklich entfernen? Diese Aktion kann nicht rückgängig gemacht werden.' : 
+            deleteIntent?.type === 'contact' ? 'Möchten Sie diesen Kontakt wirklich entfernen? Alle zugehörigen Deals und Aufgaben werden ebenfalls unwiderruflich gelöscht.' : 
             deleteIntent?.type === 'deal' ? 'Möchten Sie diesen Deal wirklich aus der Pipeline entfernen?' :
             'Möchten Sie diese Aufgabe wirklich unwiderruflich löschen?'
           }

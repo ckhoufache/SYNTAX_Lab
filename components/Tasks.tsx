@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Search, Plus, CheckCircle2, Calendar as CalendarIcon, Phone, Mail, FileText, Pencil, Trash2, X, ChevronLeft, ChevronRight, Share2, Clock, LayoutGrid, List } from 'lucide-react';
+import { Search, Plus, CheckCircle2, Calendar as CalendarIcon, Phone, Mail, FileText, Pencil, Trash2, X, ChevronLeft, ChevronRight, Clock, LayoutGrid, List } from 'lucide-react';
 import { Task } from '../types';
 
 interface TasksProps {
@@ -10,7 +10,7 @@ interface TasksProps {
   onDeleteTask: (id: string) => void;
 }
 
-type ViewMode = 'month' | 'week' | 'day';
+type ViewMode = 'month' | 'week' | 'day' | 'list';
 
 export const Tasks: React.FC<TasksProps> = ({ tasks, onAddTask, onUpdateTask, onDeleteTask }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -50,6 +50,8 @@ export const Tasks: React.FC<TasksProps> = ({ tasks, onAddTask, onUpdateTask, on
   // --- Date Navigation Helpers ---
 
   const handleNext = () => {
+    if (viewMode === 'list') return;
+    
     const newDate = new Date(currentDate);
     if (viewMode === 'month') {
         newDate.setMonth(newDate.getMonth() + 1);
@@ -63,6 +65,8 @@ export const Tasks: React.FC<TasksProps> = ({ tasks, onAddTask, onUpdateTask, on
   };
 
   const handlePrev = () => {
+    if (viewMode === 'list') return;
+
     const newDate = new Date(currentDate);
     if (viewMode === 'month') {
         newDate.setMonth(newDate.getMonth() - 1);
@@ -79,7 +83,9 @@ export const Tasks: React.FC<TasksProps> = ({ tasks, onAddTask, onUpdateTask, on
   const monthNames = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
   
   const getHeaderTitle = () => {
-      if (viewMode === 'month') {
+      if (viewMode === 'list') {
+          return "Alle offenen Aufgaben";
+      } else if (viewMode === 'month') {
           return `${monthNames[currentDate.getMonth()]} ${currentDate.getFullYear()}`;
       } else if (viewMode === 'day') {
           return currentDate.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -221,6 +227,81 @@ export const Tasks: React.FC<TasksProps> = ({ tasks, onAddTask, onUpdateTask, on
         </div>
       </div>
   );
+
+  const renderListView = () => {
+    const openTasks = tasks.filter(t => !t.isCompleted).sort((a, b) => {
+        // Sort by Due Date (Ascending)
+        if (a.dueDate < b.dueDate) return -1;
+        if (a.dueDate > b.dueDate) return 1;
+        // Then Priority (High first)
+        const prioValue = { high: 3, medium: 2, low: 1 };
+        return prioValue[b.priority] - prioValue[a.priority];
+    });
+
+    return (
+        <div className="flex-1 overflow-y-auto bg-slate-50 p-8">
+            <div className="max-w-4xl mx-auto space-y-4">
+                 <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-lg font-bold text-slate-800">Offene Aufgaben ({openTasks.length})</h2>
+                 </div>
+
+                 {openTasks.length === 0 && (
+                     <div className="text-center py-12 text-slate-400 bg-white rounded-xl border border-slate-200 border-dashed">
+                         <CheckCircle2 className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                         <p className="font-medium">Alles erledigt!</p>
+                         <p className="text-sm opacity-70">Keine offenen Aufgaben gefunden.</p>
+                     </div>
+                 )}
+
+                 {openTasks.map(task => (
+                     <div key={task.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4 hover:border-indigo-300 transition-all group animate-in slide-in-from-bottom-2">
+                        <div 
+                            onClick={(e) => toggleCompletion(e, task)}
+                            className={`rounded-full border flex items-center justify-center shrink-0 w-6 h-6 cursor-pointer hover:border-indigo-500 border-slate-300 hover:bg-slate-50 transition-colors`}
+                            title="Als erledigt markieren"
+                        >
+                        </div>
+                        
+                        <div className="flex-1 cursor-pointer" onClick={(e) => handleOpenEdit(e, task)}>
+                            <div className="flex justify-between items-start">
+                                <h3 className="font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">{task.title}</h3>
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wide ${
+                                    task.priority === 'high' ? 'bg-red-100 text-red-700' :
+                                    task.priority === 'medium' ? 'bg-amber-100 text-amber-700' :
+                                    'bg-green-100 text-green-700'
+                                }`}>{task.priority}</span>
+                            </div>
+                            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1.5 text-xs text-slate-500">
+                                <span className={`flex items-center gap-1 font-medium ${new Date(task.dueDate) < new Date(new Date().setHours(0,0,0,0)) ? 'text-red-500' : ''}`}>
+                                    <CalendarIcon className="w-3.5 h-3.5" /> 
+                                    {new Date(task.dueDate).toLocaleDateString('de-DE')}
+                                    {new Date(task.dueDate) < new Date(new Date().setHours(0,0,0,0)) && " (Überfällig)"}
+                                </span>
+                                {!task.isAllDay && task.startTime && (
+                                    <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5"/> {task.startTime} - {task.endTime} Uhr</span>
+                                )}
+                                <span className="flex items-center gap-1 uppercase bg-slate-100 px-1.5 rounded text-[10px]">
+                                    {task.type === 'call' && <Phone className="w-3 h-3"/>}
+                                    {task.type === 'email' && <Mail className="w-3 h-3"/>}
+                                    {task.type === 'todo' && <CheckCircle2 className="w-3 h-3"/>}
+                                    {task.type}
+                                </span>
+                            </div>
+                        </div>
+                        
+                        <button 
+                            onClick={(e) => handleDeleteClick(e, task.id)} 
+                            className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                            title="Löschen"
+                        >
+                            <Trash2 className="w-4 h-4"/>
+                        </button>
+                     </div>
+                 ))}
+            </div>
+        </div>
+    );
+  };
 
   const renderMonthView = () => {
     const getDaysInMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
@@ -488,11 +569,6 @@ export const Tasks: React.FC<TasksProps> = ({ tasks, onAddTask, onUpdateTask, on
         </div>
         
         <div className="flex items-center gap-4">
-             <button className="text-sm text-slate-500 hover:text-indigo-600 flex items-center gap-2 border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-white transition-colors">
-                 <Share2 className="w-4 h-4" />
-                 Google Kalender
-             </button>
-
             <button 
                 onClick={() => handleOpenCreate()}
                 className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors shadow-sm"
@@ -526,37 +602,51 @@ export const Tasks: React.FC<TasksProps> = ({ tasks, onAddTask, onUpdateTask, on
               >
                   Tag
               </button>
+              <button 
+                onClick={() => setViewMode('list')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-1.5 ${viewMode === 'list' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                  <List className="w-3.5 h-3.5" />
+                  Liste
+              </button>
           </div>
 
-          {/* Center Controls: Date Navigation */}
-          <div className="flex items-center gap-4">
-              <button onClick={handlePrev} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-600">
-                  <ChevronLeft className="w-5 h-5" />
-              </button>
-              <h2 className="text-lg font-bold text-slate-800 w-64 text-center">
-                  {getHeaderTitle()}
-              </h2>
-              <button onClick={handleNext} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-600">
-                  <ChevronRight className="w-5 h-5" />
-              </button>
-          </div>
+          {/* Center Controls: Date Navigation (Hide in List View) */}
+          {viewMode !== 'list' ? (
+             <div className="flex items-center gap-4 animate-in fade-in duration-300">
+                  <button onClick={handlePrev} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-600">
+                      <ChevronLeft className="w-5 h-5" />
+                  </button>
+                  <h2 className="text-lg font-bold text-slate-800 w-64 text-center">
+                      {getHeaderTitle()}
+                  </h2>
+                  <button onClick={handleNext} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-600">
+                      <ChevronRight className="w-5 h-5" />
+                  </button>
+             </div>
+          ) : (
+             <div className="w-64"></div> // Spacer to keep layout balanced if needed, or remove
+          )}
 
           {/* Right Controls: Today */}
-          <button 
-            onClick={() => {
-                setCurrentDate(new Date());
-                setViewMode('day'); // Optional: Jump to day view on "Today"
-            }}
-            className="text-sm text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-md font-medium"
-          >
-              Heute
-          </button>
+          {viewMode !== 'list' && (
+              <button 
+                onClick={() => {
+                    setCurrentDate(new Date());
+                    setViewMode('day');
+                }}
+                className="text-sm text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-md font-medium"
+              >
+                  Heute
+              </button>
+          )}
       </div>
 
       {/* Views */}
       {viewMode === 'month' && renderMonthView()}
       {viewMode === 'week' && renderWeekView()}
       {viewMode === 'day' && renderDayView()}
+      {viewMode === 'list' && renderListView()}
 
       {/* Create/Edit Modal */}
       {isModalOpen && (

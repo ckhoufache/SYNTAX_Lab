@@ -70,3 +70,14 @@ export interface DashboardStats {
   newContacts: number;
   conversionRate: number;
 }
+
+export interface BackupData {
+  contacts: Contact[];
+  deals: Deal[];
+  tasks: Task[];
+  userProfile: UserProfile;
+  productPresets: ProductPreset[];
+  theme: Theme;
+  timestamp: string;
+  version: string;
+}
