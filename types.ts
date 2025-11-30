@@ -1,5 +1,5 @@
 
-export type ViewState = 'dashboard' | 'contacts' | 'pipeline' | 'settings' | 'tasks';
+export type ViewState = 'dashboard' | 'contacts' | 'pipeline' | 'settings' | 'tasks' | 'finances';
 export type Theme = 'light' | 'dark';
 
 export enum DealStage {
@@ -18,7 +18,8 @@ export interface BackendConfig {
   mode: BackendMode;
   apiUrl?: string;
   apiToken?: string;
-  googleClientId?: string; // NEU: Für lokale OAuth Verbindung
+  googleClientId?: string;
+  apiKey?: string; // Für externen Zugriff auf DIESE App
 }
 
 export interface ProductPreset {
@@ -55,7 +56,7 @@ export interface Deal {
   contactId: string;
   dueDate: string;
   lostDate?: string;
-  stageEnteredDate?: string; // Wann wurde der aktuelle Status gesetzt?
+  stageEnteredDate?: string;
   isPlaceholder?: boolean;
 }
 
@@ -67,13 +68,48 @@ export interface Task {
   isCompleted: boolean;
   relatedEntityId?: string;
   priority: 'low' | 'medium' | 'high';
-  // New Time Fields
   isAllDay?: boolean;
-  startTime?: string; // Format "HH:mm"
-  endTime?: string;   // Format "HH:mm"
-  
-  // Sync Fields
-  googleEventId?: string; // ID des Google Kalender Events für Sync
+  startTime?: string;
+  endTime?: string;
+  googleEventId?: string;
+}
+
+export interface Invoice {
+  id: string;
+  invoiceNumber: string;
+  description: string;
+  date: string;
+  contactId: string;
+  contactName: string;
+  amount: number;
+  sentDate?: string;
+  paidDate?: string;
+  isPaid: boolean;
+}
+
+export interface Expense {
+  id: string;
+  title: string;
+  amount: number;
+  date: string;
+  category: 'office' | 'software' | 'travel' | 'marketing' | 'personnel' | 'other';
+  notes?: string;
+  attachment?: string;
+  attachmentName?: string;
+}
+
+export interface InvoiceConfig {
+  companyName: string;
+  addressLine1: string; 
+  addressLine2: string; 
+  taxId: string;
+  bankName: string;
+  iban: string;
+  bic: string;
+  email: string;
+  website: string;
+  logoBase64?: string;
+  footerText?: string;
 }
 
 export interface DashboardStats {
@@ -87,6 +123,9 @@ export interface BackupData {
   contacts: Contact[];
   deals: Deal[];
   tasks: Task[];
+  invoices: Invoice[];
+  expenses: Expense[];
+  invoiceConfig: InvoiceConfig;
   userProfile: UserProfile;
   productPresets: ProductPreset[];
   theme: Theme;

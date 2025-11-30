@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle } from 'lucide-react';
-import { UserProfile, Theme, ProductPreset, Contact, Deal, Task, BackupData, BackendConfig } from '../types';
+import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle, Key, RefreshCw, Copy, FileText, Image as ImageIcon, Briefcase, Settings as SettingsIcon, HardDrive } from 'lucide-react';
+import { UserProfile, Theme, ProductPreset, Contact, Deal, Task, BackupData, BackendConfig, Invoice, Expense, InvoiceConfig } from '../types';
 import { IDataService } from '../services/dataService';
 
 interface SettingsProps {
@@ -14,12 +14,17 @@ interface SettingsProps {
   contacts: Contact[];
   deals: Deal[];
   tasks: Task[];
+  invoices: Invoice[];
+  expenses: Expense[];
   onImportData: (data: BackupData) => void;
   backendConfig: BackendConfig;
   onUpdateBackendConfig: (config: BackendConfig) => void;
   dataService: IDataService;
+  invoiceConfig: InvoiceConfig;
+  onUpdateInvoiceConfig: (config: InvoiceConfig) => void;
 }
 
+// Haupt-Sektion (Das "Übermenü")
 const SettingsSection = ({ 
     title, 
     icon: Icon, 
@@ -30,7 +35,7 @@ const SettingsSection = ({
 }: { 
     title: string; 
     icon: any; 
-    children: React.ReactNode; 
+    children?: React.ReactNode; 
     isDark: boolean; 
     description?: string;
     defaultOpen?: boolean;
@@ -66,10 +71,48 @@ const SettingsSection = ({
             </button>
             
             {isOpen && (
-                <div className={`px-6 pb-6 pt-2 animate-in slide-in-from-top-2 duration-200`}>
-                    <div className={`border-t pt-6 ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
+                <div className={`px-6 pb-6 pt-0 animate-in slide-in-from-top-2 duration-200`}>
+                    <div className={`border-t ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
                         {children}
                     </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+// Unter-Sektion (Zum Aufklappen innerhalb einer Haupt-Sektion)
+const SubSection = ({
+    title,
+    children,
+    isDark,
+    defaultOpen = false
+}: {
+    title: string;
+    children?: React.ReactNode;
+    isDark: boolean;
+    defaultOpen?: boolean;
+}) => {
+    const [isOpen, setIsOpen] = useState(defaultOpen);
+
+    return (
+        <div className={`border-b last:border-0 ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
+            <button 
+                onClick={() => setIsOpen(!isOpen)}
+                className={`w-full flex items-center justify-between py-4 text-sm font-semibold transition-colors hover:text-indigo-600 ${
+                    isDark ? 'text-slate-200' : 'text-slate-700'
+                }`}
+            >
+                {title}
+                {isOpen ? (
+                    <ChevronUp className="w-4 h-4 opacity-50" />
+                ) : (
+                    <ChevronDown className="w-4 h-4 opacity-50" />
+                )}
+            </button>
+            {isOpen && (
+                <div className="pb-6 pt-2 animate-in slide-in-from-top-1 duration-200">
+                    {children}
                 </div>
             )}
         </div>
@@ -86,15 +129,21 @@ export const Settings: React.FC<SettingsProps> = ({
   contacts,
   deals,
   tasks,
+  invoices,
+  expenses,
   onImportData,
   backendConfig,
   onUpdateBackendConfig,
-  dataService
+  dataService,
+  invoiceConfig,
+  onUpdateInvoiceConfig
 }) => {
   const isDark = currentTheme === 'dark';
   const [formData, setFormData] = useState<UserProfile>(userProfile);
-  
   const [backendForm, setBackendForm] = useState<BackendConfig>(backendConfig);
+  
+  // Invoice Config Form
+  const [invConfigForm, setInvConfigForm] = useState<InvoiceConfig>(invoiceConfig);
   
   // Integration States
   const [isCalendarConnected, setIsCalendarConnected] = useState(false);
@@ -113,18 +162,12 @@ export const Settings: React.FC<SettingsProps> = ({
   const [editPresetValue, setEditPresetValue] = useState('');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    setFormData(userProfile);
-  }, [userProfile]);
-
-  useEffect(() => {
-    setLocalPresets(productPresets);
-  }, [productPresets]);
-
-  useEffect(() => {
-      setBackendForm(backendConfig);
-  }, [backendConfig]);
+  useEffect(() => setFormData(userProfile), [userProfile]);
+  useEffect(() => setLocalPresets(productPresets), [productPresets]);
+  useEffect(() => setBackendForm(backendConfig), [backendConfig]);
+  useEffect(() => setInvConfigForm(invoiceConfig), [invoiceConfig]);
 
   useEffect(() => {
     const loadIntegrations = async () => {
@@ -134,11 +177,8 @@ export const Settings: React.FC<SettingsProps> = ({
         setIsMailConnected(mail);
     };
     loadIntegrations();
-    
     try {
-        if (window.location.protocol === 'blob:' || window.parent !== window) {
-            setIsPreviewEnv(true);
-        }
+        if (window.location.protocol === 'blob:' || window.parent !== window) setIsPreviewEnv(true);
     } catch(e) { setIsPreviewEnv(true); }
 
   }, [dataService]);
@@ -146,6 +186,27 @@ export const Settings: React.FC<SettingsProps> = ({
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleInvConfigChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      const { name, value } = e.target;
+      setInvConfigForm(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      if (file.size > 1024 * 1024) { // Limit 1MB
+          alert("Das Logo darf maximal 1MB groß sein.");
+          return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+          setInvConfigForm(prev => ({ ...prev, logoBase64: event.target?.result as string }));
+      };
+      reader.readAsDataURL(file);
   };
 
   const handleToggleCalendar = async () => {
@@ -156,7 +217,6 @@ export const Settings: React.FC<SettingsProps> = ({
           setIsConnecting(null);
       } else {
           setIsConnecting('calendar');
-          // Pass current input ID directly to avoid saving requirement first
           const success = await dataService.connectGoogle('calendar', backendForm.googleClientId);
           setIsCalendarConnected(success);
           setIsConnecting(null);
@@ -179,21 +239,17 @@ export const Settings: React.FC<SettingsProps> = ({
 
   const handleAddPreset = () => {
       if (!newPresetTitle || !newPresetValue) return;
-      
       const newPreset: ProductPreset = {
           id: Math.random().toString(36).substr(2, 9),
           title: newPresetTitle,
           value: parseFloat(newPresetValue)
       };
-
       setLocalPresets([...localPresets, newPreset]);
       setNewPresetTitle('');
       setNewPresetValue('');
   };
 
-  const handleDeletePreset = (id: string) => {
-      setLocalPresets(localPresets.filter(p => p.id !== id));
-  };
+  const handleDeletePreset = (id: string) => { setLocalPresets(localPresets.filter(p => p.id !== id)); };
 
   const handleStartEditPreset = (preset: ProductPreset) => {
       setEditingPresetId(preset.id);
@@ -209,29 +265,25 @@ export const Settings: React.FC<SettingsProps> = ({
 
   const handleSaveEditPreset = () => {
       if (!editingPresetId) return;
-      
       const updatedPresets = localPresets.map(p => 
           p.id === editingPresetId 
           ? { ...p, title: editPresetTitle, value: parseFloat(editPresetValue) } 
           : p
       );
-      
       setLocalPresets(updatedPresets);
       handleCancelEditPreset();
   };
   
   const handleExport = () => {
       const backup: BackupData = {
-          contacts,
-          deals,
-          tasks,
+          contacts, deals, tasks, invoices, expenses,
+          invoiceConfig: invConfigForm,
           userProfile: formData,
           productPresets: localPresets,
           theme: currentTheme,
           timestamp: new Date().toISOString(),
           version: '1.0'
       };
-      
       const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backup, null, 2));
       const downloadAnchorNode = document.createElement('a');
       downloadAnchorNode.setAttribute("href", dataStr);
@@ -241,38 +293,41 @@ export const Settings: React.FC<SettingsProps> = ({
       downloadAnchorNode.remove();
   };
 
-  const handleImportClick = () => {
-      if (fileInputRef.current) {
-          fileInputRef.current.click();
-      }
-  };
+  const handleImportClick = () => { if (fileInputRef.current) fileInputRef.current.click(); };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
-      
       const reader = new FileReader();
       reader.onload = (event) => {
           try {
               const json = JSON.parse(event.target?.result as string);
               if (json.version && (json.contacts || json.deals)) {
                   onImportData(json);
-              } else {
-                  alert('Ungültiges Dateiformat.');
-              }
-          } catch (error) {
-              console.error(error);
-              alert('Fehler beim Lesen der Datei.');
-          }
+              } else { alert('Ungültiges Dateiformat.'); }
+          } catch (error) { console.error(error); alert('Fehler beim Lesen der Datei.'); }
           if (fileInputRef.current) fileInputRef.current.value = '';
       };
       reader.readAsText(file);
+  };
+
+  const generateApiKey = () => {
+      const key = 'sk_' + Math.random().toString(36).substr(2, 9) + Math.random().toString(36).substr(2, 9);
+      setBackendForm({...backendForm, apiKey: key});
+  };
+
+  const copyApiKey = () => {
+      if (backendForm.apiKey) {
+          navigator.clipboard.writeText(backendForm.apiKey);
+          alert('API Key kopiert!');
+      }
   };
 
   const handleSaveAll = () => {
     onUpdateProfile(formData);
     onUpdatePresets(localPresets);
     onUpdateBackendConfig(backendForm);
+    onUpdateInvoiceConfig(invConfigForm);
 
     setShowSaved(true);
     setTimeout(() => setShowSaved(false), 3000);
@@ -296,15 +351,154 @@ export const Settings: React.FC<SettingsProps> = ({
 
       <main className="max-w-3xl mx-auto p-8 space-y-6 pb-20">
         
-        {/* Backend Configuration */}
+        {/* PERSONALISIERUNG */}
         <SettingsSection 
-            title="Backend Konfiguration" 
-            icon={Server} 
+            title="Personalisierung" 
+            icon={User} 
             isDark={isDark} 
-            description="Wählen Sie zwischen lokaler Speicherung und externem Server."
+            description="Benutzerprofil und Design anpassen."
+            defaultOpen={false}
         >
-            <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+            <SubSection title="Benutzerprofil" isDark={isDark} defaultOpen={false}>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div><label className={labelClass}>Vorname</label><input name="firstName" value={formData.firstName} onChange={handleChange} type="text" className={inputClass} /></div>
+                    <div><label className={labelClass}>Nachname</label><input name="lastName" value={formData.lastName} onChange={handleChange} type="text" className={inputClass} /></div>
+                    <div className="md:col-span-2"><label className={labelClass}>E-Mail</label><input name="email" value={formData.email} onChange={handleChange} type="email" className={inputClass} /></div>
+                </div>
+            </SubSection>
+
+            <SubSection title="Erscheinungsbild" isDark={isDark}>
+                 <div className="flex items-center gap-4">
+                    <div onClick={() => onUpdateTheme('light')} className={`border-2 rounded-lg p-1 cursor-pointer transition-all ${currentTheme === 'light' ? 'border-indigo-600 ring-2 ring-indigo-100' : 'border-slate-200'}`}>
+                        <div className="w-24 h-16 bg-slate-100 rounded mb-2 border border-slate-200 relative overflow-hidden"><div className="absolute top-0 left-0 w-8 h-full bg-white border-r border-slate-200"></div></div>
+                        <span className="text-xs font-medium block text-center">Hell</span>
+                    </div>
+                    <div onClick={() => onUpdateTheme('dark')} className={`border-2 rounded-lg p-1 cursor-pointer transition-all ${currentTheme === 'dark' ? 'border-indigo-500 ring-2 ring-indigo-900' : 'border-slate-200'}`}>
+                        <div className="w-24 h-16 bg-slate-800 rounded mb-2 border border-slate-700 relative overflow-hidden"><div className="absolute top-0 left-0 w-8 h-full bg-slate-900 border-r border-slate-700"></div></div>
+                        <span className="text-xs font-medium block text-center">Dunkel</span>
+                    </div>
+                </div>
+            </SubSection>
+        </SettingsSection>
+
+        {/* GESCHÄFTSKONFIGURATION */}
+        <SettingsSection 
+            title="Geschäftskonfiguration" 
+            icon={Briefcase} 
+            isDark={isDark} 
+            description="Rechnungsvorlagen und Produktstammdaten."
+        >
+            <SubSection title="Rechnungsvorlage" isDark={isDark} defaultOpen={false}>
+                <div className="space-y-6">
+                    <div className="flex items-start gap-6">
+                        <div className={`w-32 h-32 rounded-lg border-2 border-dashed flex flex-col items-center justify-center cursor-pointer hover:bg-slate-50 transition-colors relative overflow-hidden ${isDark ? 'border-slate-700 hover:bg-slate-800' : 'border-slate-200'}`} onClick={() => logoInputRef.current?.click()}>
+                            {invConfigForm.logoBase64 ? (
+                                <img src={invConfigForm.logoBase64} alt="Logo" className="w-full h-full object-contain" />
+                            ) : (
+                                <>
+                                    <ImageIcon className="w-8 h-8 text-slate-300 mb-2" />
+                                    <span className="text-xs text-slate-400">Logo Upload</span>
+                                </>
+                            )}
+                            <input type="file" ref={logoInputRef} onChange={handleLogoUpload} accept="image/*" className="hidden" />
+                        </div>
+                        <div className="flex-1 space-y-4">
+                            <div>
+                                <label className={labelClass}>Firmenname</label>
+                                <input name="companyName" value={invConfigForm.companyName} onChange={handleInvConfigChange} type="text" className={inputClass} placeholder="Meine Firma" />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className={labelClass}>E-Mail</label>
+                                    <input name="email" value={invConfigForm.email} onChange={handleInvConfigChange} type="email" className={inputClass} />
+                                </div>
+                                <div>
+                                    <label className={labelClass}>Webseite</label>
+                                    <input name="website" value={invConfigForm.website} onChange={handleInvConfigChange} type="text" className={inputClass} />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className={labelClass}>Straße & Nr.</label>
+                            <input name="addressLine1" value={invConfigForm.addressLine1} onChange={handleInvConfigChange} type="text" className={inputClass} />
+                        </div>
+                        <div>
+                            <label className={labelClass}>PLZ & Ort</label>
+                            <input name="addressLine2" value={invConfigForm.addressLine2} onChange={handleInvConfigChange} type="text" className={inputClass} />
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className={labelClass}>Steuernummer / USt-ID</label>
+                            <input name="taxId" value={invConfigForm.taxId} onChange={handleInvConfigChange} type="text" className={inputClass} />
+                        </div>
+                        <div>
+                            <label className={labelClass}>Bankname</label>
+                            <input name="bankName" value={invConfigForm.bankName} onChange={handleInvConfigChange} type="text" className={inputClass} />
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className={labelClass}>IBAN</label>
+                            <input name="iban" value={invConfigForm.iban} onChange={handleInvConfigChange} type="text" className={inputClass} />
+                        </div>
+                        <div>
+                            <label className={labelClass}>BIC</label>
+                            <input name="bic" value={invConfigForm.bic} onChange={handleInvConfigChange} type="text" className={inputClass} />
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label className={labelClass}>Fußzeile (Text)</label>
+                        <textarea name="footerText" value={invConfigForm.footerText} onChange={handleInvConfigChange} rows={2} className={inputClass} placeholder="Vielen Dank für Ihren Auftrag." />
+                    </div>
+                </div>
+            </SubSection>
+
+            <SubSection title="Produkt Voreinstellungen" isDark={isDark}>
+                 <div className="space-y-3 mb-6">
+                    {localPresets.map(preset => (
+                        <div key={preset.id} className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
+                            {editingPresetId === preset.id ? (
+                                <>
+                                    <input type="text" value={editPresetTitle} onChange={(e) => setEditPresetTitle(e.target.value)} className={`flex-1 text-sm ${inputClass}`} />
+                                    <input type="number" value={editPresetValue} onChange={(e) => setEditPresetValue(e.target.value)} className={`w-24 text-sm ${inputClass}`} />
+                                    <button onClick={handleSaveEditPreset} className="p-2 bg-green-100 text-green-700 rounded-lg"><Check className="w-4 h-4" /></button>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="flex-1"><p className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-800'}`}>{preset.title}</p></div>
+                                    <div className="font-mono text-sm font-bold text-indigo-600 bg-white/10 px-2 py-1 rounded">{preset.value} €</div>
+                                    <button onClick={() => handleStartEditPreset(preset)} className="text-slate-400 hover:text-indigo-500 p-1.5"><Pencil className="w-4 h-4" /></button>
+                                    <button onClick={() => handleDeletePreset(preset.id)} className="text-slate-400 hover:text-red-500 p-1.5"><Trash2 className="w-4 h-4" /></button>
+                                </>
+                            )}
+                        </div>
+                    ))}
+                </div>
+                <div className="flex items-end gap-3 p-4 rounded-lg bg-slate-100/50 border border-slate-200">
+                    <div className="flex-1"><label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">Neues Produkt</label><input type="text" value={newPresetTitle} onChange={(e) => setNewPresetTitle(e.target.value)} className={`text-sm ${inputClass}`} /></div>
+                    <div className="w-32"><label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">Preis</label><input type="number" value={newPresetValue} onChange={(e) => setNewPresetValue(e.target.value)} className={`text-sm ${inputClass}`} /></div>
+                    <button onClick={handleAddPreset} disabled={!newPresetTitle || !newPresetValue} className="bg-indigo-600 hover:bg-indigo-700 text-white p-2 rounded-lg"><Plus className="w-5 h-5" /></button>
+                </div>
+            </SubSection>
+        </SettingsSection>
+
+        {/* SYSTEM & VERBINDUNGEN (Zusammengeführt) */}
+        <SettingsSection 
+            title="System & Verbindungen" 
+            icon={SettingsIcon} 
+            isDark={isDark} 
+            description="Backend, API-Integrationen und Datensicherung."
+            defaultOpen={false}
+        >
+            {/* 1. Speichermodus */}
+            <SubSection title="Speichermodus" isDark={isDark} defaultOpen={true}>
+                 <div className="grid grid-cols-2 gap-4">
                     <button 
                         onClick={() => setBackendForm({...backendForm, mode: 'local'})}
                         className={`p-4 rounded-xl border-2 text-left transition-all ${
@@ -317,7 +511,7 @@ export const Settings: React.FC<SettingsProps> = ({
                             <Laptop className={`w-5 h-5 ${backendForm.mode === 'local' ? 'text-indigo-600' : 'text-slate-400'}`} />
                             <span className={`font-bold ${backendForm.mode === 'local' ? 'text-indigo-900' : isDark ? 'text-white' : 'text-slate-900'}`}>Lokal (Desktop App)</span>
                         </div>
-                        <p className="text-xs text-slate-500">Daten werden auf diesem PC gespeichert. Direkte Google Anbindung möglich.</p>
+                        <p className="text-xs text-slate-500">Daten werden auf diesem PC gespeichert.</p>
                     </button>
 
                     <button 
@@ -332,382 +526,119 @@ export const Settings: React.FC<SettingsProps> = ({
                             <Globe className={`w-5 h-5 ${backendForm.mode === 'api' ? 'text-indigo-600' : 'text-slate-400'}`} />
                             <span className={`font-bold ${backendForm.mode === 'api' ? 'text-indigo-900' : isDark ? 'text-white' : 'text-slate-900'}`}>Externer Server</span>
                         </div>
-                        <p className="text-xs text-slate-500">Für Mehrbenutzer-Teams mit eigener Infrastruktur.</p>
+                        <p className="text-xs text-slate-500">Für Mehrbenutzer-Teams.</p>
                     </button>
                 </div>
+            </SubSection>
 
-                {backendForm.mode === 'local' && (
-                    <div className="animate-in fade-in slide-in-from-top-2 space-y-4 pt-4 border-t border-slate-100">
-                        
+            {/* 2. Google OAuth (Nur bei Lokal relevant) */}
+            {backendForm.mode === 'local' && (
+                <SubSection title="Google OAuth Setup" isDark={isDark} defaultOpen={false}>
+                    <div className="space-y-4">
                         {isPreviewEnv && (
-                             <div className="p-4 bg-orange-50 border border-orange-100 rounded-lg text-sm text-orange-800 flex items-start gap-2">
+                                <div className="p-4 bg-orange-50 border border-orange-100 rounded-lg text-sm text-orange-800 flex items-start gap-2">
                                 <AlertTriangle className="w-5 h-5 shrink-0" />
                                 <div>
                                     <strong>Vorschau-Modus erkannt</strong>
-                                    <p className="mt-1 text-xs">
-                                        Google OAuth funktioniert in dieser Web-Preview nicht (Sicherheitsrichtlinie). 
-                                        Die App wird Verbindungen simulieren, damit Sie das UI testen können.
-                                    </p>
+                                    <p className="mt-1 text-xs">Google OAuth ist in der Preview eingeschränkt.</p>
                                 </div>
-                             </div>
+                                </div>
                         )}
-
                         <div className="p-4 bg-blue-50 border border-blue-100 rounded-lg text-sm text-blue-800">
-                            <div className="flex gap-2 items-start">
-                                <HelpCircle className="w-5 h-5 shrink-0 mt-0.5" />
-                                <div>
-                                    <strong>Google Integration im lokalen Modus</strong>
-                                    <p className="mt-1 text-xs opacity-90 leading-relaxed mb-2">
-                                        Damit die App (ohne Server) auf Ihren Kalender/Mails zugreifen darf, benötigen Sie eine <strong>Client ID</strong> von Google. 
-                                        Erstellen Sie ein Projekt in der <a href="https://console.cloud.google.com/" target="_blank" className="underline hover:text-blue-900">Google Cloud Console</a>.
-                                    </p>
-                                    <div className="bg-white/50 p-2 rounded border border-blue-200 mb-1">
-                                        <p className="text-[10px] uppercase font-bold text-blue-900 mb-1">WICHTIG: Autorisierte JavaScript-Quelle (Origin)</p>
-                                        <p className="text-xs mb-1">Fügen Sie folgende URL in der Google Console unter "Authorized JavaScript origins" hinzu:</p>
-                                        <code className="block bg-slate-800 text-white px-2 py-1 rounded text-xs select-all cursor-copy break-all">
-                                            {currentOrigin}
-                                        </code>
-                                    </div>
+                                <strong>Setup Anleitung</strong>
+                                <div className="mt-2 text-xs space-y-1">
+                                    <p>1. Erstellen Sie ein Projekt in der <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer" className="underline">Google Cloud Console</a>.</p>
+                                    <p>2. Erstellen Sie eine <strong>OAuth 2.0 Client ID</strong> (Web Application).</p>
+                                    <p>3. Fügen Sie unter <strong>Autorisierte JavaScript-Quellen</strong> exakt diese URL hinzu:</p>
+                                    <code className="bg-slate-800 text-white px-2 py-1 rounded block mt-1 w-fit">{currentOrigin}</code>
                                 </div>
-                            </div>
                         </div>
                         <div>
                             <label className={labelClass}>Google Client ID</label>
                             <input 
                                 type="text"
-                                placeholder="123456789-abcdefg...apps.googleusercontent.com"
                                 value={backendForm.googleClientId || ''}
                                 onChange={(e) => setBackendForm({...backendForm, googleClientId: e.target.value})}
                                 className={inputClass}
+                                placeholder="z.B. 123456789-abc...apps.googleusercontent.com"
                             />
-                            <p className="text-xs text-slate-400 mt-1">Wird lokal gespeichert, um die Verbindung herzustellen.</p>
                         </div>
                     </div>
-                )}
-            </div>
-        </SettingsSection>
+                </SubSection>
+            )}
 
-        {/* Profile */}
-        <SettingsSection 
-            title="Benutzerprofil" 
-            icon={User} 
-            isDark={isDark} 
-            description="Verwalten Sie Ihre persönlichen Informationen."
-        >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className={labelClass}>Vorname</label>
-              <input 
-                name="firstName"
-                value={formData.firstName}
-                onChange={handleChange}
-                type="text" 
-                className={inputClass} 
-              />
-            </div>
-            <div>
-              <label className={labelClass}>Nachname</label>
-              <input 
-                name="lastName"
-                value={formData.lastName}
-                onChange={handleChange}
-                type="text" 
-                className={inputClass} 
-              />
-            </div>
-            <div className="md:col-span-2">
-              <label className={labelClass}>E-Mail</label>
-              <input 
-                name="email"
-                value={formData.email}
-                onChange={handleChange}
-                type="email" 
-                className={inputClass} 
-              />
-            </div>
-          </div>
-        </SettingsSection>
-        
-        {/* Integrations */}
-        <SettingsSection 
-            title="Integrationen" 
-            icon={Share2} 
-            isDark={isDark}
-            description="Verbinden Sie externe Dienste wie Google Gemini AI."
-        >
-          <div className="space-y-6">
-             {/* Google Calendar */}
-             <div>
-                 <div className="flex items-center justify-between">
-                     <div className="flex items-center gap-3">
-                         <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
-                             <Calendar className="w-5 h-5" />
-                         </div>
-                         <div>
-                             <label className={`block text-sm font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Google Kalender</label>
-                             <p className="text-xs text-slate-500 mt-0.5">Synchronisieren Sie Ihre Aufgaben automatisch.</p>
-                         </div>
-                     </div>
-                     <button 
-                         onClick={handleToggleCalendar}
-                         disabled={!!isConnecting}
-                         className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors border flex items-center gap-2 ${
-                             isCalendarConnected 
-                             ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100' 
-                             : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                         }`}
-                     >
-                         {isConnecting === 'calendar' ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                         {isCalendarConnected ? 'Trennen' : 'Verbinden'}
-                     </button>
-                 </div>
-                 {isCalendarConnected && (
-                     <div className="mt-3 flex items-center gap-2 text-xs text-green-600 bg-green-50 px-3 py-2 rounded-md border border-green-100">
-                         <Check className="w-3 h-3" />
-                         Ihr Kalender ist erfolgreich verknüpft.
-                     </div>
-                 )}
-             </div>
-
-             {/* Google Mail */}
-             <div className="pt-6 border-t border-slate-100">
-                 <div className="flex items-center justify-between">
-                     <div className="flex items-center gap-3">
-                         <div className="p-2 bg-red-50 text-red-600 rounded-lg">
-                             <Mail className="w-5 h-5" />
-                         </div>
-                         <div>
-                             <label className={`block text-sm font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Google Mail</label>
-                             <p className="text-xs text-slate-500 mt-0.5">E-Mails direkt über Ihr Google Konto senden.</p>
-                         </div>
-                     </div>
-                     <button 
-                         onClick={handleToggleMail}
-                         disabled={!!isConnecting}
-                         className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors border flex items-center gap-2 ${
-                             isMailConnected 
-                             ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100' 
-                             : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                         }`}
-                     >
-                         {isConnecting === 'mail' ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                         {isMailConnected ? 'Trennen' : 'Verbinden'}
-                     </button>
-                 </div>
-                 {isMailConnected && (
-                     <div className="mt-3 flex items-center gap-2 text-xs text-green-600 bg-green-50 px-3 py-2 rounded-md border border-green-100">
-                         <Check className="w-3 h-3" />
-                         Google Mail Verknüpfung aktiv.
-                     </div>
-                 )}
-             </div>
-
-          </div>
-        </SettingsSection>
-
-         {/* Data Management */}
-        <SettingsSection 
-            title="Datenverwaltung" 
-            icon={Database} 
-            isDark={isDark} 
-            description="Erstellen Sie Backups oder ziehen Sie Daten um."
-        >
-            <div className="flex flex-col md:flex-row gap-4">
-                <div className={`flex-1 p-4 rounded-xl border flex flex-col items-center justify-center text-center gap-3 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
-                    <div className="p-3 bg-indigo-100 text-indigo-600 rounded-full">
-                        <Download className="w-6 h-6" />
+            {/* 3. API Zugriff für Drittanbieter */}
+            <SubSection title="API Zugriff (Drittanbieter)" isDark={isDark} defaultOpen={false}>
+                 <div className="space-y-2">
+                    <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                        Nutzen Sie diesen Schlüssel, um von anderen Anwendungen auf dieses CRM zuzugreifen (wenn der Server-Modus aktiv ist).
+                    </p>
+                    <div className="flex gap-2">
+                        <input type="text" readOnly value={backendForm.apiKey || ''} placeholder="Kein Key generiert" className={`${inputClass} font-mono`} />
+                        <button onClick={copyApiKey} disabled={!backendForm.apiKey} className="p-2 border rounded-lg hover:bg-slate-50"><Copy className="w-5 h-5" /></button>
+                        <button onClick={generateApiKey} className="p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"><RefreshCw className="w-5 h-5" /></button>
                     </div>
-                    <div>
-                        <h3 className={`font-bold ${isDark ? 'text-white' : 'text-slate-800'}`}>Backup erstellen</h3>
-                        <p className="text-xs text-slate-500 mt-1 max-w-[200px] mx-auto">Exportiert alle Kontakte, Deals und Aufgaben in eine JSON-Datei.</p>
-                    </div>
-                    <button 
-                        onClick={handleExport}
-                        className="mt-2 w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors"
-                    >
-                        Daten exportieren
-                    </button>
                 </div>
+            </SubSection>
 
-                <div className={`flex-1 p-4 rounded-xl border flex flex-col items-center justify-center text-center gap-3 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
-                    <div className="p-3 bg-emerald-100 text-emerald-600 rounded-full">
-                        <Upload className="w-6 h-6" />
+            {/* 4. Aktive Integrationen (ehemals eigener Block) */}
+            <SubSection title="Verbundene Dienste" isDark={isDark} defaultOpen={false}>
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-slate-50 transition-colors bg-white">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-blue-50 text-blue-600 rounded-lg"><Calendar className="w-5 h-5" /></div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700">Google Kalender</label>
+                                <span className="text-xs text-slate-500">{isCalendarConnected ? 'Verbunden' : 'Nicht verbunden'}</span>
+                            </div>
+                        </div>
+                        <button onClick={handleToggleCalendar} disabled={!!isConnecting} className="px-3 py-1.5 border rounded-lg text-xs font-medium flex items-center gap-2 hover:bg-slate-100">
+                            {isConnecting === 'calendar' && <Loader2 className="w-3 h-3 animate-spin" />}
+                            {isCalendarConnected ? 'Trennen' : 'Verbinden'}
+                        </button>
                     </div>
-                    <div>
-                        <h3 className={`font-bold ${isDark ? 'text-white' : 'text-slate-800'}`}>Backup wiederherstellen</h3>
-                        <p className="text-xs text-slate-500 mt-1 max-w-[200px] mx-auto">Lädt eine Backup-Datei und überschreibt den aktuellen Stand.</p>
+
+                    <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-slate-50 transition-colors bg-white">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-red-50 text-red-600 rounded-lg"><Mail className="w-5 h-5" /></div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700">Google Mail</label>
+                                <span className="text-xs text-slate-500">{isMailConnected ? 'Verbunden' : 'Nicht verbunden'}</span>
+                            </div>
+                        </div>
+                        <button onClick={handleToggleMail} disabled={!!isConnecting} className="px-3 py-1.5 border rounded-lg text-xs font-medium flex items-center gap-2 hover:bg-slate-100">
+                            {isConnecting === 'mail' && <Loader2 className="w-3 h-3 animate-spin" />}
+                            {isMailConnected ? 'Trennen' : 'Verbinden'}
+                        </button>
                     </div>
-                    <input 
-                        type="file" 
-                        ref={fileInputRef} 
-                        onChange={handleFileChange} 
-                        accept=".json" 
-                        className="hidden" 
-                    />
-                    <button 
-                        onClick={handleImportClick}
-                        className="mt-2 w-full py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-medium transition-colors"
-                    >
-                        Datei auswählen
-                    </button>
                 </div>
-            </div>
+            </SubSection>
+
+             {/* 5. Datenverwaltung (ehemals eigener Block) */}
+            <SubSection title="Backup & Wiederherstellung" isDark={isDark} defaultOpen={false}>
+                 <div className="flex flex-col md:flex-row gap-4">
+                    <div className={`flex-1 p-4 rounded-xl border flex flex-col items-center justify-center text-center gap-3 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
+                        <div className="p-3 bg-indigo-100 text-indigo-600 rounded-full"><Download className="w-5 h-5" /></div>
+                        <button onClick={handleExport} className="mt-1 w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium">Backup herunterladen</button>
+                    </div>
+                    <div className={`flex-1 p-4 rounded-xl border flex flex-col items-center justify-center text-center gap-3 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
+                        <div className="p-3 bg-emerald-100 text-emerald-600 rounded-full"><Upload className="w-5 h-5" /></div>
+                        <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".json" className="hidden" />
+                        <button onClick={handleImportClick} className="mt-1 w-full py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-medium">Backup einspielen</button>
+                    </div>
+                </div>
+            </SubSection>
         </SettingsSection>
 
-        {/* Product Presets */}
-        <SettingsSection 
-            title="Produkt Voreinstellungen" 
-            icon={Package} 
-            isDark={isDark}
-            description="Definieren Sie Standardprodukte und Preise für Ihre Pipeline."
-        >
-          {/* Preset List (Same as before) */}
-          <div className="space-y-3 mb-6">
-            {localPresets.map(preset => (
-                <div key={preset.id} className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
-                    
-                    {editingPresetId === preset.id ? (
-                        <>
-                            <div className="flex-1 flex gap-2">
-                                <input 
-                                    type="text"
-                                    value={editPresetTitle}
-                                    onChange={(e) => setEditPresetTitle(e.target.value)}
-                                    className={`flex-1 text-sm ${inputClass}`}
-                                    placeholder="Produktname"
-                                    autoFocus
-                                />
-                                <input 
-                                    type="number"
-                                    value={editPresetValue}
-                                    onChange={(e) => setEditPresetValue(e.target.value)}
-                                    className={`w-24 text-sm ${inputClass}`}
-                                    placeholder="Preis"
-                                />
-                            </div>
-                            <div className="flex items-center gap-1">
-                                <button 
-                                    onClick={handleSaveEditPreset}
-                                    className="p-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors"
-                                >
-                                    <Check className="w-4 h-4" />
-                                </button>
-                                <button 
-                                    onClick={handleCancelEditPreset}
-                                    className="p-2 bg-slate-200 text-slate-600 rounded-lg hover:bg-slate-300 transition-colors"
-                                >
-                                    <X className="w-4 h-4" />
-                                </button>
-                            </div>
-                        </>
-                    ) : (
-                        <>
-                            <div className="flex-1">
-                                <p className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-800'}`}>{preset.title}</p>
-                            </div>
-                            <div className="font-mono text-sm font-bold text-indigo-600 bg-white/10 px-2 py-1 rounded">
-                                {preset.value} €
-                            </div>
-                            <div className="flex items-center gap-1 border-l pl-2 ml-2 border-slate-200/20">
-                                <button 
-                                    onClick={() => handleStartEditPreset(preset)}
-                                    className="text-slate-400 hover:text-indigo-500 p-1.5 rounded hover:bg-slate-200/20 transition-colors"
-                                >
-                                    <Pencil className="w-4 h-4" />
-                                </button>
-                                <button 
-                                    onClick={() => handleDeletePreset(preset.id)}
-                                    className="text-slate-400 hover:text-red-500 p-1.5 rounded hover:bg-slate-200/20 transition-colors"
-                                >
-                                    <Trash2 className="w-4 h-4" />
-                                </button>
-                            </div>
-                        </>
-                    )}
-                </div>
-            ))}
-          </div>
-
-          <div className="flex items-end gap-3 p-4 rounded-lg bg-slate-100/50 border border-slate-200">
-             <div className="flex-1">
-                 <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">Neues Produkt</label>
-                 <input 
-                    type="text"
-                    value={newPresetTitle}
-                    onChange={(e) => setNewPresetTitle(e.target.value)}
-                    placeholder="z.B. Enterprise"
-                    className={`text-sm ${inputClass}`}
-                 />
-             </div>
-             <div className="w-32">
-                 <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">Preis (€)</label>
-                 <input 
-                    type="number"
-                    value={newPresetValue}
-                    onChange={(e) => setNewPresetValue(e.target.value)}
-                    placeholder="0"
-                    className={`text-sm ${inputClass}`}
-                 />
-             </div>
-             <button 
-                onClick={handleAddPreset}
-                disabled={!newPresetTitle || !newPresetValue}
-                className="bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-indigo-700 text-white p-2 rounded-lg transition-colors"
-             >
-                 <Plus className="w-5 h-5" />
-             </button>
-          </div>
-        </SettingsSection>
-
-         {/* Appearance */}
-         <SettingsSection 
-            title="Erscheinungsbild" 
-            icon={Palette} 
-            isDark={isDark}
-            description="Passen Sie das Design an Ihre Vorlieben an."
-        >
-          <div className="flex items-center gap-4">
-            <div 
-                onClick={() => onUpdateTheme('light')}
-                className={`border-2 rounded-lg p-1 cursor-pointer transition-all ${
-                    currentTheme === 'light' 
-                    ? 'border-indigo-600 ring-2 ring-indigo-100' 
-                    : isDark ? 'border-slate-700 hover:border-slate-600' : 'border-slate-200 hover:border-slate-300'
-                }`}
-            >
-                <div className="w-24 h-16 bg-slate-100 rounded mb-2 border border-slate-200 shadow-sm relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-8 h-full bg-white border-r border-slate-200"></div>
-                </div>
-                <span className={`text-xs font-medium block text-center ${currentTheme === 'light' ? 'text-indigo-600' : 'text-slate-500'}`}>Hell</span>
-            </div>
-
-            <div 
-                onClick={() => onUpdateTheme('dark')}
-                className={`border-2 rounded-lg p-1 cursor-pointer transition-all ${
-                    currentTheme === 'dark' 
-                    ? 'border-indigo-500 ring-2 ring-indigo-900' 
-                    : isDark ? 'border-slate-700 hover:border-slate-600' : 'border-slate-200 hover:border-slate-300'
-                }`}
-            >
-                <div className="w-24 h-16 bg-slate-800 rounded mb-2 border border-slate-700 shadow-sm relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-8 h-full bg-slate-900 border-r border-slate-700"></div>
-                </div>
-                <span className={`text-xs font-medium block text-center ${currentTheme === 'dark' ? 'text-indigo-400' : 'text-slate-500'}`}>Dunkel</span>
-            </div>
-          </div>
-        </SettingsSection>
 
         <div className="flex justify-end pt-4 items-center gap-4 sticky bottom-8">
             {showSaved && (
-                <div className="bg-green-100 text-green-700 px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium animate-in fade-in slide-in-from-bottom-2 shadow-sm border border-green-200">
+                <div className="bg-green-100 text-green-700 px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium shadow-sm border border-green-200">
                     <Check className="w-4 h-4" />
-                    Einstellungen gespeichert
+                    Gespeichert
                 </div>
             )}
-            <button 
-                onClick={handleSaveAll}
-                className="bg-indigo-600 text-white px-8 py-2.5 rounded-lg font-medium hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-lg shadow-indigo-200/50 hover:shadow-indigo-200/70 hover:-translate-y-0.5"
-            >
+            <button onClick={handleSaveAll} className="bg-indigo-600 text-white px-8 py-2.5 rounded-lg font-medium hover:bg-indigo-700 shadow-lg flex items-center gap-2">
                 <Save className="w-4 h-4" />
                 Speichern
             </button>

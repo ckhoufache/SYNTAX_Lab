@@ -28,6 +28,11 @@
       ::-webkit-scrollbar-thumb:hover {
         background: #94a3b8; 
       }
+      /* Print specific styles */
+      @media print {
+        @page { margin: 0; }
+        body { background-color: white; }
+      }
     </style>
   <script type="importmap">
 {
@@ -49,6 +54,7 @@
 <!-- Google Identity Services & API Client -->
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://apis.google.com/js/api.js" async defer></script>
+<meta name="referrer" content="strict-origin-when-cross-origin" />
 </head>
   <body>
     <div id="root"></div>

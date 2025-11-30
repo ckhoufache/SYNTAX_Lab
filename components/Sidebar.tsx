@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { LayoutDashboard, Users, KanbanSquare, Settings, LogOut, Hexagon, ClipboardList } from 'lucide-react';
+import { LayoutDashboard, Users, KanbanSquare, Settings, LogOut, Hexagon, ClipboardList, Banknote } from 'lucide-react';
 import { ViewState, UserProfile, Theme } from '../types';
 
 interface SidebarProps {
@@ -64,6 +64,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, use
         >
           <ClipboardList className="w-5 h-5" />
           <span className="font-medium">Aufgaben</span>
+        </div>
+
+        <div 
+          onClick={() => onChangeView('finances')}
+          className={navItemClass('finances')}
+        >
+          <Banknote className="w-5 h-5" />
+          <span className="font-medium">Finanzen</span>
         </div>
 
         <div 

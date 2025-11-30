@@ -6,8 +6,9 @@ import { Contacts } from './components/Contacts';
 import { Pipeline } from './components/Pipeline';
 import { Settings } from './components/Settings';
 import { Tasks } from './components/Tasks';
+import { Finances } from './components/Finances';
 import { ConfirmDialog } from './components/ConfirmDialog';
-import { ViewState, Contact, Deal, UserProfile, Theme, Task, DealStage, ProductPreset, BackupData, BackendConfig } from './types';
+import { ViewState, Contact, Deal, UserProfile, Theme, Task, DealStage, ProductPreset, BackupData, BackendConfig, Invoice, Expense, InvoiceConfig } from './types';
 import { DataServiceFactory, IDataService } from './services/dataService';
 import { Loader2 } from 'lucide-react';
 
@@ -26,7 +27,7 @@ const App: React.FC = () => {
   // --- APP STATE ---
   const [isLoading, setIsLoading] = useState(true);
   
-  // FIX: Initialize theme directly from localStorage to avoid overwriting it with default 'light' on render
+  // OPTIMIZED THEME INITIALIZATION (Prevents flash of wrong theme)
   const [theme, setTheme] = useState<Theme>(() => {
       if (typeof window !== 'undefined') {
           return (localStorage.getItem('theme') as Theme) || 'light';
@@ -39,6 +40,9 @@ const App: React.FC = () => {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [invoiceConfig, setInvoiceConfig] = useState<InvoiceConfig | null>(null);
 
   // Re-Initialize Service when Config changes
   useEffect(() => {
@@ -50,20 +54,26 @@ const App: React.FC = () => {
         try {
             await service.init();
             
-            // Parallel loading for performance
-            const [c, d, t, p, presets] = await Promise.all([
+            // Parallel loading for speed
+            const [c, d, t, i, e, p, presets, invConf] = await Promise.all([
                 service.getContacts(),
                 service.getDeals(),
                 service.getTasks(),
+                service.getInvoices(),
+                service.getExpenses(),
                 service.getUserProfile(),
-                service.getProductPresets()
+                service.getProductPresets(),
+                service.getInvoiceConfig()
             ]);
 
             setContacts(c);
             setDeals(d);
             setTasks(t);
+            setInvoices(i);
+            setExpenses(e);
             setUserProfile(p);
             setProductPresets(presets);
+            setInvoiceConfig(invConf);
 
         } catch (error) {
             console.error("Failed to load data", error);
@@ -78,13 +88,13 @@ const App: React.FC = () => {
 
   }, [backendConfig]);
 
-  // State für Pipeline Filter (Global, damit Dashboard ihn steuern kann)
+  // State für Pipeline Filter
   const [pipelineVisibleStages, setPipelineVisibleStages] = useState<DealStage[]>(Object.values(DealStage));
 
   // State für Lösch-Dialog
-  const [deleteIntent, setDeleteIntent] = useState<{ type: 'contact' | 'deal' | 'task', id: string } | null>(null);
+  const [deleteIntent, setDeleteIntent] = useState<{ type: 'contact' | 'deal' | 'task' | 'invoice' | 'expense', id: string } | null>(null);
 
-  // State für Navigation mit Filter (z.B. vom Dashboard zu Kontakten)
+  // State für Navigation
   const [contactFilterMode, setContactFilterMode] = useState<'all' | 'recent'>('all');
 
   // --- SUCH FOKUS STATE ---
@@ -92,7 +102,6 @@ const App: React.FC = () => {
   const [focusedDealId, setFocusedDealId] = useState<string | null>(null);
   const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
 
-  // Theme Effekt (CSS Klasse setzen)
   useEffect(() => {
     localStorage.setItem('theme', theme);
     if (theme === 'dark') {
@@ -106,7 +115,6 @@ const App: React.FC = () => {
     }
   }, [theme]);
 
-  // Handle View Change via Sidebar
   const handleChangeView = (view: ViewState) => {
       setCurrentView(view);
       setFocusedContactId(null);
@@ -116,7 +124,6 @@ const App: React.FC = () => {
   };
 
   // --- DATA MODIFICATION HANDLERS ---
-  // Now these functions are async and update both Backend and UI
 
   const handleUpdateProfile = async (profile: UserProfile) => {
       const updated = await dataService.saveUserProfile(profile);
@@ -127,14 +134,18 @@ const App: React.FC = () => {
       const updated = await dataService.saveProductPresets(presets);
       setProductPresets(updated);
   };
+  
+  const handleUpdateInvoiceConfig = async (config: InvoiceConfig) => {
+      const updated = await dataService.saveInvoiceConfig(config);
+      setInvoiceConfig(updated);
+  };
 
   // --- Handlers Contacts ---
   const handleAddContact = async (newContact: Contact) => {
-    // 1. Save Contact
     const savedContact = await dataService.saveContact(newContact);
     setContacts(prev => [savedContact, ...prev]);
     
-    // 2. Auto-Create Ghost Deal
+    // Auto-Create Ghost Deal
     const ghostDeal: Deal = {
       id: Math.random().toString(36).substr(2, 9),
       title: 'Neuer Lead',
@@ -154,16 +165,11 @@ const App: React.FC = () => {
     setContacts(prev => prev.map(c => c.id === updatedContact.id ? updatedContact : c));
   };
 
-  const onRequestDeleteContact = (contactId: string) => {
-    setDeleteIntent({ type: 'contact', id: contactId });
-  };
+  const onRequestDeleteContact = (contactId: string) => { setDeleteIntent({ type: 'contact', id: contactId }); };
 
   // --- Handlers Deals ---
   const handleAddDeal = async (newDeal: Deal) => {
-    const dealWithDate = {
-        ...newDeal,
-        stageEnteredDate: new Date().toISOString().split('T')[0]
-    };
+    const dealWithDate = { ...newDeal, stageEnteredDate: new Date().toISOString().split('T')[0] };
     const saved = await dataService.saveDeal(dealWithDate);
     setDeals(prev => [saved, ...prev]);
   };
@@ -173,9 +179,7 @@ const App: React.FC = () => {
     setDeals(prev => prev.map(d => d.id === updatedDeal.id ? updatedDeal : d));
   };
 
-  const onRequestDeleteDeal = (dealId: string) => {
-    setDeleteIntent({ type: 'deal', id: dealId });
-  };
+  const onRequestDeleteDeal = (dealId: string) => { setDeleteIntent({ type: 'deal', id: dealId }); };
 
   // --- Handlers Tasks ---
   const handleAddTask = async (newTask: Task) => {
@@ -187,10 +191,8 @@ const App: React.FC = () => {
     await dataService.updateTask(updatedTask);
     setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
 
-    // Automation: If task completed related to contacted deal
     if (updatedTask.isCompleted && updatedTask.relatedEntityId) {
         const relatedDeal = deals.find(d => d.contactId === updatedTask.relatedEntityId);
-        
         if (relatedDeal && relatedDeal.stage === DealStage.CONTACTED) {
             const updatedDeal: Deal = {
                 ...relatedDeal,
@@ -203,47 +205,68 @@ const App: React.FC = () => {
     }
   };
 
-  const onRequestDeleteTask = (taskId: string) => {
-    setDeleteIntent({ type: 'task', id: taskId });
-  };
+  const onRequestDeleteTask = (taskId: string) => { setDeleteIntent({ type: 'task', id: taskId }); };
 
   const handleAutoDeleteTask = async (taskId: string) => {
       await dataService.deleteTask(taskId);
       setTasks(prev => prev.filter(t => t.id !== taskId));
   };
 
+  // --- Handlers Invoices & Expenses ---
+  const handleAddInvoice = async (newInvoice: Invoice) => {
+      const saved = await dataService.saveInvoice(newInvoice);
+      setInvoices(prev => [saved, ...prev]);
+  };
+  const handleUpdateInvoice = async (updatedInvoice: Invoice) => {
+      await dataService.updateInvoice(updatedInvoice);
+      setInvoices(prev => prev.map(i => i.id === updatedInvoice.id ? updatedInvoice : i));
+  };
+  const onRequestDeleteInvoice = (id: string) => { setDeleteIntent({ type: 'invoice', id }); };
+
+  const handleAddExpense = async (newExpense: Expense) => {
+      const saved = await dataService.saveExpense(newExpense);
+      setExpenses(prev => [saved, ...prev]);
+  };
+  const handleUpdateExpense = async (updatedExpense: Expense) => {
+      await dataService.updateExpense(updatedExpense);
+      setExpenses(prev => prev.map(e => e.id === updatedExpense.id ? updatedExpense : e));
+  };
+  const onRequestDeleteExpense = (id: string) => { setDeleteIntent({ type: 'expense', id }); };
+
   // --- IMPORT / EXPORT ---
   const handleImportData = async (data: BackupData) => {
       if (!confirm("Importieren überschreibt alle aktuellen Daten. Fortfahren?")) return;
       setIsLoading(true);
       try {
-          // Sequentially restore data to backend
           if (data.userProfile) await dataService.saveUserProfile(data.userProfile);
           if (data.productPresets) await dataService.saveProductPresets(data.productPresets);
-          if (data.theme) setTheme(data.theme); // Theme is local pref mostly
+          if (data.invoiceConfig) await dataService.saveInvoiceConfig(data.invoiceConfig);
+          if (data.theme) setTheme(data.theme);
 
-          // Clear existing data (optional, but safer for clean import)
-          // For now, we just add/overwrite
-          
-          // Bulk add contacts (simplified loop, real backend might have bulk endpoint)
+          // IMPORTANT: Update cache & storage, then state
           if (data.contacts) {
-              setContacts(data.contacts);
-              // In a real API scenario, you'd iterate and POST each, or use a bulk endpoint.
-              // Since LocalDataService overwrites the whole key, we can cheat a bit for local mode:
-              if (backendConfig.mode === 'local') {
-                  localStorage.setItem('contacts', JSON.stringify(data.contacts));
-              }
+               // We need to loop because local service is granular, but this is fine for import
+               // For optimized import we would add a bulkSave method, but loop works for now
+               localStorage.setItem('contacts', JSON.stringify(data.contacts)); // Direct write for speed
+               setContacts(data.contacts);
           }
            if (data.deals) {
+              localStorage.setItem('deals', JSON.stringify(data.deals));
               setDeals(data.deals);
-              if (backendConfig.mode === 'local') localStorage.setItem('deals', JSON.stringify(data.deals));
           }
            if (data.tasks) {
+              localStorage.setItem('tasks', JSON.stringify(data.tasks));
               setTasks(data.tasks);
-              if (backendConfig.mode === 'local') localStorage.setItem('tasks', JSON.stringify(data.tasks));
+          }
+           if (data.invoices) {
+              localStorage.setItem('invoices', JSON.stringify(data.invoices));
+              setInvoices(data.invoices);
+          }
+           if (data.expenses) {
+              localStorage.setItem('expenses', JSON.stringify(data.expenses));
+              setExpenses(data.expenses);
           }
           
-          // Refresh
           window.location.reload(); 
       } catch(e) {
           console.error(e);
@@ -252,21 +275,16 @@ const App: React.FC = () => {
       }
   };
 
-
   const confirmDelete = async () => {
     if (!deleteIntent) return;
-
     try {
         if (deleteIntent.type === 'contact') {
           const contactId = deleteIntent.id;
           await dataService.deleteContact(contactId);
           setContacts(prev => prev.filter(c => c.id !== contactId));
-          
-          // Cascading Delete
           const dealsToDelete = deals.filter(d => d.contactId === contactId);
           for (const d of dealsToDelete) await dataService.deleteDeal(d.id);
           setDeals(prev => prev.filter(d => d.contactId !== contactId));
-
           const tasksToDelete = tasks.filter(t => t.relatedEntityId === contactId);
           for (const t of tasksToDelete) await dataService.deleteTask(t.id);
           setTasks(prev => prev.filter(t => t.relatedEntityId !== contactId));
@@ -277,6 +295,12 @@ const App: React.FC = () => {
         } else if (deleteIntent.type === 'task') {
           await dataService.deleteTask(deleteIntent.id);
           setTasks(prev => prev.filter(t => t.id !== deleteIntent.id));
+        } else if (deleteIntent.type === 'invoice') {
+          await dataService.deleteInvoice(deleteIntent.id);
+          setInvoices(prev => prev.filter(i => i.id !== deleteIntent.id));
+        } else if (deleteIntent.type === 'expense') {
+          await dataService.deleteExpense(deleteIntent.id);
+          setExpenses(prev => prev.filter(e => e.id !== deleteIntent.id));
         }
     } catch (e) {
         console.error("Delete failed", e);
@@ -292,19 +316,18 @@ const App: React.FC = () => {
     setFocusedContactId(focusId || null);
     setCurrentView('contacts');
   };
-
   const handleNavigateToPipelineFilter = (stages: DealStage[], focusId?: string) => {
     setPipelineVisibleStages(stages);
     setFocusedDealId(focusId || null);
     setCurrentView('pipeline');
   };
-  
   const handleNavigateToTasks = (focusId?: string) => {
       setFocusedTaskId(focusId || null);
       setCurrentView('tasks');
   };
+  const handleNavigateToFinances = () => { setCurrentView('finances'); };
 
-  if (isLoading || !userProfile) {
+  if (isLoading || !userProfile || !invoiceConfig) {
       return (
           <div className="flex h-screen w-full items-center justify-center bg-slate-50 dark:bg-slate-900">
               <div className="flex flex-col items-center gap-4">
@@ -329,6 +352,8 @@ const App: React.FC = () => {
             onNavigateToContacts={handleNavigateToContacts}
             onNavigateToPipeline={handleNavigateToPipelineFilter}
             onNavigateToTasks={handleNavigateToTasks}
+            onNavigateToFinances={handleNavigateToFinances}
+            invoices={invoices}
           />
         );
       case 'contacts':
@@ -360,6 +385,8 @@ const App: React.FC = () => {
             onAutoDeleteTask={handleAutoDeleteTask}
             focusedDealId={focusedDealId}
             onClearFocus={() => setFocusedDealId(null)}
+            onAddInvoice={handleAddInvoice}
+            invoices={invoices}
           />
         );
       case 'tasks':
@@ -371,6 +398,21 @@ const App: React.FC = () => {
             onDeleteTask={onRequestDeleteTask}
             focusedTaskId={focusedTaskId}
             onClearFocus={() => setFocusedTaskId(null)}
+          />
+        );
+      case 'finances':
+        return (
+          <Finances 
+            invoices={invoices}
+            contacts={contacts}
+            onAddInvoice={handleAddInvoice}
+            onUpdateInvoice={handleUpdateInvoice}
+            onDeleteInvoice={onRequestDeleteInvoice}
+            expenses={expenses}
+            onAddExpense={handleAddExpense}
+            onUpdateExpense={handleUpdateExpense}
+            onDeleteExpense={onRequestDeleteExpense}
+            invoiceConfig={invoiceConfig}
           />
         );
       case 'settings':
@@ -385,41 +427,29 @@ const App: React.FC = () => {
             contacts={contacts}
             deals={deals}
             tasks={tasks}
+            invoices={invoices}
+            expenses={expenses}
             onImportData={handleImportData}
-            // NEW PROPS FOR BACKEND
             backendConfig={backendConfig}
             onUpdateBackendConfig={setBackendConfig}
             dataService={dataService}
+            invoiceConfig={invoiceConfig}
+            onUpdateInvoiceConfig={handleUpdateInvoiceConfig}
           />
         );
-      default:
-        return null;
+      default: return null;
     }
   };
 
   return (
     <div className={`flex w-full h-screen ${theme === 'dark' ? 'bg-slate-900 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
-      <Sidebar 
-        currentView={currentView} 
-        onChangeView={handleChangeView} 
-        userProfile={userProfile}
-        theme={theme}
-      />
+      <Sidebar currentView={currentView} onChangeView={handleChangeView} userProfile={userProfile} theme={theme} />
       <div className="flex-1 flex flex-col h-screen overflow-hidden relative">
         {renderView()}
-        
         <ConfirmDialog 
           isOpen={!!deleteIntent}
-          title={
-            deleteIntent?.type === 'contact' ? 'Kontakt löschen?' : 
-            deleteIntent?.type === 'deal' ? 'Deal löschen?' :
-            'Aufgabe löschen?'
-          }
-          message={
-            deleteIntent?.type === 'contact' ? 'Möchten Sie diesen Kontakt wirklich entfernen? Alle zugehörigen Deals und Aufgaben werden ebenfalls unwiderruflich gelöscht.' : 
-            deleteIntent?.type === 'deal' ? 'Möchten Sie diesen Deal wirklich aus der Pipeline entfernen?' :
-            'Möchten Sie diese Aufgabe wirklich unwiderruflich löschen?'
-          }
+          title={deleteIntent?.type === 'expense' ? 'Ausgabe löschen?' : 'Eintrag löschen?'}
+          message="Möchten Sie diesen Eintrag wirklich unwiderruflich löschen?"
           onConfirm={confirmDelete}
           onCancel={() => setDeleteIntent(null)}
         />

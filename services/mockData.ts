@@ -1,5 +1,5 @@
 
-import { Contact, Deal, DealStage, Task } from '../types';
+import { Contact, Deal, DealStage, Task, Invoice, Expense } from '../types';
 
 export const mockContacts: Contact[] = [
   { 
@@ -115,12 +115,56 @@ export const mockTasks: Task[] = [
   },
 ];
 
-export const chartData = [
-  { name: 'Jan', value: 12000 },
-  { name: 'Feb', value: 19000 },
-  { name: 'Mär', value: 15000 },
-  { name: 'Apr', value: 22000 },
-  { name: 'Mai', value: 28000 },
-  { name: 'Jun', value: 26000 },
-  { name: 'Jul', value: 34000 },
+export const mockInvoices: Invoice[] = [
+    {
+        id: 'inv1',
+        invoiceNumber: '2025-101',
+        description: 'Jahresvertrag Wartung 2025',
+        date: '2025-01-15',
+        contactId: '3',
+        contactName: 'Michael Weber (AutoWerks AG)',
+        amount: 5000,
+        sentDate: '2025-01-16',
+        paidDate: '2025-01-20',
+        isPaid: true
+    },
+    {
+        id: 'inv2',
+        invoiceNumber: '2025-102',
+        description: 'Cloud Migration Pilotprojekt',
+        date: '2025-02-01',
+        contactId: '2',
+        contactName: 'Sabine Schmidt (InnovateX)',
+        amount: 1500,
+        sentDate: '2025-02-02',
+        isPaid: false
+    }
 ];
+
+export const mockExpenses: Expense[] = [
+    {
+        id: 'ex1',
+        title: 'Adobe Creative Cloud',
+        amount: 65.00,
+        date: '2025-01-05',
+        category: 'software',
+        notes: 'Monatliches Abo'
+    },
+    {
+        id: 'ex2',
+        title: 'Büromiete Januar',
+        amount: 450.00,
+        date: '2025-01-01',
+        category: 'office'
+    },
+    {
+        id: 'ex3',
+        title: 'Bahncard 50',
+        amount: 240.00,
+        date: '2025-02-10',
+        category: 'travel'
+    }
+];
+
+// Deprecated static chart data
+export const chartData = [];
