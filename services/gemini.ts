@@ -2,10 +2,11 @@ import { GoogleGenAI } from "@google/genai";
 import { Task, Deal } from '../types';
 
 export const generateDailyBriefing = async (tasks: Task[], deals: Deal[]): Promise<string> => {
-  const apiKey = process.env.API_KEY;
+  // Versuche Key aus LocalStorage zu laden (Benutzereingabe), sonst Fallback auf Environment Variable
+  const apiKey = localStorage.getItem('gemini_api_key') || process.env.API_KEY;
   
   if (!apiKey) {
-    return "API Key fehlt. Bitte fügen Sie Ihren Google Gemini API Key hinzu, um KI-Analysen zu erhalten.";
+    return "API Key fehlt. Bitte fügen Sie Ihren Google Gemini API Key in den Einstellungen hinzu.";
   }
 
   const ai = new GoogleGenAI({ apiKey });
@@ -39,6 +40,6 @@ export const generateDailyBriefing = async (tasks: Task[], deals: Deal[]): Promi
     return response.text || "Konnte keine Zusammenfassung erstellen.";
   } catch (error) {
     console.error("Gemini Error:", error);
-    return "Fehler bei der Verbindung zum KI-Dienst.";
+    return "Fehler bei der Verbindung zum KI-Dienst. Prüfen Sie Ihren API Key.";
   }
 };

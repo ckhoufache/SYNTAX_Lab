@@ -1,11 +1,57 @@
 import { Contact, Deal, DealStage, Task } from '../types';
 
 export const mockContacts: Contact[] = [
-  { id: '1', name: 'Hans Müller', role: 'CEO', company: 'TechSolutions GmbH', email: 'h.mueller@techsolutions.de', avatar: 'https://picsum.photos/id/1005/50/50', lastContact: '2023-10-24' },
-  { id: '2', name: 'Sabine Schmidt', role: 'CTO', company: 'InnovateX', email: 's.schmidt@innovatex.io', avatar: 'https://picsum.photos/id/1011/50/50', lastContact: '2023-10-22' },
-  { id: '3', name: 'Michael Weber', role: 'Einkauf', company: 'AutoWerks AG', email: 'm.weber@autowerks.de', avatar: 'https://picsum.photos/id/1025/50/50', lastContact: '2023-10-15' },
-  { id: '4', name: 'Julia Wagner', role: 'Marketing Lead', company: 'Creative Studio', email: 'j.wagner@creative.com', avatar: 'https://picsum.photos/id/1027/50/50', lastContact: '2023-10-26' },
-  { id: '5', name: 'Thomas Braun', role: 'GF', company: 'Braun Logistics', email: 't.braun@braun-log.de', avatar: 'https://picsum.photos/id/1012/50/50', lastContact: '2023-10-20' },
+  { 
+    id: '1', 
+    name: 'Hans Müller', 
+    role: 'CEO', 
+    company: 'TechSolutions GmbH', 
+    email: 'h.mueller@techsolutions.de', 
+    avatar: 'https://picsum.photos/id/1005/50/50', 
+    lastContact: '2023-10-24',
+    linkedin: 'https://linkedin.com/in/hansmueller',
+    notes: 'Interessiert an Enterprise Skalierung.'
+  },
+  { 
+    id: '2', 
+    name: 'Sabine Schmidt', 
+    role: 'CTO', 
+    company: 'InnovateX', 
+    email: 's.schmidt@innovatex.io', 
+    avatar: 'https://picsum.photos/id/1011/50/50', 
+    lastContact: '2023-10-22',
+    linkedin: 'https://linkedin.com',
+    notes: 'Budgetfreigabe im November erwartet.'
+  },
+  { 
+    id: '3', 
+    name: 'Michael Weber', 
+    role: 'Einkauf', 
+    company: 'AutoWerks AG', 
+    email: 'm.weber@autowerks.de', 
+    avatar: 'https://picsum.photos/id/1025/50/50', 
+    lastContact: '2023-10-15',
+    notes: 'Sehr preissensibel.'
+  },
+  { 
+    id: '4', 
+    name: 'Julia Wagner', 
+    role: 'Marketing Lead', 
+    company: 'Creative Studio', 
+    email: 'j.wagner@creative.com', 
+    avatar: 'https://picsum.photos/id/1027/50/50', 
+    lastContact: '2023-10-26',
+    linkedin: 'https://linkedin.com'
+  },
+  { 
+    id: '5', 
+    name: 'Thomas Braun', 
+    role: 'GF', 
+    company: 'Braun Logistics', 
+    email: 't.braun@braun-log.de', 
+    avatar: 'https://picsum.photos/id/1012/50/50', 
+    lastContact: '2023-10-20' 
+  },
 ];
 
 export const mockDeals: Deal[] = [

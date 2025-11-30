@@ -1,4 +1,5 @@
 export type ViewState = 'dashboard' | 'contacts' | 'pipeline' | 'settings';
+export type Theme = 'light' | 'dark';
 
 export enum DealStage {
   LEAD = 'Lead',
@@ -6,6 +7,14 @@ export enum DealStage {
   PROPOSAL = 'Angebot',
   NEGOTIATION = 'Verhandlung',
   WON = 'Gewonnen'
+}
+
+export interface UserProfile {
+  firstName: string;
+  lastName: string;
+  email: string;
+  role: string;
+  avatar: string;
 }
 
 export interface Contact {
@@ -16,6 +25,8 @@ export interface Contact {
   email: string;
   avatar: string;
   lastContact: string;
+  linkedin?: string; // Neu: LinkedIn Profil URL
+  notes?: string;    // Neu: Notizen
 }
 
 export interface Deal {
