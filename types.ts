@@ -71,6 +71,9 @@ export interface Task {
   isAllDay?: boolean;
   startTime?: string; // Format "HH:mm"
   endTime?: string;   // Format "HH:mm"
+  
+  // Sync Fields
+  googleEventId?: string; // ID des Google Kalender Events für Sync
 }
 
 export interface DashboardStats {
