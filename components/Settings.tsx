@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Save, Check, Eye, EyeOff, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, AlertTriangle } from 'lucide-react';
+import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle } from 'lucide-react';
 import { UserProfile, Theme, ProductPreset, Contact, Deal, Task, BackupData, BackendConfig } from '../types';
 import { IDataService } from '../services/dataService';
 
@@ -15,13 +15,11 @@ interface SettingsProps {
   deals: Deal[];
   tasks: Task[];
   onImportData: (data: BackupData) => void;
-  // Backend Props
   backendConfig: BackendConfig;
   onUpdateBackendConfig: (config: BackendConfig) => void;
   dataService: IDataService;
 }
 
-// Hilfskomponente für aufklappbare Sektionen
 const SettingsSection = ({ 
     title, 
     icon: Icon, 
@@ -96,33 +94,26 @@ export const Settings: React.FC<SettingsProps> = ({
   const isDark = currentTheme === 'dark';
   const [formData, setFormData] = useState<UserProfile>(userProfile);
   
-  // API Key State
-  const [apiKey, setApiKey] = useState('');
-  const [showApiKey, setShowApiKey] = useState(false);
-  
-  // Backend Config Form
   const [backendForm, setBackendForm] = useState<BackendConfig>(backendConfig);
   
-  // Google Integrations State (Loaded Async)
+  // Integration States
   const [isCalendarConnected, setIsCalendarConnected] = useState(false);
   const [isMailConnected, setIsMailConnected] = useState(false);
+  const [isConnecting, setIsConnecting] = useState<string | null>(null);
   
   const [showSaved, setShowSaved] = useState(false);
+  const [isPreviewEnv, setIsPreviewEnv] = useState(false);
 
-  // Presets State
   const [localPresets, setLocalPresets] = useState<ProductPreset[]>(productPresets);
   const [newPresetTitle, setNewPresetTitle] = useState('');
   const [newPresetValue, setNewPresetValue] = useState('');
 
-  // Edit Preset State
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
   const [editPresetTitle, setEditPresetTitle] = useState('');
   const [editPresetValue, setEditPresetValue] = useState('');
   
-  // File Import Ref
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Sync Profile Data & Presets & Backend
   useEffect(() => {
     setFormData(userProfile);
   }, [userProfile]);
@@ -135,7 +126,6 @@ export const Settings: React.FC<SettingsProps> = ({
       setBackendForm(backendConfig);
   }, [backendConfig]);
 
-  // Load Integrations Status
   useEffect(() => {
     const loadIntegrations = async () => {
         const cal = await dataService.getIntegrationStatus('calendar');
@@ -145,9 +135,11 @@ export const Settings: React.FC<SettingsProps> = ({
     };
     loadIntegrations();
     
-    // Also Load Gemini Key
-    const storedKey = localStorage.getItem('gemini_api_key');
-    if (storedKey) setApiKey(storedKey);
+    try {
+        if (window.location.protocol === 'blob:' || window.parent !== window) {
+            setIsPreviewEnv(true);
+        }
+    } catch(e) { setIsPreviewEnv(true); }
 
   }, [dataService]);
 
@@ -156,31 +148,35 @@ export const Settings: React.FC<SettingsProps> = ({
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleApiKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setApiKey(e.target.value);
-  };
-
   const handleToggleCalendar = async () => {
       if (isCalendarConnected) {
+          setIsConnecting('calendar');
           await dataService.disconnectGoogle('calendar');
           setIsCalendarConnected(false);
+          setIsConnecting(null);
       } else {
-          const success = await dataService.connectGoogle('calendar');
+          setIsConnecting('calendar');
+          // Pass current input ID directly to avoid saving requirement first
+          const success = await dataService.connectGoogle('calendar', backendForm.googleClientId);
           setIsCalendarConnected(success);
+          setIsConnecting(null);
       }
   };
 
   const handleToggleMail = async () => {
       if (isMailConnected) {
+          setIsConnecting('mail');
           await dataService.disconnectGoogle('mail');
           setIsMailConnected(false);
+          setIsConnecting(null);
       } else {
-          const success = await dataService.connectGoogle('mail');
+          setIsConnecting('mail');
+          const success = await dataService.connectGoogle('mail', backendForm.googleClientId);
           setIsMailConnected(success);
+          setIsConnecting(null);
       }
   };
 
-  // Preset Handlers
   const handleAddPreset = () => {
       if (!newPresetTitle || !newPresetValue) return;
       
@@ -224,7 +220,6 @@ export const Settings: React.FC<SettingsProps> = ({
       handleCancelEditPreset();
   };
   
-  // Data Export/Import Handlers
   const handleExport = () => {
       const backup: BackupData = {
           contacts,
@@ -279,17 +274,9 @@ export const Settings: React.FC<SettingsProps> = ({
     onUpdatePresets(localPresets);
     onUpdateBackendConfig(backendForm);
 
-    if (apiKey.trim()) {
-        localStorage.setItem('gemini_api_key', apiKey.trim());
-    } else {
-        localStorage.removeItem('gemini_api_key');
-    }
-
     setShowSaved(true);
     setTimeout(() => setShowSaved(false), 3000);
   };
-
-  const hasActiveKey = apiKey.length > 0 || !!process.env.API_KEY;
 
   const inputClass = `w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-shadow ${
       isDark 
@@ -298,8 +285,6 @@ export const Settings: React.FC<SettingsProps> = ({
   }`;
 
   const labelClass = `block text-sm font-medium mb-2 ${isDark ? 'text-slate-300' : 'text-slate-700'}`;
-
-  // Helper to get current origin for display
   const currentOrigin = window.location.origin;
 
   return (
@@ -311,7 +296,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
       <main className="max-w-3xl mx-auto p-8 space-y-6 pb-20">
         
-        {/* Backend Configuration Section */}
+        {/* Backend Configuration */}
         <SettingsSection 
             title="Backend Konfiguration" 
             icon={Server} 
@@ -351,9 +336,22 @@ export const Settings: React.FC<SettingsProps> = ({
                     </button>
                 </div>
 
-                {/* Local Mode Google Configuration */}
                 {backendForm.mode === 'local' && (
                     <div className="animate-in fade-in slide-in-from-top-2 space-y-4 pt-4 border-t border-slate-100">
+                        
+                        {isPreviewEnv && (
+                             <div className="p-4 bg-orange-50 border border-orange-100 rounded-lg text-sm text-orange-800 flex items-start gap-2">
+                                <AlertTriangle className="w-5 h-5 shrink-0" />
+                                <div>
+                                    <strong>Vorschau-Modus erkannt</strong>
+                                    <p className="mt-1 text-xs">
+                                        Google OAuth funktioniert in dieser Web-Preview nicht (Sicherheitsrichtlinie). 
+                                        Die App wird Verbindungen simulieren, damit Sie das UI testen können.
+                                    </p>
+                                </div>
+                             </div>
+                        )}
+
                         <div className="p-4 bg-blue-50 border border-blue-100 rounded-lg text-sm text-blue-800">
                             <div className="flex gap-2 items-start">
                                 <HelpCircle className="w-5 h-5 shrink-0 mt-0.5" />
@@ -366,13 +364,10 @@ export const Settings: React.FC<SettingsProps> = ({
                                     <div className="bg-white/50 p-2 rounded border border-blue-200 mb-1">
                                         <p className="text-[10px] uppercase font-bold text-blue-900 mb-1">WICHTIG: Autorisierte JavaScript-Quelle (Origin)</p>
                                         <p className="text-xs mb-1">Fügen Sie folgende URL in der Google Console unter "Authorized JavaScript origins" hinzu:</p>
-                                        <code className="block bg-slate-800 text-white px-2 py-1 rounded text-xs select-all cursor-copy">
+                                        <code className="block bg-slate-800 text-white px-2 py-1 rounded text-xs select-all cursor-copy break-all">
                                             {currentOrigin}
                                         </code>
                                     </div>
-                                    <p className="text-[10px] text-blue-700">
-                                        Fehler 400 (origin_mismatch) bedeutet, dass diese URL nicht in der Google Console eingetragen ist.
-                                    </p>
                                 </div>
                             </div>
                         </div>
@@ -389,36 +384,10 @@ export const Settings: React.FC<SettingsProps> = ({
                         </div>
                     </div>
                 )}
-
-                {/* API Mode Configuration */}
-                {backendForm.mode === 'api' && (
-                    <div className="animate-in fade-in slide-in-from-top-2 space-y-4 pt-4 border-t border-slate-100">
-                        <div>
-                            <label className={labelClass}>Server URL</label>
-                            <input 
-                                type="text"
-                                placeholder="https://api.mein-crm.de"
-                                value={backendForm.apiUrl || ''}
-                                onChange={(e) => setBackendForm({...backendForm, apiUrl: e.target.value})}
-                                className={inputClass}
-                            />
-                        </div>
-                        <div>
-                            <label className={labelClass}>API Token / Secret</label>
-                            <input 
-                                type="password"
-                                placeholder="sk-..."
-                                value={backendForm.apiToken || ''}
-                                onChange={(e) => setBackendForm({...backendForm, apiToken: e.target.value})}
-                                className={inputClass}
-                            />
-                        </div>
-                    </div>
-                )}
             </div>
         </SettingsSection>
 
-        {/* Profile Section */}
+        {/* Profile */}
         <SettingsSection 
             title="Benutzerprofil" 
             icon={User} 
@@ -459,7 +428,7 @@ export const Settings: React.FC<SettingsProps> = ({
           </div>
         </SettingsSection>
         
-        {/* API Section */}
+        {/* Integrations */}
         <SettingsSection 
             title="Integrationen" 
             icon={Share2} 
@@ -467,42 +436,8 @@ export const Settings: React.FC<SettingsProps> = ({
             description="Verbinden Sie externe Dienste wie Google Gemini AI."
         >
           <div className="space-y-6">
-             {/* Gemini API */}
-             <div>
-                <label className={labelClass}>Google Gemini API Key</label>
-                <div className="flex gap-2">
-                    <div className="relative flex-1">
-                        <input 
-                            type={showApiKey ? "text" : "password"}
-                            placeholder={process.env.API_KEY ? "Wird aus Umgebungsvariable geladen (überschreiben möglich)" : "sk-..."}
-                            className={`${inputClass} pr-10`}
-                            value={apiKey}
-                            onChange={handleApiKeyChange}
-                        />
-                        <button 
-                            type="button"
-                            onClick={() => setShowApiKey(!showApiKey)}
-                            className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
-                        >
-                            {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </button>
-                    </div>
-                    {hasActiveKey ? (
-                        <span className="px-3 py-2 bg-green-100 text-green-700 rounded-lg text-sm font-medium border border-green-200 flex items-center shrink-0">
-                            <Check className="w-4 h-4 mr-1" />
-                            Verbunden
-                        </span>
-                    ) : (
-                        <span className="px-3 py-2 bg-slate-100 text-slate-500 rounded-lg text-sm font-medium border border-slate-200 flex items-center shrink-0">Nicht konfiguriert</span>
-                    )}
-                </div>
-                <p className="text-xs text-slate-500 mt-2">
-                   Geben Sie hier Ihren eigenen API Key ein, um die KI-Funktionen zu nutzen. Der Schlüssel wird lokal in Ihrer App gespeichert.
-                </p>
-             </div>
-
              {/* Google Calendar */}
-             <div className="pt-6 border-t border-slate-100">
+             <div>
                  <div className="flex items-center justify-between">
                      <div className="flex items-center gap-3">
                          <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
@@ -515,12 +450,14 @@ export const Settings: React.FC<SettingsProps> = ({
                      </div>
                      <button 
                          onClick={handleToggleCalendar}
-                         className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${
+                         disabled={!!isConnecting}
+                         className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors border flex items-center gap-2 ${
                              isCalendarConnected 
                              ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100' 
                              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                          }`}
                      >
+                         {isConnecting === 'calendar' ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                          {isCalendarConnected ? 'Trennen' : 'Verbinden'}
                      </button>
                  </div>
@@ -546,12 +483,14 @@ export const Settings: React.FC<SettingsProps> = ({
                      </div>
                      <button 
                          onClick={handleToggleMail}
-                         className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${
+                         disabled={!!isConnecting}
+                         className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors border flex items-center gap-2 ${
                              isMailConnected 
                              ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100' 
                              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                          }`}
                      >
+                         {isConnecting === 'mail' ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                          {isMailConnected ? 'Trennen' : 'Verbinden'}
                      </button>
                  </div>
@@ -566,7 +505,7 @@ export const Settings: React.FC<SettingsProps> = ({
           </div>
         </SettingsSection>
 
-         {/* Data Management Section */}
+         {/* Data Management */}
         <SettingsSection 
             title="Datenverwaltung" 
             icon={Database} 
@@ -613,24 +552,21 @@ export const Settings: React.FC<SettingsProps> = ({
                     </button>
                 </div>
             </div>
-            <div className="mt-4 p-3 bg-blue-50 text-blue-800 text-xs rounded-lg border border-blue-100">
-                <strong>Tipp für Desktop App:</strong> Nutzen Sie die Export-Funktion, um Ihre Daten später einfach in die Desktop-Version (Option B) zu migrieren.
-            </div>
         </SettingsSection>
 
-        {/* Product Presets Section */}
+        {/* Product Presets */}
         <SettingsSection 
             title="Produkt Voreinstellungen" 
             icon={Package} 
             isDark={isDark}
             description="Definieren Sie Standardprodukte und Preise für Ihre Pipeline."
         >
+          {/* Preset List (Same as before) */}
           <div className="space-y-3 mb-6">
             {localPresets.map(preset => (
                 <div key={preset.id} className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
                     
                     {editingPresetId === preset.id ? (
-                        // Edit Mode
                         <>
                             <div className="flex-1 flex gap-2">
                                 <input 
@@ -653,21 +589,18 @@ export const Settings: React.FC<SettingsProps> = ({
                                 <button 
                                     onClick={handleSaveEditPreset}
                                     className="p-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors"
-                                    title="Speichern"
                                 >
                                     <Check className="w-4 h-4" />
                                 </button>
                                 <button 
                                     onClick={handleCancelEditPreset}
                                     className="p-2 bg-slate-200 text-slate-600 rounded-lg hover:bg-slate-300 transition-colors"
-                                    title="Abbrechen"
                                 >
                                     <X className="w-4 h-4" />
                                 </button>
                             </div>
                         </>
                     ) : (
-                        // View Mode
                         <>
                             <div className="flex-1">
                                 <p className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-800'}`}>{preset.title}</p>
@@ -679,14 +612,12 @@ export const Settings: React.FC<SettingsProps> = ({
                                 <button 
                                     onClick={() => handleStartEditPreset(preset)}
                                     className="text-slate-400 hover:text-indigo-500 p-1.5 rounded hover:bg-slate-200/20 transition-colors"
-                                    title="Bearbeiten"
                                 >
                                     <Pencil className="w-4 h-4" />
                                 </button>
                                 <button 
                                     onClick={() => handleDeletePreset(preset.id)}
                                     className="text-slate-400 hover:text-red-500 p-1.5 rounded hover:bg-slate-200/20 transition-colors"
-                                    title="Entfernen"
                                 >
                                     <Trash2 className="w-4 h-4" />
                                 </button>
@@ -695,9 +626,6 @@ export const Settings: React.FC<SettingsProps> = ({
                     )}
                 </div>
             ))}
-            {localPresets.length === 0 && (
-                <p className="text-sm italic text-slate-400 text-center py-4">Keine Produkte definiert.</p>
-            )}
           </div>
 
           <div className="flex items-end gap-3 p-4 rounded-lg bg-slate-100/50 border border-slate-200">
@@ -739,8 +667,6 @@ export const Settings: React.FC<SettingsProps> = ({
             description="Passen Sie das Design an Ihre Vorlieben an."
         >
           <div className="flex items-center gap-4">
-            
-            {/* Light Option */}
             <div 
                 onClick={() => onUpdateTheme('light')}
                 className={`border-2 rounded-lg p-1 cursor-pointer transition-all ${
@@ -751,13 +677,10 @@ export const Settings: React.FC<SettingsProps> = ({
             >
                 <div className="w-24 h-16 bg-slate-100 rounded mb-2 border border-slate-200 shadow-sm relative overflow-hidden">
                     <div className="absolute top-0 left-0 w-8 h-full bg-white border-r border-slate-200"></div>
-                    <div className="absolute top-2 left-10 w-10 h-2 bg-white rounded"></div>
-                    <div className="absolute top-6 left-10 w-12 h-6 bg-white rounded"></div>
                 </div>
                 <span className={`text-xs font-medium block text-center ${currentTheme === 'light' ? 'text-indigo-600' : 'text-slate-500'}`}>Hell</span>
             </div>
 
-            {/* Dark Option */}
             <div 
                 onClick={() => onUpdateTheme('dark')}
                 className={`border-2 rounded-lg p-1 cursor-pointer transition-all ${
@@ -768,12 +691,9 @@ export const Settings: React.FC<SettingsProps> = ({
             >
                 <div className="w-24 h-16 bg-slate-800 rounded mb-2 border border-slate-700 shadow-sm relative overflow-hidden">
                     <div className="absolute top-0 left-0 w-8 h-full bg-slate-900 border-r border-slate-700"></div>
-                    <div className="absolute top-2 left-10 w-10 h-2 bg-slate-700 rounded"></div>
-                    <div className="absolute top-6 left-10 w-12 h-6 bg-slate-700 rounded"></div>
                 </div>
                 <span className={`text-xs font-medium block text-center ${currentTheme === 'dark' ? 'text-indigo-400' : 'text-slate-500'}`}>Dunkel</span>
             </div>
-
           </div>
         </SettingsSection>
 

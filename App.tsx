@@ -25,7 +25,15 @@ const App: React.FC = () => {
 
   // --- APP STATE ---
   const [isLoading, setIsLoading] = useState(true);
-  const [theme, setTheme] = useState<Theme>('light');
+  
+  // FIX: Initialize theme directly from localStorage to avoid overwriting it with default 'light' on render
+  const [theme, setTheme] = useState<Theme>(() => {
+      if (typeof window !== 'undefined') {
+          return (localStorage.getItem('theme') as Theme) || 'light';
+      }
+      return 'light';
+  });
+
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [productPresets, setProductPresets] = useState<ProductPreset[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -43,13 +51,12 @@ const App: React.FC = () => {
             await service.init();
             
             // Parallel loading for performance
-            const [c, d, t, p, presets, loadedTheme] = await Promise.all([
+            const [c, d, t, p, presets] = await Promise.all([
                 service.getContacts(),
                 service.getDeals(),
                 service.getTasks(),
                 service.getUserProfile(),
-                service.getProductPresets(),
-                localStorage.getItem('theme') as Theme || 'light'
+                service.getProductPresets()
             ]);
 
             setContacts(c);
@@ -57,12 +64,10 @@ const App: React.FC = () => {
             setTasks(t);
             setUserProfile(p);
             setProductPresets(presets);
-            setTheme(loadedTheme);
 
         } catch (error) {
             console.error("Failed to load data", error);
             alert("Fehler beim Laden der Daten. Bitte prüfen Sie Ihre Backend-Verbindung.");
-            // Fallback to local mode if API fails? Optional.
         } finally {
             setIsLoading(false);
         }
