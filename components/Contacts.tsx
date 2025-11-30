@@ -2,6 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Search, Filter, MoreHorizontal, Mail, Phone, Plus, Linkedin, X, FileText, Pencil, Trash, Clock, Check, Send } from 'lucide-react';
 import { Contact } from '../types';
+import { DataServiceFactory } from '../services/dataService'; // Just for typing, actually usage via props might be better but for quick fix use simple logic
 
 interface ContactsProps {
   contacts: Contact[];
@@ -47,6 +48,7 @@ export const Contacts: React.FC<ContactsProps> = ({
   // State für E-Mail Modal
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
   const [emailData, setEmailData] = useState({ to: '', subject: '', body: '', name: '' });
+  const [sendingEmail, setSendingEmail] = useState(false);
 
   // Extract unique values for filter dropdowns
   const availableCompanies = Array.from(new Set(contacts.map(c => c.company))).sort();
@@ -218,22 +220,30 @@ export const Contacts: React.FC<ContactsProps> = ({
       setIsEmailModalOpen(true);
   };
 
-  const handleSendEmail = (e: React.FormEvent) => {
+  const handleSendEmail = async (e: React.FormEvent) => {
       e.preventDefault();
       
       const isGoogleMailConnected = localStorage.getItem('google_mail_connected') === 'true';
-
+      const storedConfig = localStorage.getItem('backend_config');
+      const config = storedConfig ? JSON.parse(storedConfig) : { mode: 'local' };
+      
       if (isGoogleMailConnected) {
-          // Open Gmail Compose Window in new tab
-          const gmailLink = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(emailData.to)}&su=${encodeURIComponent(emailData.subject)}&body=${encodeURIComponent(emailData.body)}`;
-          window.open(gmailLink, '_blank');
+          // Recreate DataService to access sendMail method
+          const service = DataServiceFactory.create(config);
+          setSendingEmail(true);
+          const success = await service.sendMail(emailData.to, emailData.subject, emailData.body);
+          setSendingEmail(false);
+          
+          if (success) {
+              alert("E-Mail erfolgreich gesendet.");
+              setIsEmailModalOpen(false);
+          }
       } else {
           // Fallback to default mailto:
           const mailtoLink = `mailto:${emailData.to}?subject=${encodeURIComponent(emailData.subject)}&body=${encodeURIComponent(emailData.body)}`;
           window.location.href = mailtoLink;
+          setIsEmailModalOpen(false);
       }
-      
-      setIsEmailModalOpen(false);
   };
 
   const hasActiveFilters = filters.company !== '' || filters.role !== '' || filters.timeframe !== 'all';
@@ -701,20 +711,28 @@ export const Contacts: React.FC<ContactsProps> = ({
                         <button 
                             type="button"
                             onClick={() => setIsEmailModalOpen(false)}
+                            disabled={sendingEmail}
                             className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
                         >
                             Abbrechen
                         </button>
                         <button 
                             type="submit"
-                            className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-md shadow-indigo-200 transition-colors flex items-center gap-2"
+                            disabled={sendingEmail}
+                            className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 rounded-lg shadow-md shadow-indigo-200 transition-colors flex items-center gap-2"
                         >
-                            <Send className="w-4 h-4" />
-                            Senden
+                            {sendingEmail ? 'Sende...' : (
+                                <>
+                                    <Send className="w-4 h-4" />
+                                    Senden
+                                </>
+                            )}
                         </button>
                     </div>
                     <p className="text-xs text-center text-slate-400 mt-2">
-                        Öffnet Ihr E-Mail Programm (Gmail wenn konfiguriert).
+                        {localStorage.getItem('google_mail_connected') === 'true' 
+                        ? "Senden via Google API (Hintergrund)" 
+                        : "Öffnet Ihr Standard E-Mail Programm"}
                     </p>
                 </form>
             </div>

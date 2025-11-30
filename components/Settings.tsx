@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Save, Check, Eye, EyeOff, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail } from 'lucide-react';
-import { UserProfile, Theme, ProductPreset, Contact, Deal, Task, BackupData } from '../types';
+import { Save, Check, Eye, EyeOff, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, AlertTriangle } from 'lucide-react';
+import { UserProfile, Theme, ProductPreset, Contact, Deal, Task, BackupData, BackendConfig } from '../types';
+import { IDataService } from '../services/dataService';
 
 interface SettingsProps {
   userProfile: UserProfile;
@@ -14,6 +15,10 @@ interface SettingsProps {
   deals: Deal[];
   tasks: Task[];
   onImportData: (data: BackupData) => void;
+  // Backend Props
+  backendConfig: BackendConfig;
+  onUpdateBackendConfig: (config: BackendConfig) => void;
+  dataService: IDataService;
 }
 
 // Hilfskomponente für aufklappbare Sektionen
@@ -83,7 +88,10 @@ export const Settings: React.FC<SettingsProps> = ({
   contacts,
   deals,
   tasks,
-  onImportData
+  onImportData,
+  backendConfig,
+  onUpdateBackendConfig,
+  dataService
 }) => {
   const isDark = currentTheme === 'dark';
   const [formData, setFormData] = useState<UserProfile>(userProfile);
@@ -92,7 +100,10 @@ export const Settings: React.FC<SettingsProps> = ({
   const [apiKey, setApiKey] = useState('');
   const [showApiKey, setShowApiKey] = useState(false);
   
-  // Google Integrations State
+  // Backend Config Form
+  const [backendForm, setBackendForm] = useState<BackendConfig>(backendConfig);
+  
+  // Google Integrations State (Loaded Async)
   const [isCalendarConnected, setIsCalendarConnected] = useState(false);
   const [isMailConnected, setIsMailConnected] = useState(false);
   
@@ -111,7 +122,7 @@ export const Settings: React.FC<SettingsProps> = ({
   // File Import Ref
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Sync Profile Data & Presets
+  // Sync Profile Data & Presets & Backend
   useEffect(() => {
     setFormData(userProfile);
   }, [userProfile]);
@@ -120,21 +131,25 @@ export const Settings: React.FC<SettingsProps> = ({
     setLocalPresets(productPresets);
   }, [productPresets]);
 
-  // Load Settings from LocalStorage on mount
   useEffect(() => {
+      setBackendForm(backendConfig);
+  }, [backendConfig]);
+
+  // Load Integrations Status
+  useEffect(() => {
+    const loadIntegrations = async () => {
+        const cal = await dataService.getIntegrationStatus('calendar');
+        const mail = await dataService.getIntegrationStatus('mail');
+        setIsCalendarConnected(cal);
+        setIsMailConnected(mail);
+    };
+    loadIntegrations();
+    
+    // Also Load Gemini Key
     const storedKey = localStorage.getItem('gemini_api_key');
-    if (storedKey) {
-        setApiKey(storedKey);
-    }
-    const storedCalendar = localStorage.getItem('google_calendar_connected');
-    if (storedCalendar === 'true') {
-        setIsCalendarConnected(true);
-    }
-    const storedMail = localStorage.getItem('google_mail_connected');
-    if (storedMail === 'true') {
-        setIsMailConnected(true);
-    }
-  }, []);
+    if (storedKey) setApiKey(storedKey);
+
+  }, [dataService]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -145,12 +160,24 @@ export const Settings: React.FC<SettingsProps> = ({
     setApiKey(e.target.value);
   };
 
-  const handleToggleCalendar = () => {
-      setIsCalendarConnected(!isCalendarConnected);
+  const handleToggleCalendar = async () => {
+      if (isCalendarConnected) {
+          await dataService.disconnectGoogle('calendar');
+          setIsCalendarConnected(false);
+      } else {
+          const success = await dataService.connectGoogle('calendar');
+          setIsCalendarConnected(success);
+      }
   };
 
-  const handleToggleMail = () => {
-      setIsMailConnected(!isMailConnected);
+  const handleToggleMail = async () => {
+      if (isMailConnected) {
+          await dataService.disconnectGoogle('mail');
+          setIsMailConnected(false);
+      } else {
+          const success = await dataService.connectGoogle('mail');
+          setIsMailConnected(success);
+      }
   };
 
   // Preset Handlers
@@ -214,7 +241,7 @@ export const Settings: React.FC<SettingsProps> = ({
       const downloadAnchorNode = document.createElement('a');
       downloadAnchorNode.setAttribute("href", dataStr);
       downloadAnchorNode.setAttribute("download", `crm_backup_${new Date().toISOString().split('T')[0]}.json`);
-      document.body.appendChild(downloadAnchorNode); // required for firefox
+      document.body.appendChild(downloadAnchorNode); 
       downloadAnchorNode.click();
       downloadAnchorNode.remove();
   };
@@ -233,41 +260,30 @@ export const Settings: React.FC<SettingsProps> = ({
       reader.onload = (event) => {
           try {
               const json = JSON.parse(event.target?.result as string);
-              // Basic Validation
               if (json.version && (json.contacts || json.deals)) {
                   onImportData(json);
               } else {
-                  alert('Ungültiges Dateiformat. Bitte nutzen Sie eine gültige CRM Backup Datei.');
+                  alert('Ungültiges Dateiformat.');
               }
           } catch (error) {
               console.error(error);
               alert('Fehler beim Lesen der Datei.');
           }
-          // Reset Input value so same file can be selected again
           if (fileInputRef.current) fileInputRef.current.value = '';
       };
       reader.readAsText(file);
   };
 
   const handleSaveAll = () => {
-    // Profil speichern
     onUpdateProfile(formData);
-    
-    // API Key speichern (oder entfernen wenn leer)
+    onUpdatePresets(localPresets);
+    onUpdateBackendConfig(backendForm);
+
     if (apiKey.trim()) {
         localStorage.setItem('gemini_api_key', apiKey.trim());
     } else {
         localStorage.removeItem('gemini_api_key');
     }
-
-    // Google Calendar Status speichern
-    localStorage.setItem('google_calendar_connected', String(isCalendarConnected));
-    
-    // Google Mail Status speichern
-    localStorage.setItem('google_mail_connected', String(isMailConnected));
-
-    // Presets speichern
-    onUpdatePresets(localPresets);
 
     setShowSaved(true);
     setTimeout(() => setShowSaved(false), 3000);
@@ -283,15 +299,125 @@ export const Settings: React.FC<SettingsProps> = ({
 
   const labelClass = `block text-sm font-medium mb-2 ${isDark ? 'text-slate-300' : 'text-slate-700'}`;
 
+  // Helper to get current origin for display
+  const currentOrigin = window.location.origin;
+
   return (
     <div className={`flex-1 h-screen overflow-y-auto ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`}>
       <header className={`px-8 py-6 border-b ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
         <h1 className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-slate-800'}`}>Einstellungen</h1>
-        <p className="text-slate-500 text-sm mt-1">Konfigurieren Sie Ihr CRM und API Verbindungen.</p>
+        <p className="text-slate-500 text-sm mt-1">Konfigurieren Sie Ihr CRM, Backend und API Verbindungen.</p>
       </header>
 
       <main className="max-w-3xl mx-auto p-8 space-y-6 pb-20">
         
+        {/* Backend Configuration Section */}
+        <SettingsSection 
+            title="Backend Konfiguration" 
+            icon={Server} 
+            isDark={isDark} 
+            description="Wählen Sie zwischen lokaler Speicherung und externem Server."
+        >
+            <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                    <button 
+                        onClick={() => setBackendForm({...backendForm, mode: 'local'})}
+                        className={`p-4 rounded-xl border-2 text-left transition-all ${
+                            backendForm.mode === 'local' 
+                            ? 'border-indigo-600 bg-indigo-50/50' 
+                            : isDark ? 'border-slate-700 hover:border-slate-600' : 'border-slate-200 hover:border-slate-300'
+                        }`}
+                    >
+                        <div className="flex items-center gap-2 mb-2">
+                            <Laptop className={`w-5 h-5 ${backendForm.mode === 'local' ? 'text-indigo-600' : 'text-slate-400'}`} />
+                            <span className={`font-bold ${backendForm.mode === 'local' ? 'text-indigo-900' : isDark ? 'text-white' : 'text-slate-900'}`}>Lokal (Desktop App)</span>
+                        </div>
+                        <p className="text-xs text-slate-500">Daten werden auf diesem PC gespeichert. Direkte Google Anbindung möglich.</p>
+                    </button>
+
+                    <button 
+                        onClick={() => setBackendForm({...backendForm, mode: 'api'})}
+                        className={`p-4 rounded-xl border-2 text-left transition-all ${
+                            backendForm.mode === 'api' 
+                            ? 'border-indigo-600 bg-indigo-50/50' 
+                            : isDark ? 'border-slate-700 hover:border-slate-600' : 'border-slate-200 hover:border-slate-300'
+                        }`}
+                    >
+                        <div className="flex items-center gap-2 mb-2">
+                            <Globe className={`w-5 h-5 ${backendForm.mode === 'api' ? 'text-indigo-600' : 'text-slate-400'}`} />
+                            <span className={`font-bold ${backendForm.mode === 'api' ? 'text-indigo-900' : isDark ? 'text-white' : 'text-slate-900'}`}>Externer Server</span>
+                        </div>
+                        <p className="text-xs text-slate-500">Für Mehrbenutzer-Teams mit eigener Infrastruktur.</p>
+                    </button>
+                </div>
+
+                {/* Local Mode Google Configuration */}
+                {backendForm.mode === 'local' && (
+                    <div className="animate-in fade-in slide-in-from-top-2 space-y-4 pt-4 border-t border-slate-100">
+                        <div className="p-4 bg-blue-50 border border-blue-100 rounded-lg text-sm text-blue-800">
+                            <div className="flex gap-2 items-start">
+                                <HelpCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                                <div>
+                                    <strong>Google Integration im lokalen Modus</strong>
+                                    <p className="mt-1 text-xs opacity-90 leading-relaxed mb-2">
+                                        Damit die App (ohne Server) auf Ihren Kalender/Mails zugreifen darf, benötigen Sie eine <strong>Client ID</strong> von Google. 
+                                        Erstellen Sie ein Projekt in der <a href="https://console.cloud.google.com/" target="_blank" className="underline hover:text-blue-900">Google Cloud Console</a>.
+                                    </p>
+                                    <div className="bg-white/50 p-2 rounded border border-blue-200 mb-1">
+                                        <p className="text-[10px] uppercase font-bold text-blue-900 mb-1">WICHTIG: Autorisierte JavaScript-Quelle (Origin)</p>
+                                        <p className="text-xs mb-1">Fügen Sie folgende URL in der Google Console unter "Authorized JavaScript origins" hinzu:</p>
+                                        <code className="block bg-slate-800 text-white px-2 py-1 rounded text-xs select-all cursor-copy">
+                                            {currentOrigin}
+                                        </code>
+                                    </div>
+                                    <p className="text-[10px] text-blue-700">
+                                        Fehler 400 (origin_mismatch) bedeutet, dass diese URL nicht in der Google Console eingetragen ist.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        <div>
+                            <label className={labelClass}>Google Client ID</label>
+                            <input 
+                                type="text"
+                                placeholder="123456789-abcdefg...apps.googleusercontent.com"
+                                value={backendForm.googleClientId || ''}
+                                onChange={(e) => setBackendForm({...backendForm, googleClientId: e.target.value})}
+                                className={inputClass}
+                            />
+                            <p className="text-xs text-slate-400 mt-1">Wird lokal gespeichert, um die Verbindung herzustellen.</p>
+                        </div>
+                    </div>
+                )}
+
+                {/* API Mode Configuration */}
+                {backendForm.mode === 'api' && (
+                    <div className="animate-in fade-in slide-in-from-top-2 space-y-4 pt-4 border-t border-slate-100">
+                        <div>
+                            <label className={labelClass}>Server URL</label>
+                            <input 
+                                type="text"
+                                placeholder="https://api.mein-crm.de"
+                                value={backendForm.apiUrl || ''}
+                                onChange={(e) => setBackendForm({...backendForm, apiUrl: e.target.value})}
+                                className={inputClass}
+                            />
+                        </div>
+                        <div>
+                            <label className={labelClass}>API Token / Secret</label>
+                            <input 
+                                type="password"
+                                placeholder="sk-..."
+                                value={backendForm.apiToken || ''}
+                                onChange={(e) => setBackendForm({...backendForm, apiToken: e.target.value})}
+                                className={inputClass}
+                            />
+                        </div>
+                    </div>
+                )}
+            </div>
+        </SettingsSection>
+
         {/* Profile Section */}
         <SettingsSection 
             title="Benutzerprofil" 
@@ -333,7 +459,114 @@ export const Settings: React.FC<SettingsProps> = ({
           </div>
         </SettingsSection>
         
-        {/* Data Management Section */}
+        {/* API Section */}
+        <SettingsSection 
+            title="Integrationen" 
+            icon={Share2} 
+            isDark={isDark}
+            description="Verbinden Sie externe Dienste wie Google Gemini AI."
+        >
+          <div className="space-y-6">
+             {/* Gemini API */}
+             <div>
+                <label className={labelClass}>Google Gemini API Key</label>
+                <div className="flex gap-2">
+                    <div className="relative flex-1">
+                        <input 
+                            type={showApiKey ? "text" : "password"}
+                            placeholder={process.env.API_KEY ? "Wird aus Umgebungsvariable geladen (überschreiben möglich)" : "sk-..."}
+                            className={`${inputClass} pr-10`}
+                            value={apiKey}
+                            onChange={handleApiKeyChange}
+                        />
+                        <button 
+                            type="button"
+                            onClick={() => setShowApiKey(!showApiKey)}
+                            className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
+                        >
+                            {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                    </div>
+                    {hasActiveKey ? (
+                        <span className="px-3 py-2 bg-green-100 text-green-700 rounded-lg text-sm font-medium border border-green-200 flex items-center shrink-0">
+                            <Check className="w-4 h-4 mr-1" />
+                            Verbunden
+                        </span>
+                    ) : (
+                        <span className="px-3 py-2 bg-slate-100 text-slate-500 rounded-lg text-sm font-medium border border-slate-200 flex items-center shrink-0">Nicht konfiguriert</span>
+                    )}
+                </div>
+                <p className="text-xs text-slate-500 mt-2">
+                   Geben Sie hier Ihren eigenen API Key ein, um die KI-Funktionen zu nutzen. Der Schlüssel wird lokal in Ihrer App gespeichert.
+                </p>
+             </div>
+
+             {/* Google Calendar */}
+             <div className="pt-6 border-t border-slate-100">
+                 <div className="flex items-center justify-between">
+                     <div className="flex items-center gap-3">
+                         <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+                             <Calendar className="w-5 h-5" />
+                         </div>
+                         <div>
+                             <label className={`block text-sm font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Google Kalender</label>
+                             <p className="text-xs text-slate-500 mt-0.5">Synchronisieren Sie Ihre Aufgaben automatisch.</p>
+                         </div>
+                     </div>
+                     <button 
+                         onClick={handleToggleCalendar}
+                         className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${
+                             isCalendarConnected 
+                             ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100' 
+                             : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                         }`}
+                     >
+                         {isCalendarConnected ? 'Trennen' : 'Verbinden'}
+                     </button>
+                 </div>
+                 {isCalendarConnected && (
+                     <div className="mt-3 flex items-center gap-2 text-xs text-green-600 bg-green-50 px-3 py-2 rounded-md border border-green-100">
+                         <Check className="w-3 h-3" />
+                         Ihr Kalender ist erfolgreich verknüpft.
+                     </div>
+                 )}
+             </div>
+
+             {/* Google Mail */}
+             <div className="pt-6 border-t border-slate-100">
+                 <div className="flex items-center justify-between">
+                     <div className="flex items-center gap-3">
+                         <div className="p-2 bg-red-50 text-red-600 rounded-lg">
+                             <Mail className="w-5 h-5" />
+                         </div>
+                         <div>
+                             <label className={`block text-sm font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Google Mail</label>
+                             <p className="text-xs text-slate-500 mt-0.5">E-Mails direkt über Ihr Google Konto senden.</p>
+                         </div>
+                     </div>
+                     <button 
+                         onClick={handleToggleMail}
+                         className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${
+                             isMailConnected 
+                             ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100' 
+                             : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                         }`}
+                     >
+                         {isMailConnected ? 'Trennen' : 'Verbinden'}
+                     </button>
+                 </div>
+                 {isMailConnected && (
+                     <div className="mt-3 flex items-center gap-2 text-xs text-green-600 bg-green-50 px-3 py-2 rounded-md border border-green-100">
+                         <Check className="w-3 h-3" />
+                         Google Mail Verknüpfung aktiv.
+                     </div>
+                 )}
+             </div>
+
+          </div>
+        </SettingsSection>
+
+         {/* Data Management Section */}
         <SettingsSection 
             title="Datenverwaltung" 
             icon={Database} 
@@ -495,113 +728,6 @@ export const Settings: React.FC<SettingsProps> = ({
              >
                  <Plus className="w-5 h-5" />
              </button>
-          </div>
-        </SettingsSection>
-
-        {/* API Section */}
-        <SettingsSection 
-            title="Integrationen" 
-            icon={Share2} 
-            isDark={isDark}
-            description="Verbinden Sie externe Dienste wie Google Gemini AI."
-        >
-          <div className="space-y-6">
-             {/* Gemini API */}
-             <div>
-                <label className={labelClass}>Google Gemini API Key</label>
-                <div className="flex gap-2">
-                    <div className="relative flex-1">
-                        <input 
-                            type={showApiKey ? "text" : "password"}
-                            placeholder={process.env.API_KEY ? "Wird aus Umgebungsvariable geladen (überschreiben möglich)" : "sk-..."}
-                            className={`${inputClass} pr-10`}
-                            value={apiKey}
-                            onChange={handleApiKeyChange}
-                        />
-                        <button 
-                            type="button"
-                            onClick={() => setShowApiKey(!showApiKey)}
-                            className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
-                        >
-                            {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </button>
-                    </div>
-                    {hasActiveKey ? (
-                        <span className="px-3 py-2 bg-green-100 text-green-700 rounded-lg text-sm font-medium border border-green-200 flex items-center shrink-0">
-                            <Check className="w-4 h-4 mr-1" />
-                            Verbunden
-                        </span>
-                    ) : (
-                        <span className="px-3 py-2 bg-slate-100 text-slate-500 rounded-lg text-sm font-medium border border-slate-200 flex items-center shrink-0">Nicht konfiguriert</span>
-                    )}
-                </div>
-                <p className="text-xs text-slate-500 mt-2">
-                   Geben Sie hier Ihren eigenen API Key ein, um die KI-Funktionen zu nutzen. Der Schlüssel wird lokal in Ihrer App gespeichert.
-                </p>
-             </div>
-
-             {/* Google Calendar */}
-             <div className="pt-6 border-t border-slate-100">
-                 <div className="flex items-center justify-between">
-                     <div className="flex items-center gap-3">
-                         <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
-                             <Calendar className="w-5 h-5" />
-                         </div>
-                         <div>
-                             <label className={`block text-sm font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Google Kalender</label>
-                             <p className="text-xs text-slate-500 mt-0.5">Synchronisieren Sie Ihre Aufgaben automatisch.</p>
-                         </div>
-                     </div>
-                     <button 
-                         onClick={handleToggleCalendar}
-                         className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${
-                             isCalendarConnected 
-                             ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100' 
-                             : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                         }`}
-                     >
-                         {isCalendarConnected ? 'Trennen' : 'Verbinden'}
-                     </button>
-                 </div>
-                 {isCalendarConnected && (
-                     <div className="mt-3 flex items-center gap-2 text-xs text-green-600 bg-green-50 px-3 py-2 rounded-md border border-green-100">
-                         <Check className="w-3 h-3" />
-                         Ihr Kalender ist erfolgreich verknüpft.
-                     </div>
-                 )}
-             </div>
-
-             {/* Google Mail */}
-             <div className="pt-6 border-t border-slate-100">
-                 <div className="flex items-center justify-between">
-                     <div className="flex items-center gap-3">
-                         <div className="p-2 bg-red-50 text-red-600 rounded-lg">
-                             <Mail className="w-5 h-5" />
-                         </div>
-                         <div>
-                             <label className={`block text-sm font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Google Mail</label>
-                             <p className="text-xs text-slate-500 mt-0.5">E-Mails direkt über Ihr Google Konto senden.</p>
-                         </div>
-                     </div>
-                     <button 
-                         onClick={handleToggleMail}
-                         className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${
-                             isMailConnected 
-                             ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100' 
-                             : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                         }`}
-                     >
-                         {isMailConnected ? 'Trennen' : 'Verbinden'}
-                     </button>
-                 </div>
-                 {isMailConnected && (
-                     <div className="mt-3 flex items-center gap-2 text-xs text-green-600 bg-green-50 px-3 py-2 rounded-md border border-green-100">
-                         <Check className="w-3 h-3" />
-                         Google Mail Verknüpfung aktiv.
-                     </div>
-                 )}
-             </div>
-
           </div>
         </SettingsSection>
 

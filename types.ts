@@ -12,6 +12,15 @@ export enum DealStage {
   LOST = 'Verloren'
 }
 
+export type BackendMode = 'local' | 'api';
+
+export interface BackendConfig {
+  mode: BackendMode;
+  apiUrl?: string;
+  apiToken?: string;
+  googleClientId?: string; // NEU: Für lokale OAuth Verbindung
+}
+
 export interface ProductPreset {
   id: string;
   title: string;

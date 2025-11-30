@@ -7,63 +7,71 @@ import { Pipeline } from './components/Pipeline';
 import { Settings } from './components/Settings';
 import { Tasks } from './components/Tasks';
 import { ConfirmDialog } from './components/ConfirmDialog';
-import { ViewState, Contact, Deal, UserProfile, Theme, Task, DealStage, ProductPreset, BackupData } from './types';
-import { mockTasks, mockDeals, mockContacts } from './services/mockData';
+import { ViewState, Contact, Deal, UserProfile, Theme, Task, DealStage, ProductPreset, BackupData, BackendConfig } from './types';
+import { DataServiceFactory, IDataService } from './services/dataService';
+import { Loader2 } from 'lucide-react';
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewState>('dashboard');
   
-  // --- PERSISTENZ HELPERS ---
-  const loadFromStorage = <T,>(key: string, fallback: T): T => {
-    const stored = localStorage.getItem(key);
-    if (stored) {
-      try {
-        return JSON.parse(stored);
-      } catch (e) {
-        console.error(`Fehler beim Laden von ${key}`, e);
-        return fallback;
-      }
-    }
-    return fallback;
-  };
+  // --- BACKEND CONFIGURATION ---
+  const [backendConfig, setBackendConfig] = useState<BackendConfig>(() => {
+      const stored = localStorage.getItem('backend_config');
+      return stored ? JSON.parse(stored) : { mode: 'local' };
+  });
 
-  const saveToStorage = (key: string, data: any) => {
-    localStorage.setItem(key, JSON.stringify(data));
-  };
+  // --- SERVICE INSTANCE ---
+  const [dataService, setDataService] = useState<IDataService>(DataServiceFactory.create(backendConfig));
 
   // --- APP STATE ---
-  
-  // App Settings State
-  const [theme, setTheme] = useState<Theme>(() => loadFromStorage('theme', 'light'));
-  
-  const [userProfile, setUserProfile] = useState<UserProfile>(() => loadFromStorage('userProfile', {
-    firstName: 'Max',
-    lastName: 'Mustermann',
-    email: 'max@nex-crm.de',
-    role: 'Admin',
-    avatar: 'https://picsum.photos/id/64/100/100'
-  }));
+  const [isLoading, setIsLoading] = useState(true);
+  const [theme, setTheme] = useState<Theme>('light');
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [productPresets, setProductPresets] = useState<ProductPreset[]>([]);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [deals, setDeals] = useState<Deal[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
 
-  // Product Presets State
-  const [productPresets, setProductPresets] = useState<ProductPreset[]>(() => loadFromStorage('productPresets', [
-    { id: 'beta', title: 'Beta Version', value: 500 },
-    { id: 'release', title: 'Release Version', value: 1500 }
-  ]));
+  // Re-Initialize Service when Config changes
+  useEffect(() => {
+    const service = DataServiceFactory.create(backendConfig);
+    setDataService(service);
+    setIsLoading(true);
+    
+    const loadData = async () => {
+        try {
+            await service.init();
+            
+            // Parallel loading for performance
+            const [c, d, t, p, presets, loadedTheme] = await Promise.all([
+                service.getContacts(),
+                service.getDeals(),
+                service.getTasks(),
+                service.getUserProfile(),
+                service.getProductPresets(),
+                localStorage.getItem('theme') as Theme || 'light'
+            ]);
 
-  // State für Daten (Lade aus LocalStorage oder nutze MockData als Startwert)
-  const [contacts, setContacts] = useState<Contact[]>(() => loadFromStorage('contacts', mockContacts));
-  const [deals, setDeals] = useState<Deal[]>(() => loadFromStorage('deals', mockDeals));
-  const [tasks, setTasks] = useState<Task[]>(() => loadFromStorage('tasks', mockTasks));
+            setContacts(c);
+            setDeals(d);
+            setTasks(t);
+            setUserProfile(p);
+            setProductPresets(presets);
+            setTheme(loadedTheme);
 
-  // --- EFFECT HOOKS FÜR AUTOMATISCHES SPEICHERN ---
-  
-  useEffect(() => saveToStorage('theme', theme), [theme]);
-  useEffect(() => saveToStorage('userProfile', userProfile), [userProfile]);
-  useEffect(() => saveToStorage('productPresets', productPresets), [productPresets]);
-  useEffect(() => saveToStorage('contacts', contacts), [contacts]);
-  useEffect(() => saveToStorage('deals', deals), [deals]);
-  useEffect(() => saveToStorage('tasks', tasks), [tasks]);
+        } catch (error) {
+            console.error("Failed to load data", error);
+            alert("Fehler beim Laden der Daten. Bitte prüfen Sie Ihre Backend-Verbindung.");
+            // Fallback to local mode if API fails? Optional.
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
+    loadData();
+    localStorage.setItem('backend_config', JSON.stringify(backendConfig));
+
+  }, [backendConfig]);
 
   // State für Pipeline Filter (Global, damit Dashboard ihn steuern kann)
   const [pipelineVisibleStages, setPipelineVisibleStages] = useState<DealStage[]>(Object.values(DealStage));
@@ -81,45 +89,63 @@ const App: React.FC = () => {
 
   // Theme Effekt (CSS Klasse setzen)
   useEffect(() => {
+    localStorage.setItem('theme', theme);
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
-      document.body.style.backgroundColor = '#0f172a'; // slate-900
-      document.body.style.color = '#f8fafc'; // slate-50
+      document.body.style.backgroundColor = '#0f172a';
+      document.body.style.color = '#f8fafc';
     } else {
       document.documentElement.classList.remove('dark');
-      document.body.style.backgroundColor = '#f8fafc'; // slate-50
-      document.body.style.color = '#1e293b'; // slate-800
+      document.body.style.backgroundColor = '#f8fafc';
+      document.body.style.color = '#1e293b';
     }
   }, [theme]);
 
-  // Handle View Change via Sidebar (Resets search filters)
+  // Handle View Change via Sidebar
   const handleChangeView = (view: ViewState) => {
       setCurrentView(view);
       setFocusedContactId(null);
       setFocusedDealId(null);
       setFocusedTaskId(null);
-      setContactFilterMode('all'); // Reset filter when coming from sidebar
+      setContactFilterMode('all');
+  };
+
+  // --- DATA MODIFICATION HANDLERS ---
+  // Now these functions are async and update both Backend and UI
+
+  const handleUpdateProfile = async (profile: UserProfile) => {
+      const updated = await dataService.saveUserProfile(profile);
+      setUserProfile(updated);
+  };
+
+  const handleUpdatePresets = async (presets: ProductPreset[]) => {
+      const updated = await dataService.saveProductPresets(presets);
+      setProductPresets(updated);
   };
 
   // --- Handlers Contacts ---
-  const handleAddContact = (newContact: Contact) => {
-    setContacts(prev => [newContact, ...prev]);
+  const handleAddContact = async (newContact: Contact) => {
+    // 1. Save Contact
+    const savedContact = await dataService.saveContact(newContact);
+    setContacts(prev => [savedContact, ...prev]);
     
-    // Automatisch Ghost-Deal erstellen
+    // 2. Auto-Create Ghost Deal
     const ghostDeal: Deal = {
       id: Math.random().toString(36).substr(2, 9),
-      title: 'Neuer Lead', // Platzhalter Titel
+      title: 'Neuer Lead',
       value: 0,
       stage: DealStage.LEAD,
-      contactId: newContact.id,
-      dueDate: newContact.lastContact, // Datum des Hinzufügens
-      stageEnteredDate: new Date().toISOString().split('T')[0], // Datum des Status
+      contactId: savedContact.id,
+      dueDate: savedContact.lastContact,
+      stageEnteredDate: new Date().toISOString().split('T')[0],
       isPlaceholder: true
     };
-    setDeals(prev => [ghostDeal, ...prev]);
+    const savedDeal = await dataService.saveDeal(ghostDeal);
+    setDeals(prev => [savedDeal, ...prev]);
   };
 
-  const handleUpdateContact = (updatedContact: Contact) => {
+  const handleUpdateContact = async (updatedContact: Contact) => {
+    await dataService.updateContact(updatedContact);
     setContacts(prev => prev.map(c => c.id === updatedContact.id ? updatedContact : c));
   };
 
@@ -128,16 +154,17 @@ const App: React.FC = () => {
   };
 
   // --- Handlers Deals ---
-  const handleAddDeal = (newDeal: Deal) => {
-    // Wenn manuell erstellt, auch das stageEnteredDate setzen
+  const handleAddDeal = async (newDeal: Deal) => {
     const dealWithDate = {
         ...newDeal,
         stageEnteredDate: new Date().toISOString().split('T')[0]
     };
-    setDeals(prev => [dealWithDate, ...prev]);
+    const saved = await dataService.saveDeal(dealWithDate);
+    setDeals(prev => [saved, ...prev]);
   };
 
-  const handleUpdateDeal = (updatedDeal: Deal) => {
+  const handleUpdateDeal = async (updatedDeal: Deal) => {
+    await dataService.updateDeal(updatedDeal);
     setDeals(prev => prev.map(d => d.id === updatedDeal.id ? updatedDeal : d));
   };
 
@@ -146,27 +173,26 @@ const App: React.FC = () => {
   };
 
   // --- Handlers Tasks ---
-  const handleAddTask = (newTask: Task) => {
-    setTasks(prev => [newTask, ...prev]);
+  const handleAddTask = async (newTask: Task) => {
+    const saved = await dataService.saveTask(newTask);
+    setTasks(prev => [saved, ...prev]);
   };
 
-  const handleUpdateTask = (updatedTask: Task) => {
-    // 1. Task Update durchführen
+  const handleUpdateTask = async (updatedTask: Task) => {
+    await dataService.updateTask(updatedTask);
     setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
 
-    // 2. AUTOMATISIERUNG: Wenn Task erledigt wird
+    // Automation: If task completed related to contacted deal
     if (updatedTask.isCompleted && updatedTask.relatedEntityId) {
-        // Prüfen, ob es einen Deal zu diesem Kontakt gibt, der auf "Kontaktiert" steht
         const relatedDeal = deals.find(d => d.contactId === updatedTask.relatedEntityId);
         
         if (relatedDeal && relatedDeal.stage === DealStage.CONTACTED) {
-            // Deal auf Follow-up verschieben
             const updatedDeal: Deal = {
                 ...relatedDeal,
                 stage: DealStage.FOLLOW_UP,
                 stageEnteredDate: new Date().toISOString().split('T')[0]
             };
-            // Deal Update triggern
+            await dataService.updateDeal(updatedDeal);
             setDeals(prev => prev.map(d => d.id === updatedDeal.id ? updatedDeal : d));
         }
     }
@@ -176,57 +202,83 @@ const App: React.FC = () => {
     setDeleteIntent({ type: 'task', id: taskId });
   };
 
-  // Spezielle Funktion für automatisches Löschen ohne Bestätigungsdialog (System-Aktion)
-  const handleAutoDeleteTask = (taskId: string) => {
+  const handleAutoDeleteTask = async (taskId: string) => {
+      await dataService.deleteTask(taskId);
       setTasks(prev => prev.filter(t => t.id !== taskId));
   };
 
-  // --- BACKUP HANDLER ---
-  const handleImportData = (data: BackupData) => {
-    try {
-      if (data.contacts) setContacts(data.contacts);
-      if (data.deals) setDeals(data.deals);
-      if (data.tasks) setTasks(data.tasks);
-      if (data.userProfile) setUserProfile(data.userProfile);
-      if (data.productPresets) setProductPresets(data.productPresets);
-      if (data.theme) setTheme(data.theme);
-      
-      // Force persist immediately
-      saveToStorage('contacts', data.contacts || []);
-      saveToStorage('deals', data.deals || []);
-      saveToStorage('tasks', data.tasks || []);
-      saveToStorage('userProfile', data.userProfile);
-      saveToStorage('productPresets', data.productPresets || []);
-      saveToStorage('theme', data.theme || 'light');
+  // --- IMPORT / EXPORT ---
+  const handleImportData = async (data: BackupData) => {
+      if (!confirm("Importieren überschreibt alle aktuellen Daten. Fortfahren?")) return;
+      setIsLoading(true);
+      try {
+          // Sequentially restore data to backend
+          if (data.userProfile) await dataService.saveUserProfile(data.userProfile);
+          if (data.productPresets) await dataService.saveProductPresets(data.productPresets);
+          if (data.theme) setTheme(data.theme); // Theme is local pref mostly
 
-      alert('Daten wurden erfolgreich wiederhergestellt!');
-    } catch (e) {
-      console.error("Import Fehler", e);
-      alert('Fehler beim Importieren der Daten. Das Format scheint ungültig zu sein.');
-    }
+          // Clear existing data (optional, but safer for clean import)
+          // For now, we just add/overwrite
+          
+          // Bulk add contacts (simplified loop, real backend might have bulk endpoint)
+          if (data.contacts) {
+              setContacts(data.contacts);
+              // In a real API scenario, you'd iterate and POST each, or use a bulk endpoint.
+              // Since LocalDataService overwrites the whole key, we can cheat a bit for local mode:
+              if (backendConfig.mode === 'local') {
+                  localStorage.setItem('contacts', JSON.stringify(data.contacts));
+              }
+          }
+           if (data.deals) {
+              setDeals(data.deals);
+              if (backendConfig.mode === 'local') localStorage.setItem('deals', JSON.stringify(data.deals));
+          }
+           if (data.tasks) {
+              setTasks(data.tasks);
+              if (backendConfig.mode === 'local') localStorage.setItem('tasks', JSON.stringify(data.tasks));
+          }
+          
+          // Refresh
+          window.location.reload(); 
+      } catch(e) {
+          console.error(e);
+          alert("Import fehlgeschlagen.");
+          setIsLoading(false);
+      }
   };
 
-  const confirmDelete = () => {
+
+  const confirmDelete = async () => {
     if (!deleteIntent) return;
 
-    if (deleteIntent.type === 'contact') {
-      const contactIdToDelete = deleteIntent.id;
-      
-      // 1. Kontakt löschen
-      setContacts(prev => prev.filter(c => c.id !== contactIdToDelete));
-      
-      // 2. Zugehörige Deals löschen (Kaskadierend)
-      setDeals(prev => prev.filter(d => d.contactId !== contactIdToDelete));
-      
-      // 3. Zugehörige Aufgaben löschen (Kaskadierend)
-      setTasks(prev => prev.filter(t => t.relatedEntityId !== contactIdToDelete));
+    try {
+        if (deleteIntent.type === 'contact') {
+          const contactId = deleteIntent.id;
+          await dataService.deleteContact(contactId);
+          setContacts(prev => prev.filter(c => c.id !== contactId));
+          
+          // Cascading Delete
+          const dealsToDelete = deals.filter(d => d.contactId === contactId);
+          for (const d of dealsToDelete) await dataService.deleteDeal(d.id);
+          setDeals(prev => prev.filter(d => d.contactId !== contactId));
 
-    } else if (deleteIntent.type === 'deal') {
-      setDeals(prev => prev.filter(d => d.id !== deleteIntent.id));
-    } else if (deleteIntent.type === 'task') {
-      setTasks(prev => prev.filter(t => t.id !== deleteIntent.id));
+          const tasksToDelete = tasks.filter(t => t.relatedEntityId === contactId);
+          for (const t of tasksToDelete) await dataService.deleteTask(t.id);
+          setTasks(prev => prev.filter(t => t.relatedEntityId !== contactId));
+
+        } else if (deleteIntent.type === 'deal') {
+          await dataService.deleteDeal(deleteIntent.id);
+          setDeals(prev => prev.filter(d => d.id !== deleteIntent.id));
+        } else if (deleteIntent.type === 'task') {
+          await dataService.deleteTask(deleteIntent.id);
+          setTasks(prev => prev.filter(t => t.id !== deleteIntent.id));
+        }
+    } catch (e) {
+        console.error("Delete failed", e);
+        alert("Löschen fehlgeschlagen.");
+    } finally {
+        setDeleteIntent(null);
     }
-    setDeleteIntent(null);
   };
 
   // Navigation Logic
@@ -246,6 +298,17 @@ const App: React.FC = () => {
       setFocusedTaskId(focusId || null);
       setCurrentView('tasks');
   };
+
+  if (isLoading || !userProfile) {
+      return (
+          <div className="flex h-screen w-full items-center justify-center bg-slate-50 dark:bg-slate-900">
+              <div className="flex flex-col items-center gap-4">
+                  <Loader2 className="w-10 h-10 animate-spin text-indigo-600" />
+                  <p className="text-slate-500 font-medium">Lade CRM Daten...</p>
+              </div>
+          </div>
+      );
+  }
 
   const renderView = () => {
     switch (currentView) {
@@ -309,20 +372,23 @@ const App: React.FC = () => {
         return (
           <Settings 
             userProfile={userProfile}
-            onUpdateProfile={setUserProfile}
+            onUpdateProfile={handleUpdateProfile}
             currentTheme={theme}
             onUpdateTheme={setTheme}
             productPresets={productPresets}
-            onUpdatePresets={setProductPresets}
-            // Props for Data Management
+            onUpdatePresets={handleUpdatePresets}
             contacts={contacts}
             deals={deals}
             tasks={tasks}
             onImportData={handleImportData}
+            // NEW PROPS FOR BACKEND
+            backendConfig={backendConfig}
+            onUpdateBackendConfig={setBackendConfig}
+            dataService={dataService}
           />
         );
       default:
-        return <Dashboard tasks={tasks} deals={deals} contacts={contacts} onAddTask={handleAddTask} onUpdateTask={handleUpdateTask} onDeleteTask={onRequestDeleteTask} onNavigateToContacts={handleNavigateToContacts} onNavigateToPipeline={handleNavigateToPipelineFilter} onNavigateToTasks={handleNavigateToTasks} />;
+        return null;
     }
   };
 
