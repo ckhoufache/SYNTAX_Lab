@@ -1,8 +1,8 @@
 
 import React, { useState, useRef } from 'react';
-import { Plus, X, Trash2, CheckCircle2, AlertTriangle, Info, Calendar, Download, Upload, Filter, PieChart, Clock, TrendingUp, TrendingDown, PiggyBank, Printer, Paperclip } from 'lucide-react';
+import { Plus, X, Trash2, CheckCircle2, AlertTriangle, Info, Calendar, Download, Upload, Filter, PieChart as PieChartIcon, Clock, TrendingUp, TrendingDown, PiggyBank, Printer, Paperclip } from 'lucide-react';
 import { Invoice, Contact, Expense, InvoiceConfig } from '../types';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 interface FinancesProps {
     invoices: Invoice[];
@@ -71,20 +71,20 @@ export const Finances: React.FC<FinancesProps> = ({
     if (totalRevenue > 18000) { statusColor = 'bg-yellow-500'; statusText = 'Limit nähert sich'; }
     if (totalRevenue >= LIMIT) { statusColor = 'bg-red-500'; statusText = 'USt-Pflichtig!'; }
 
-    // Chart Data (Filtered to current year up to current month)
-    const currentYear = new Date().getFullYear();
-    const currentMonth = new Date().getMonth(); // 0-11
-    
-    const chartData = Array.from({ length: currentMonth + 1 }, (_, i) => {
-        const monthNames = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "aug", "Sep", "Okt", "Nov", "Dez"];
-        const monthlyRevenue = invoices
-            .filter(inv => {
-                const d = new Date(inv.date);
-                return d.getFullYear() === currentYear && d.getMonth() === i;
-            })
-            .reduce((sum, inv) => sum + inv.amount, 0);
-        return { name: monthNames[i], value: monthlyRevenue };
-    });
+    // --- PIE CHART DATA ---
+    const pieData = [
+        { name: 'Einnahmen', value: totalRevenue, color: '#10b981' }, // emerald-500
+        { name: 'Ausgaben', value: totalExpenses, color: '#ef4444' }, // red-500
+    ];
+
+    // Filter leere Werte raus, damit das Diagramm nicht komisch aussieht wenn alles 0 ist
+    const activePieData = pieData.filter(d => d.value > 0);
+
+    // --- CHART INTERACTION ---
+    const handlePieClick = (data: any) => {
+        if (data.name === 'Einnahmen') setActiveTab('income');
+        if (data.name === 'Ausgaben') setActiveTab('expenses');
+    };
 
     // --- INVOICE HANDLERS ---
     const generateNextInvoiceNumber = () => {
@@ -290,7 +290,7 @@ export const Finances: React.FC<FinancesProps> = ({
                                     {profit.toLocaleString('de-DE')} €
                                 </h3>
                             </div>
-                            <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg"><PieChart className="w-5 h-5"/></div>
+                            <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg"><PieChartIcon className="w-5 h-5"/></div>
                         </div>
                          <p className="text-xs text-slate-400 mt-3">Marge: {totalRevenue ? ((profit/totalRevenue)*100).toFixed(1) : 0}%</p>
                     </div>
@@ -308,24 +308,41 @@ export const Finances: React.FC<FinancesProps> = ({
                     </div>
                 </div>
 
-                {/* CHART */}
-                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm h-80">
-                    <h3 className="text-lg font-bold text-slate-800 mb-4">Umsatzentwicklung (YTD)</h3>
-                    <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={chartData}>
-                            <defs>
-                            <linearGradient id="colorVal" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.1}/>
-                                <stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/>
-                            </linearGradient>
-                            </defs>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} dy={10} />
-                            <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
-                            <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} formatter={(value: number) => [`${value.toLocaleString('de-DE')} €`, 'Umsatz']} />
-                            <Area type="monotone" dataKey="value" stroke="#4f46e5" strokeWidth={3} fillOpacity={1} fill="url(#colorVal)" />
-                        </AreaChart>
-                    </ResponsiveContainer>
+                {/* PIE CHART (Verhältnis Einnahmen vs Ausgaben) */}
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm h-96 flex flex-col">
+                    <h3 className="text-lg font-bold text-slate-800 mb-4">Verhältnis Einnahmen / Ausgaben</h3>
+                    <div className="flex-1 w-full min-h-0">
+                        {activePieData.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                                <PieChart margin={{ top: 0, left: 0, right: 0, bottom: 0 }}>
+                                    <Pie
+                                        data={activePieData}
+                                        cx="50%"
+                                        cy="45%"
+                                        innerRadius={60}
+                                        outerRadius={90}
+                                        paddingAngle={5}
+                                        dataKey="value"
+                                        onClick={handlePieClick}
+                                        cursor="pointer"
+                                    >
+                                        {activePieData.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={entry.color} />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip 
+                                        formatter={(value: number) => [`${value.toLocaleString('de-DE')} €`, '']}
+                                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                    />
+                                    <Legend verticalAlign="bottom" height={36} wrapperStyle={{ paddingTop: '20px' }} />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        ) : (
+                             <div className="h-full flex items-center justify-center text-slate-400">
+                                 Keine Finanzdaten vorhanden
+                             </div>
+                        )}
+                    </div>
                 </div>
 
                 {activeTab === 'income' ? (

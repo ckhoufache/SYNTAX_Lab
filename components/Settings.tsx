@@ -207,6 +207,8 @@ export const Settings: React.FC<SettingsProps> = ({
           setInvConfigForm(prev => ({ ...prev, logoBase64: event.target?.result as string }));
       };
       reader.readAsDataURL(file);
+      // Reset input
+      if (logoInputRef.current) logoInputRef.current.value = '';
   };
 
   const handleToggleCalendar = async () => {

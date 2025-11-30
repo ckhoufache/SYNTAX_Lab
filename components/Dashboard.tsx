@@ -1,9 +1,9 @@
 
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { 
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar
 } from 'recharts';
-import { Bell, Search, Sparkles, CheckCircle2, Phone, Mail, Calendar, ArrowUpRight, Plus, X, Trash2, Circle, User, KanbanSquare, ClipboardList, AlertCircle, Clock, Check } from 'lucide-react';
+import { Bell, Search, Sparkles, CheckCircle2, Phone, Mail, Calendar, ArrowUpRight, Plus, X, Trash2, Circle, User, KanbanSquare, ClipboardList, AlertCircle, Clock, Check, BarChart3, TrendingUp } from 'lucide-react';
 import { Task, Deal, Contact, DealStage, Invoice } from '../types'; // Import Invoice
 import { generateDailyBriefing } from '../services/gemini';
 
@@ -41,6 +41,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [taskModalMode, setTaskModalMode] = useState<'view' | 'add'>('view');
   
+  // Chart View State
+  const [chartType, setChartType] = useState<'area' | 'bar'>('area');
+
   // Search State
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<{
@@ -379,18 +382,49 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div onClick={onNavigateToFinances} className="lg:col-span-2 bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-100 shadow-sm cursor-pointer hover:border-indigo-200 transition-colors group">
-            <h3 className="text-lg font-bold mb-6 flex items-center gap-2">Umsatzentwicklung (YTD) <ArrowUpRight className="w-4 h-4 opacity-0 group-hover:opacity-100" /></h3>
+          <div className="lg:col-span-2 bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-100 shadow-sm transition-colors group">
+            <div className="flex justify-between items-center mb-6">
+                <h3 onClick={onNavigateToFinances} className="text-lg font-bold flex items-center gap-2 cursor-pointer hover:text-indigo-600 transition-colors">
+                    Umsatzentwicklung (YTD) <ArrowUpRight className="w-4 h-4" />
+                </h3>
+                <div className="flex bg-slate-100 p-1 rounded-lg">
+                    <button 
+                        onClick={() => setChartType('area')}
+                        className={`p-1.5 rounded-md transition-all ${chartType === 'area' ? 'bg-white shadow text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+                        title="Flächendiagramm"
+                    >
+                        <TrendingUp className="w-4 h-4" />
+                    </button>
+                    <button 
+                        onClick={() => setChartType('bar')}
+                        className={`p-1.5 rounded-md transition-all ${chartType === 'bar' ? 'bg-white shadow text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+                        title="Balkendiagramm"
+                    >
+                        <BarChart3 className="w-4 h-4" />
+                    </button>
+                </div>
+            </div>
+            
             <div className="h-72 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={dynamicChartData}>
-                  <defs><linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#4f46e5" stopOpacity={0.1}/><stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/></linearGradient></defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} dy={10} />
-                  <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
-                  <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}/>
-                  <Area type="monotone" dataKey="value" stroke="#4f46e5" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
-                </AreaChart>
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                {chartType === 'area' ? (
+                    <AreaChart data={dynamicChartData}>
+                    <defs><linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#4f46e5" stopOpacity={0.1}/><stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/></linearGradient></defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} dy={10} />
+                    <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
+                    <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}/>
+                    <Area type="monotone" dataKey="value" stroke="#4f46e5" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
+                    </AreaChart>
+                ) : (
+                    <BarChart data={dynamicChartData}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} dy={10} />
+                        <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
+                        <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} cursor={{fill: '#f1f5f9'}}/>
+                        <Bar dataKey="value" fill="#4f46e5" radius={[4, 4, 0, 0]} barSize={32} />
+                    </BarChart>
+                )}
               </ResponsiveContainer>
             </div>
           </div>
