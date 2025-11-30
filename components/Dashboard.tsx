@@ -1,9 +1,9 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
 } from 'recharts';
-import { Bell, Search, Sparkles, CheckCircle2, Phone, Mail, Calendar, ArrowUpRight, Plus, X, Trash2, Circle } from 'lucide-react';
+import { Bell, Search, Sparkles, CheckCircle2, Phone, Mail, Calendar, ArrowUpRight, Plus, X, Trash2, Circle, User, KanbanSquare, ClipboardList, AlertCircle, Clock, Check } from 'lucide-react';
 import { Task, Deal, Contact, DealStage } from '../types';
 import { chartData } from '../services/mockData';
 import { generateDailyBriefing } from '../services/gemini';
@@ -15,9 +15,9 @@ interface DashboardProps {
   onAddTask: (task: Task) => void;
   onUpdateTask: (task: Task) => void;
   onDeleteTask: (id: string) => void;
-  onNavigateToContacts: (filter: 'all' | 'recent') => void;
-  onNavigateToPipeline: (stages: DealStage[]) => void;
-  onNavigateToTasks: () => void;
+  onNavigateToContacts: (filter: 'all' | 'recent', focusId?: string) => void;
+  onNavigateToPipeline: (stages: DealStage[], focusId?: string) => void;
+  onNavigateToTasks: (focusId?: string) => void;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ 
@@ -37,7 +37,31 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // Task Modal State
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [taskModalMode, setTaskModalMode] = useState<'view' | 'add'>('view');
-  const [taskFilter, setTaskFilter] = useState<'open' | 'completed'>('open');
+  
+  // Search State
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchResults, setSearchResults] = useState<{
+      contacts: Contact[];
+      deals: Deal[];
+      tasks: Task[];
+  }>({ contacts: [], deals: [], tasks: [] });
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
+
+  // Notification State
+  const [showNotifications, setShowNotifications] = useState(false);
+  const notificationRef = useRef<HTMLDivElement>(null);
+  
+  // Dismissed Notifications Logic (Persisted in LocalStorage)
+  const [dismissedNotificationIds, setDismissedNotificationIds] = useState<string[]>(() => {
+      const stored = localStorage.getItem('dismissed_notifications');
+      return stored ? JSON.parse(stored) : [];
+  });
+
+  // Regular sync for state changes (e.g. mark all as read)
+  useEffect(() => {
+      localStorage.setItem('dismissed_notifications', JSON.stringify(dismissedNotificationIds));
+  }, [dismissedNotificationIds]);
 
   // New Task Form State
   const [newTaskTitle, setNewTaskTitle] = useState('');
@@ -75,6 +99,126 @@ export const Dashboard: React.FC<DashboardProps> = ({
       if (a.priority !== 'high' && b.priority === 'high') return 1;
       return 0;
   });
+
+  // --- Notifications Logic ---
+  const notifications = useMemo(() => {
+      const list = [];
+      const today = new Date();
+      today.setHours(0,0,0,0);
+
+      // 1. Overdue Tasks
+      const overdueTasks = tasks.filter(t => {
+          if (t.isCompleted) return false;
+          const d = new Date(t.dueDate);
+          d.setHours(0,0,0,0);
+          return d < today;
+      });
+
+      overdueTasks.forEach(t => {
+          list.push({
+              id: `overdue-${t.id}`,
+              title: `Überfällig: ${t.title}`,
+              type: 'alert',
+              time: t.dueDate,
+              onClick: () => onNavigateToTasks(t.id)
+          });
+      });
+
+      // 2. High Priority Today
+      const urgentToday = upcomingTasks.filter(t => t.priority === 'high');
+      urgentToday.forEach(t => {
+          list.push({
+              id: `urgent-${t.id}`,
+              title: `Heute fällig (Hoch): ${t.title}`,
+              type: 'warning',
+              time: 'Heute',
+              onClick: () => onNavigateToTasks(t.id)
+          });
+      });
+
+      // 3. Deals in Negotiation (Movement needed)
+      const negotiationDeals = deals.filter(d => d.stage === DealStage.NEGOTIATION);
+      negotiationDeals.forEach(d => {
+          list.push({
+              id: `deal-${d.id}`,
+              title: `In Verhandlung: ${d.title}`,
+              type: 'info',
+              time: `${d.value.toLocaleString()} €`,
+              onClick: () => onNavigateToPipeline([DealStage.NEGOTIATION], d.id)
+          });
+      });
+
+      // Filter out dismissed notifications
+      return list.filter(n => !dismissedNotificationIds.includes(n.id));
+  }, [tasks, deals, upcomingTasks, dismissedNotificationIds]);
+
+  const handleNotificationClick = (id: string, action: () => void) => {
+      // Calculate new state
+      const newDismissedIds = [...dismissedNotificationIds, id];
+      
+      // Update State
+      setDismissedNotificationIds(newDismissedIds);
+      
+      // CRITICAL: Persist immediately to LocalStorage.
+      // Doing this here ensures the "read" status is saved even if the component unmounts immediately due to navigation.
+      localStorage.setItem('dismissed_notifications', JSON.stringify(newDismissedIds));
+
+      // Execute navigation action
+      action();
+      
+      // Close dropdown
+      setShowNotifications(false);
+  };
+
+  const handleMarkAllAsRead = () => {
+      const allIds = notifications.map(n => n.id);
+      const newDismissedIds = [...dismissedNotificationIds, ...allIds];
+      
+      setDismissedNotificationIds(newDismissedIds);
+      // Persist immediately as well
+      localStorage.setItem('dismissed_notifications', JSON.stringify(newDismissedIds));
+  };
+
+  // Search Logic
+  useEffect(() => {
+    if (!searchTerm.trim()) {
+        setSearchResults({ contacts: [], deals: [], tasks: [] });
+        return;
+    }
+    const lower = searchTerm.toLowerCase();
+    
+    const foundContacts = contacts.filter(c => 
+        c.name.toLowerCase().includes(lower) || 
+        c.company.toLowerCase().includes(lower)
+    ).slice(0, 3); // Limit results
+
+    const foundDeals = deals.filter(d => 
+        d.title.toLowerCase().includes(lower)
+    ).slice(0, 3);
+
+    const foundTasks = tasks.filter(t => 
+        t.title.toLowerCase().includes(lower)
+    ).slice(0, 3);
+
+    setSearchResults({ contacts: foundContacts, deals: foundDeals, tasks: foundTasks });
+  }, [searchTerm, contacts, deals, tasks]);
+
+  // Click outside handlers
+  useEffect(() => {
+      const handleClickOutside = (event: MouseEvent) => {
+          // Search
+          if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+              setShowSearchResults(false);
+          }
+          // Notifications
+          if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
+              setShowNotifications(false);
+          }
+      };
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [searchRef, notificationRef]);
+
 
   const handleGenerateInsight = async () => {
     if (!process.env.API_KEY && !localStorage.getItem('gemini_api_key')) {
@@ -127,11 +271,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const StatCard = ({ title, value, sub, icon: Icon, color, onClick }: any) => (
     <div 
         onClick={onClick}
-        className={`bg-white p-6 rounded-xl border border-slate-100 shadow-sm flex items-start justify-between hover:shadow-md transition-all ${onClick ? 'cursor-pointer hover:scale-[1.01]' : ''}`}
+        className={`bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm flex items-start justify-between hover:shadow-md transition-all ${onClick ? 'cursor-pointer hover:scale-[1.01]' : ''}`}
     >
       <div>
-        <p className="text-sm font-medium text-slate-500 mb-1">{title}</p>
-        <h3 className="text-2xl font-bold text-slate-900">{value}</h3>
+        <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">{title}</p>
+        <h3 className="text-2xl font-bold text-slate-900 dark:text-white">{value}</h3>
         <p className="text-xs text-green-600 flex items-center mt-2 font-medium">
           <ArrowUpRight className="w-3 h-3 mr-1" /> {sub}
         </p>
@@ -143,26 +287,198 @@ export const Dashboard: React.FC<DashboardProps> = ({
   );
 
   return (
-    <div className="flex-1 bg-slate-50/50 min-h-screen overflow-y-auto relative">
+    <div className="flex-1 bg-slate-50/50 dark:bg-slate-950 min-h-screen overflow-y-auto relative">
       {/* Top Bar */}
-      <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-slate-200 px-8 py-4 flex justify-between items-center">
+      <header className="sticky top-0 z-20 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-8 py-4 flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Dashboard</h1>
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Dashboard</h1>
           <p className="text-slate-500 text-sm">Willkommen zurück, Max.</p>
         </div>
         <div className="flex items-center gap-4">
-          <div className="relative">
+          
+          {/* Search Bar */}
+          <div className="relative" ref={searchRef}>
             <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
             <input 
               type="text" 
               placeholder="Suche..." 
-              className="pl-10 pr-4 py-2 rounded-full border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-64"
+              value={searchTerm}
+              onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setShowSearchResults(true);
+              }}
+              onFocus={() => setShowSearchResults(true)}
+              className="pl-10 pr-4 py-2 rounded-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-64 transition-all"
             />
+            
+            {/* Search Dropdown */}
+            {showSearchResults && searchTerm.trim() && (
+                <div className="absolute top-full mt-2 right-0 w-80 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-in fade-in slide-in-from-top-2 z-50">
+                    {/* Contacts Results */}
+                    {searchResults.contacts.length > 0 && (
+                        <div className="p-2">
+                            <h4 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase px-2 mb-1">Kontakte</h4>
+                            {searchResults.contacts.map(c => (
+                                <div 
+                                    key={c.id} 
+                                    onClick={() => {
+                                        onNavigateToContacts('all', c.id);
+                                        setShowSearchResults(false);
+                                        setSearchTerm('');
+                                    }}
+                                    className="flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer"
+                                >
+                                    <div className="p-1.5 bg-indigo-50 dark:bg-slate-700 rounded-full text-indigo-600 dark:text-indigo-400">
+                                        <User className="w-3.5 h-3.5" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">{c.name}</p>
+                                        <p className="text-xs text-slate-500 truncate">{c.company}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Deals Results */}
+                    {searchResults.deals.length > 0 && (
+                        <div className="p-2 border-t border-slate-100 dark:border-slate-700">
+                             <h4 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase px-2 mb-1">Deals</h4>
+                             {searchResults.deals.map(d => (
+                                <div 
+                                    key={d.id} 
+                                    onClick={() => {
+                                        onNavigateToPipeline([d.stage], d.id);
+                                        setShowSearchResults(false);
+                                        setSearchTerm('');
+                                    }}
+                                    className="flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer"
+                                >
+                                    <div className="p-1.5 bg-amber-50 dark:bg-slate-700 rounded-full text-amber-600 dark:text-amber-500">
+                                        <KanbanSquare className="w-3.5 h-3.5" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">{d.title}</p>
+                                        <p className="text-xs text-slate-500 truncate">{d.value}€ • {d.stage}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Tasks Results */}
+                    {searchResults.tasks.length > 0 && (
+                        <div className="p-2 border-t border-slate-100 dark:border-slate-700">
+                             <h4 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase px-2 mb-1">Aufgaben</h4>
+                             {searchResults.tasks.map(t => (
+                                <div 
+                                    key={t.id} 
+                                    onClick={() => {
+                                        onNavigateToTasks(t.id);
+                                        setShowSearchResults(false);
+                                        setSearchTerm('');
+                                    }}
+                                    className="flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer"
+                                >
+                                    <div className="p-1.5 bg-green-50 dark:bg-slate-700 rounded-full text-green-600 dark:text-green-500">
+                                        <ClipboardList className="w-3.5 h-3.5" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">{t.title}</p>
+                                        <p className="text-xs text-slate-500 truncate">{t.priority} • {t.dueDate}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* No Results */}
+                    {searchResults.contacts.length === 0 && searchResults.deals.length === 0 && searchResults.tasks.length === 0 && (
+                        <div className="p-6 text-center">
+                            <p className="text-sm text-slate-500">Keine Ergebnisse gefunden.</p>
+                        </div>
+                    )}
+                </div>
+            )}
           </div>
-          <button className="relative p-2 rounded-full hover:bg-slate-100 text-slate-600 transition-colors">
-            <Bell className="w-5 h-5" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
-          </button>
+
+          {/* Notification Bell */}
+          <div className="relative" ref={notificationRef}>
+              <button 
+                onClick={() => setShowNotifications(!showNotifications)}
+                className={`relative p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ${showNotifications ? 'bg-slate-100 dark:bg-slate-800' : ''}`}
+              >
+                <Bell className={`w-5 h-5 ${isDark(notifications.length > 0 ? 'text-slate-800 dark:text-white' : 'text-slate-600 dark:text-slate-400')}`} />
+                {notifications.length > 0 && (
+                    <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-slate-900 animate-pulse"></span>
+                )}
+              </button>
+
+              {/* Notification Dropdown */}
+              {showNotifications && (
+                  <div className="absolute top-full mt-2 right-0 w-80 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-in fade-in slide-in-from-top-2 z-50">
+                      <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
+                          <h3 className="font-semibold text-sm text-slate-800 dark:text-white">Benachrichtigungen</h3>
+                          <div className="flex items-center gap-2">
+                             <span className="text-xs bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full text-slate-600 dark:text-slate-300">
+                                 {notifications.length}
+                             </span>
+                             {notifications.length > 0 && (
+                                 <button 
+                                    onClick={handleMarkAllAsRead}
+                                    className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                                    title="Alles als gelesen markieren"
+                                 >
+                                     <Check className="w-3 h-3" />
+                                     Alle
+                                 </button>
+                             )}
+                          </div>
+                      </div>
+                      <div className="max-h-[300px] overflow-y-auto">
+                          {notifications.length > 0 ? (
+                              notifications.map(n => (
+                                  <div 
+                                    key={n.id}
+                                    onClick={() => handleNotificationClick(n.id, n.onClick)}
+                                    className="p-3 hover:bg-slate-50 dark:hover:bg-slate-700 border-b border-slate-50 dark:border-slate-700/50 cursor-pointer transition-colors flex gap-3 items-start group"
+                                  >
+                                      <div className={`mt-0.5 p-1.5 rounded-full shrink-0 ${
+                                          n.type === 'alert' ? 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400' :
+                                          n.type === 'warning' ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400' :
+                                          'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400'
+                                      }`}>
+                                          {n.type === 'alert' ? <AlertCircle className="w-4 h-4" /> :
+                                           n.type === 'warning' ? <Clock className="w-4 h-4" /> :
+                                           <Sparkles className="w-4 h-4" />}
+                                      </div>
+                                      <div>
+                                          <p className="text-sm font-medium text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors leading-snug">
+                                              {n.title}
+                                          </p>
+                                          <p className="text-xs text-slate-500 mt-1">{n.time}</p>
+                                      </div>
+                                  </div>
+                              ))
+                          ) : (
+                              <div className="p-8 text-center text-slate-400">
+                                  <Bell className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                                  <p className="text-sm">Alles auf dem Laufenden.</p>
+                              </div>
+                          )}
+                      </div>
+                      <div className="bg-slate-50 dark:bg-slate-900 p-2 text-center border-t border-slate-100 dark:border-slate-700">
+                          <button 
+                              onClick={() => setShowNotifications(false)}
+                              className="text-xs text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
+                          >
+                              Schließen
+                          </button>
+                      </div>
+                  </div>
+              )}
+          </div>
+
         </div>
       </header>
 
@@ -236,15 +552,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
             sub="2 hohe Priorität" 
             icon={Mail} 
             color="bg-pink-500"
-            onClick={onNavigateToTasks}
+            onClick={() => onNavigateToTasks()}
           />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
           {/* Chart Section */}
-          <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-slate-100 shadow-sm">
-            <h3 className="text-lg font-bold text-slate-800 mb-6">Umsatzentwicklung</h3>
+          <div className="lg:col-span-2 bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm">
+            <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-6">Umsatzentwicklung</h3>
             <div className="h-72 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData}>
@@ -267,12 +583,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           {/* Tasks List Widget */}
-          <div className="bg-white p-6 rounded-xl border border-slate-100 shadow-sm flex flex-col h-full">
+          <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm flex flex-col h-full">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-lg font-bold text-slate-800">Heute fällig</h3>
+              <h3 className="text-lg font-bold text-slate-800 dark:text-white">Heute fällig</h3>
               <button 
                 onClick={openTaskQuickView}
-                className="text-xs text-indigo-600 font-medium hover:underline"
+                className="text-xs text-indigo-600 dark:text-indigo-400 font-medium hover:underline"
               >
                 Alle ansehen
               </button>
@@ -282,16 +598,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <div 
                     key={task.id} 
                     onClick={openTaskQuickView}
-                    className="flex items-start gap-3 p-3 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer border border-transparent hover:border-slate-100 group"
+                    className="flex items-start gap-3 p-3 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors cursor-pointer border border-transparent hover:border-slate-100 dark:hover:border-slate-600 group"
                 >
                   <div 
                     onClick={(e) => { e.stopPropagation(); toggleTaskCompletion(task); }}
-                    className={`mt-1.5 w-4 h-4 rounded-full border cursor-pointer flex items-center justify-center transition-colors ${task.isCompleted ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300 hover:border-indigo-500'}`}
+                    className={`mt-1.5 w-4 h-4 rounded-full border cursor-pointer flex items-center justify-center transition-colors ${task.isCompleted ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300 dark:border-slate-500 hover:border-indigo-500'}`}
                   >
                       {task.isCompleted && <CheckCircle2 className="w-3 h-3 text-white" />}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-medium truncate group-hover:text-indigo-600 transition-colors ${task.isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{task.title}</p>
+                    <p className={`text-sm font-medium truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors ${task.isCompleted ? 'text-slate-400 line-through' : 'text-slate-800 dark:text-slate-200'}`}>{task.title}</p>
                     <div className="flex items-center gap-2 mt-1">
                       <span className={`w-2 h-2 rounded-full ${
                         task.priority === 'high' ? 'bg-red-500' : 
@@ -314,7 +630,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
             <button 
                 onClick={openAddTaskModal}
-                className="w-full mt-4 py-2 text-sm text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
+                className="w-full mt-4 py-2 text-sm text-slate-500 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center justify-center gap-2"
             >
                 <Plus className="w-4 h-4" /> Aufgabe hinzufügen
             </button>
@@ -325,17 +641,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
       {/* Task Manager Modal (Only for adding new tasks from Dashboard) */}
       {isTaskModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <div className={`bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col`}>
+            <div className={`bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col`}>
                 
                 {/* Modal Header */}
-                <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 bg-slate-50 shrink-0">
-                    <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 shrink-0">
+                    <h2 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
                         <Plus className="w-5 h-5 text-indigo-600" />
                         Neue Aufgabe
                     </h2>
                     <button 
                         onClick={() => setIsTaskModalOpen(false)}
-                        className="text-slate-400 hover:text-slate-600 transition-colors"
+                        className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
                     >
                         <X className="w-5 h-5" />
                     </button>
@@ -344,7 +660,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 {/* Add Task Form */}
                 <form 
                     onSubmit={handleAddNewTask} 
-                    className="p-6 bg-white"
+                    className="p-6 bg-white dark:bg-slate-800"
                 >
                     <div className="flex flex-col gap-3">
                         <div className="flex gap-2">
@@ -354,7 +670,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                 onChange={(e) => setNewTaskTitle(e.target.value)}
                                 type="text" 
                                 placeholder="Was muss erledigt werden?" 
-                                className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                                className="flex-1 px-3 py-2 border border-slate-200 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
                                 autoFocus
                             />
                             <button 
@@ -368,7 +684,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             <select 
                                 value={newTaskType}
                                 onChange={(e) => setNewTaskType(e.target.value as any)}
-                                className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-600"
+                                className="px-3 py-1.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg text-xs bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-600"
                             >
                                 <option value="call">Anruf</option>
                                 <option value="email">E-Mail</option>
@@ -378,7 +694,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             <select 
                                 value={newTaskPriority}
                                 onChange={(e) => setNewTaskPriority(e.target.value as any)}
-                                className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-600"
+                                className="px-3 py-1.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg text-xs bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-600"
                             >
                                 <option value="low">Niedrig</option>
                                 <option value="medium">Mittel</option>
@@ -388,7 +704,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                 type="date"
                                 value={newTaskDate}
                                 onChange={(e) => setNewTaskDate(e.target.value)}
-                                className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-600"
+                                className="px-3 py-1.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg text-xs bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-600"
                             />
                         </div>
                     </div>
@@ -400,3 +716,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
     </div>
   );
 };
+
+// Helper for dark mode check inside render (usually would be better as hook or prop)
+function isDark(classes: string) {
+    return classes;
+}

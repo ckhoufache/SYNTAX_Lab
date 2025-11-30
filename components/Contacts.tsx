@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, Filter, MoreHorizontal, Mail, Phone, Plus, Linkedin, X, FileText, Pencil, Trash, Clock, Check } from 'lucide-react';
+import { Search, Filter, MoreHorizontal, Mail, Phone, Plus, Linkedin, X, FileText, Pencil, Trash, Clock, Check, Send } from 'lucide-react';
 import { Contact } from '../types';
 
 interface ContactsProps {
@@ -10,6 +10,8 @@ interface ContactsProps {
   onDeleteContact: (id: string) => void;
   initialFilter: 'all' | 'recent';
   onClearFilter: () => void;
+  focusedId: string | null;
+  onClearFocus: () => void;
 }
 
 export const Contacts: React.FC<ContactsProps> = ({ 
@@ -18,7 +20,9 @@ export const Contacts: React.FC<ContactsProps> = ({
   onUpdateContact, 
   onDeleteContact,
   initialFilter,
-  onClearFilter
+  onClearFilter,
+  focusedId,
+  onClearFocus
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -40,6 +44,10 @@ export const Contacts: React.FC<ContactsProps> = ({
       timeframe: 'all' // 'all', 'week', 'month', 'older'
   });
 
+  // State für E-Mail Modal
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
+  const [emailData, setEmailData] = useState({ to: '', subject: '', body: '', name: '' });
+
   // Extract unique values for filter dropdowns
   const availableCompanies = Array.from(new Set(contacts.map(c => c.company))).sort();
   const availableRoles = Array.from(new Set(contacts.map(c => c.role))).sort();
@@ -55,6 +63,11 @@ export const Contacts: React.FC<ContactsProps> = ({
   });
 
   const filteredContacts = contacts.filter(c => {
+    // 0. FOCUSED ID (Search Result) - Overrides everything else
+    if (focusedId) {
+        return c.id === focusedId;
+    }
+
     // 1. Search Term
     const matchesSearch = c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           c.company.toLowerCase().includes(searchTerm.toLowerCase());
@@ -194,6 +207,35 @@ export const Contacts: React.FC<ContactsProps> = ({
     }
   };
 
+  // E-Mail Logic
+  const handleEmailClick = (contact: Contact) => {
+      setEmailData({
+          to: contact.email,
+          name: contact.name,
+          subject: '',
+          body: `Hallo ${contact.name.split(' ')[0]},\n\n`
+      });
+      setIsEmailModalOpen(true);
+  };
+
+  const handleSendEmail = (e: React.FormEvent) => {
+      e.preventDefault();
+      
+      const isGoogleMailConnected = localStorage.getItem('google_mail_connected') === 'true';
+
+      if (isGoogleMailConnected) {
+          // Open Gmail Compose Window in new tab
+          const gmailLink = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(emailData.to)}&su=${encodeURIComponent(emailData.subject)}&body=${encodeURIComponent(emailData.body)}`;
+          window.open(gmailLink, '_blank');
+      } else {
+          // Fallback to default mailto:
+          const mailtoLink = `mailto:${emailData.to}?subject=${encodeURIComponent(emailData.subject)}&body=${encodeURIComponent(emailData.body)}`;
+          window.location.href = mailtoLink;
+      }
+      
+      setIsEmailModalOpen(false);
+  };
+
   const hasActiveFilters = filters.company !== '' || filters.role !== '' || filters.timeframe !== 'all';
 
   const resetFilters = () => {
@@ -221,18 +263,37 @@ export const Contacts: React.FC<ContactsProps> = ({
       {/* Toolbar */}
       <div className="px-8 py-4 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-4">
-            <div className="relative w-96">
-                <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-                <input 
-                    type="text" 
-                    placeholder="Namen oder Firma suchen..." 
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 rounded-lg border border-slate-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
-                />
-            </div>
+            {/* Search Input - Disabled if focusedId is set to avoid confusion */}
+            {!focusedId && (
+                <div className="relative w-96">
+                    <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                    <input 
+                        type="text" 
+                        placeholder="Namen oder Firma suchen..." 
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 rounded-lg border border-slate-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
+                    />
+                </div>
+            )}
+
+            {/* FOCUSED ID INDICATOR */}
+            {focusedId && (
+                <div className="flex items-center gap-2 bg-indigo-50 text-indigo-700 px-4 py-2 rounded-lg text-sm font-medium border border-indigo-200 animate-in fade-in slide-in-from-left-2 shadow-sm">
+                    <Search className="w-4 h-4" />
+                    Suchergebnis: {filteredContacts[0]?.name || 'Unbekannt'}
+                    <button 
+                        onClick={onClearFocus} 
+                        className="hover:bg-indigo-100 rounded-full p-1 ml-2 transition-colors"
+                        title="Alle anzeigen"
+                    >
+                        <X className="w-4 h-4" />
+                    </button>
+                </div>
+            )}
+
             {/* Active Filter Indicator */}
-            {initialFilter === 'recent' && (
+            {!focusedId && initialFilter === 'recent' && (
                 <div className="flex items-center gap-2 bg-orange-50 text-orange-700 px-3 py-1.5 rounded-full text-xs font-medium border border-orange-200 animate-in fade-in slide-in-from-left-2">
                     <Clock className="w-3.5 h-3.5" />
                     Neue Kontakte (7 Tage)
@@ -244,95 +305,97 @@ export const Contacts: React.FC<ContactsProps> = ({
         </div>
         
         {/* Filter Button & Dropdown */}
-        <div className="relative" ref={filterRef}>
-            <button 
-                onClick={() => setIsFilterOpen(!isFilterOpen)}
-                className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-sm shadow-sm transition-colors ${
-                    hasActiveFilters || isFilterOpen
-                    ? 'bg-indigo-50 border-indigo-200 text-indigo-700' 
-                    : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'
-                }`}
-            >
-                <Filter className="w-4 h-4" />
-                <span>Filter</span>
-                {hasActiveFilters && (
-                    <span className="flex h-2 w-2 rounded-full bg-indigo-600 ml-1"></span>
-                )}
-            </button>
+        {!focusedId && (
+            <div className="relative" ref={filterRef}>
+                <button 
+                    onClick={() => setIsFilterOpen(!isFilterOpen)}
+                    className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-sm shadow-sm transition-colors ${
+                        hasActiveFilters || isFilterOpen
+                        ? 'bg-indigo-50 border-indigo-200 text-indigo-700' 
+                        : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'
+                    }`}
+                >
+                    <Filter className="w-4 h-4" />
+                    <span>Filter</span>
+                    {hasActiveFilters && (
+                        <span className="flex h-2 w-2 rounded-full bg-indigo-600 ml-1"></span>
+                    )}
+                </button>
 
-            {isFilterOpen && (
-                <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-xl border border-slate-100 z-30 p-4 animate-in fade-in zoom-in duration-100 origin-top-right">
-                    <div className="space-y-4">
-                        <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                            <h3 className="text-sm font-bold text-slate-800">Filteroptionen</h3>
-                            {hasActiveFilters && (
-                                <button onClick={resetFilters} className="text-xs text-red-500 hover:underline">
-                                    Zurücksetzen
-                                </button>
-                            )}
-                        </div>
+                {isFilterOpen && (
+                    <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-xl border border-slate-100 z-30 p-4 animate-in fade-in zoom-in duration-100 origin-top-right">
+                        <div className="space-y-4">
+                            <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+                                <h3 className="text-sm font-bold text-slate-800">Filteroptionen</h3>
+                                {hasActiveFilters && (
+                                    <button onClick={resetFilters} className="text-xs text-red-500 hover:underline">
+                                        Zurücksetzen
+                                    </button>
+                                )}
+                            </div>
 
-                        <div className="space-y-1">
-                            <label className="text-xs font-semibold text-slate-500 uppercase">Firma</label>
-                            <select 
-                                value={filters.company}
-                                onChange={(e) => setFilters({...filters, company: e.target.value})}
-                                className="w-full text-sm border-slate-200 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50 p-2 border"
-                            >
-                                <option value="">Alle Firmen</option>
-                                {availableCompanies.map(c => (
-                                    <option key={c} value={c}>{c}</option>
-                                ))}
-                            </select>
-                        </div>
+                            <div className="space-y-1">
+                                <label className="text-xs font-semibold text-slate-500 uppercase">Firma</label>
+                                <select 
+                                    value={filters.company}
+                                    onChange={(e) => setFilters({...filters, company: e.target.value})}
+                                    className="w-full text-sm border-slate-200 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50 p-2 border"
+                                >
+                                    <option value="">Alle Firmen</option>
+                                    {availableCompanies.map(c => (
+                                        <option key={c} value={c}>{c}</option>
+                                    ))}
+                                </select>
+                            </div>
 
-                        <div className="space-y-1">
-                            <label className="text-xs font-semibold text-slate-500 uppercase">Rolle</label>
-                            <select 
-                                value={filters.role}
-                                onChange={(e) => setFilters({...filters, role: e.target.value})}
-                                className="w-full text-sm border-slate-200 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50 p-2 border"
-                            >
-                                <option value="">Alle Rollen</option>
-                                {availableRoles.map(r => (
-                                    <option key={r} value={r}>{r}</option>
-                                ))}
-                            </select>
-                        </div>
+                            <div className="space-y-1">
+                                <label className="text-xs font-semibold text-slate-500 uppercase">Rolle</label>
+                                <select 
+                                    value={filters.role}
+                                    onChange={(e) => setFilters({...filters, role: e.target.value})}
+                                    className="w-full text-sm border-slate-200 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50 p-2 border"
+                                >
+                                    <option value="">Alle Rollen</option>
+                                    {availableRoles.map(r => (
+                                        <option key={r} value={r}>{r}</option>
+                                    ))}
+                                </select>
+                            </div>
 
-                        <div className="space-y-1">
-                            <label className="text-xs font-semibold text-slate-500 uppercase">Letzter Kontakt</label>
-                            <div className="grid grid-cols-2 gap-2">
-                                <button 
-                                    onClick={() => setFilters({...filters, timeframe: 'all'})}
-                                    className={`px-2 py-1.5 text-xs rounded border transition-colors ${filters.timeframe === 'all' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                                >
-                                    Egal
-                                </button>
-                                <button 
-                                    onClick={() => setFilters({...filters, timeframe: 'week'})}
-                                    className={`px-2 py-1.5 text-xs rounded border transition-colors ${filters.timeframe === 'week' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                                >
-                                    &lt; 7 Tage
-                                </button>
-                                <button 
-                                    onClick={() => setFilters({...filters, timeframe: 'month'})}
-                                    className={`px-2 py-1.5 text-xs rounded border transition-colors ${filters.timeframe === 'month' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                                >
-                                    &lt; 30 Tage
-                                </button>
-                                <button 
-                                    onClick={() => setFilters({...filters, timeframe: 'older'})}
-                                    className={`px-2 py-1.5 text-xs rounded border transition-colors ${filters.timeframe === 'older' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                                >
-                                    &gt; 30 Tage
-                                </button>
+                            <div className="space-y-1">
+                                <label className="text-xs font-semibold text-slate-500 uppercase">Letzter Kontakt</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button 
+                                        onClick={() => setFilters({...filters, timeframe: 'all'})}
+                                        className={`px-2 py-1.5 text-xs rounded border transition-colors ${filters.timeframe === 'all' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                                    >
+                                        Egal
+                                    </button>
+                                    <button 
+                                        onClick={() => setFilters({...filters, timeframe: 'week'})}
+                                        className={`px-2 py-1.5 text-xs rounded border transition-colors ${filters.timeframe === 'week' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                                    >
+                                        &lt; 7 Tage
+                                    </button>
+                                    <button 
+                                        onClick={() => setFilters({...filters, timeframe: 'month'})}
+                                        className={`px-2 py-1.5 text-xs rounded border transition-colors ${filters.timeframe === 'month' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                                    >
+                                        &lt; 30 Tage
+                                    </button>
+                                    <button 
+                                        onClick={() => setFilters({...filters, timeframe: 'older'})}
+                                        className={`px-2 py-1.5 text-xs rounded border transition-colors ${filters.timeframe === 'older' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                                    >
+                                        &gt; 30 Tage
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )}
+            </div>
+        )}
       </div>
 
       {/* Table */}
@@ -410,7 +473,13 @@ export const Contacts: React.FC<ContactsProps> = ({
                             <Linkedin className="w-4 h-4" />
                           </a>
                       )}
-                      <button className="p-1.5 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 rounded">
+                      
+                      {/* EMAIL BUTTON */}
+                      <button 
+                        onClick={() => handleEmailClick(contact)}
+                        className="p-1.5 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 rounded"
+                        title="E-Mail senden"
+                      >
                         <Mail className="w-4 h-4" />
                       </button>
                       
@@ -449,7 +518,9 @@ export const Contacts: React.FC<ContactsProps> = ({
               )) : (
                   <tr>
                       <td colSpan={5} className="px-6 py-12 text-center text-slate-400 text-sm">
-                          {initialFilter === 'recent' 
+                          {focusedId 
+                            ? "Der gesuchte Kontakt wurde nicht gefunden." 
+                            : initialFilter === 'recent' 
                             ? "Keine neuen Kontakte in den letzten 7 Tagen gefunden." 
                             : hasActiveFilters 
                                 ? "Keine Kontakte für die gewählten Filter gefunden."
@@ -573,6 +644,78 @@ export const Contacts: React.FC<ContactsProps> = ({
                             {editingContactId ? 'Änderungen speichern' : 'Kontakt speichern'}
                         </button>
                     </div>
+                </form>
+            </div>
+        </div>
+      )}
+
+      {/* Send Email Modal */}
+      {isEmailModalOpen && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
+                <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 bg-slate-50">
+                    <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        <Mail className="w-5 h-5 text-indigo-600" />
+                        E-Mail verfassen
+                    </h2>
+                    <button 
+                        onClick={() => setIsEmailModalOpen(false)}
+                        className="text-slate-400 hover:text-slate-600 transition-colors"
+                    >
+                        <X className="w-5 h-5" />
+                    </button>
+                </div>
+                
+                <form onSubmit={handleSendEmail} className="p-6 space-y-4">
+                    <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-100 flex justify-between items-center">
+                        <div className="text-sm">
+                            <span className="text-indigo-600 font-medium">An: </span>
+                            <span className="text-slate-700">{emailData.name} ({emailData.to})</span>
+                        </div>
+                    </div>
+
+                    <div className="space-y-1">
+                        <label className="text-xs font-semibold text-slate-500 uppercase">Betreff</label>
+                        <input 
+                            required
+                            autoFocus
+                            value={emailData.subject}
+                            onChange={(e) => setEmailData({...emailData, subject: e.target.value})}
+                            type="text" 
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                        />
+                    </div>
+
+                    <div className="space-y-1">
+                        <label className="text-xs font-semibold text-slate-500 uppercase">Nachricht</label>
+                        <textarea 
+                            required
+                            value={emailData.body}
+                            onChange={(e) => setEmailData({...emailData, body: e.target.value})}
+                            rows={8}
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none resize-none font-sans"
+                        />
+                    </div>
+
+                    <div className="pt-2 flex justify-end gap-3">
+                        <button 
+                            type="button"
+                            onClick={() => setIsEmailModalOpen(false)}
+                            className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                        >
+                            Abbrechen
+                        </button>
+                        <button 
+                            type="submit"
+                            className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-md shadow-indigo-200 transition-colors flex items-center gap-2"
+                        >
+                            <Send className="w-4 h-4" />
+                            Senden
+                        </button>
+                    </div>
+                    <p className="text-xs text-center text-slate-400 mt-2">
+                        Öffnet Ihr E-Mail Programm (Gmail wenn konfiguriert).
+                    </p>
                 </form>
             </div>
         </div>

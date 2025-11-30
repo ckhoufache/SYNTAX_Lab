@@ -1,6 +1,7 @@
+
 import React, { useState, DragEvent } from 'react';
 import { Deal, DealStage, Contact, ProductPreset, Task } from '../types';
-import { Plus, MoreHorizontal, DollarSign, X, Calendar, Trash2, User, Filter, Eye, EyeOff, Package, Pencil, Clock } from 'lucide-react';
+import { Plus, MoreHorizontal, DollarSign, X, Calendar, Trash2, User, Filter, Eye, EyeOff, Package, Pencil, Clock, Search } from 'lucide-react';
 
 interface PipelineProps {
   deals: Deal[];
@@ -14,6 +15,8 @@ interface PipelineProps {
   onAddTask: (task: Task) => void;
   tasks: Task[];
   onAutoDeleteTask: (taskId: string) => void;
+  focusedDealId: string | null;
+  onClearFocus: () => void;
 }
 
 export const Pipeline: React.FC<PipelineProps> = ({ 
@@ -27,7 +30,9 @@ export const Pipeline: React.FC<PipelineProps> = ({
   productPresets,
   onAddTask,
   tasks,
-  onAutoDeleteTask
+  onAutoDeleteTask,
+  focusedDealId,
+  onClearFocus
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDealId, setEditingDealId] = useState<string | null>(null);
@@ -269,7 +274,19 @@ export const Pipeline: React.FC<PipelineProps> = ({
     setEditingDealId(null);
   };
 
-  const getDealsForStage = (stage: DealStage) => deals.filter(d => d.stage === stage);
+  const getDealsForStage = (stage: DealStage) => {
+      // Filter logic: If focusedDealId exists, ONLY show that deal
+      if (focusedDealId) {
+          return deals.filter(d => d.stage === stage && d.id === focusedDealId);
+      }
+      return deals.filter(d => d.stage === stage);
+  };
+
+  const getFocusedDealTitle = () => {
+      if (!focusedDealId) return '';
+      const d = deals.find(x => x.id === focusedDealId);
+      return d ? d.title : 'Unbekannt';
+  };
 
   return (
     <div className="flex-1 bg-slate-50 h-screen flex flex-col overflow-hidden relative">
@@ -291,14 +308,32 @@ export const Pipeline: React.FC<PipelineProps> = ({
 
       {/* Filter Bar */}
       <div className="bg-white border-b border-slate-100 px-6 py-2 flex items-center gap-3 overflow-x-auto shrink-0 shadow-sm z-10">
-        <button 
-            onClick={toggleAllStages}
-            className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 mr-2 border-r border-slate-200 pr-4 hover:text-indigo-600 transition-colors"
-            title="Alle ein-/ausblenden"
-        >
-            <Filter className="w-3.5 h-3.5" />
-            Ansicht
-        </button>
+        
+        {/* Focused Filter Indicator */}
+        {focusedDealId ? (
+            <div className="flex items-center gap-2 bg-indigo-50 text-indigo-700 px-4 py-1.5 rounded-full text-xs font-medium border border-indigo-200 animate-in fade-in slide-in-from-left-2 shadow-sm mr-4">
+                <Search className="w-3.5 h-3.5" />
+                Suchergebnis: {getFocusedDealTitle()}
+                <button 
+                    onClick={onClearFocus} 
+                    className="hover:bg-indigo-100 rounded-full p-0.5 ml-2 transition-colors"
+                    title="Alle anzeigen"
+                >
+                    <X className="w-3.5 h-3.5" />
+                </button>
+            </div>
+        ) : (
+            <button 
+                onClick={toggleAllStages}
+                className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 mr-2 border-r border-slate-200 pr-4 hover:text-indigo-600 transition-colors"
+                title="Alle ein-/ausblenden"
+            >
+                <Filter className="w-3.5 h-3.5" />
+                Ansicht
+            </button>
+        )}
+
+        {/* Stage Toggles */}
         {columns.map(col => {
             const isVisible = visibleStages.includes(col.id as DealStage);
             return (

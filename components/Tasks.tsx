@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { Search, Plus, CheckCircle2, Calendar as CalendarIcon, Phone, Mail, FileText, Pencil, Trash2, X, ChevronLeft, ChevronRight, Clock, LayoutGrid, List } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Search, Plus, CheckCircle2, Calendar as CalendarIcon, Phone, Mail, FileText, Pencil, Trash2, X, ChevronLeft, ChevronRight, Clock, LayoutGrid, List, CheckSquare, Square } from 'lucide-react';
 import { Task } from '../types';
 
 interface TasksProps {
@@ -8,14 +8,34 @@ interface TasksProps {
   onAddTask: (task: Task) => void;
   onUpdateTask: (task: Task) => void;
   onDeleteTask: (id: string) => void;
+  focusedTaskId: string | null;
+  onClearFocus: () => void;
 }
 
 type ViewMode = 'month' | 'week' | 'day' | 'list';
 
-export const Tasks: React.FC<TasksProps> = ({ tasks, onAddTask, onUpdateTask, onDeleteTask }) => {
+export const Tasks: React.FC<TasksProps> = ({ 
+    tasks, 
+    onAddTask, 
+    onUpdateTask, 
+    onDeleteTask,
+    focusedTaskId,
+    onClearFocus
+}) => {
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState<ViewMode>('month');
+  // Standardmäßig Liste anzeigen
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
   
+  // Filter State für Listenansicht: 'open' oder 'completed'
+  const [listFilter, setListFilter] = useState<'open' | 'completed'>('open');
+  
+  // Wenn focusedTaskId gesetzt ist, erzwinge Listenansicht
+  useEffect(() => {
+      if (focusedTaskId) {
+          setViewMode('list');
+      }
+  }, [focusedTaskId]);
+
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
@@ -84,7 +104,7 @@ export const Tasks: React.FC<TasksProps> = ({ tasks, onAddTask, onUpdateTask, on
   
   const getHeaderTitle = () => {
       if (viewMode === 'list') {
-          return "Alle offenen Aufgaben";
+          return "Aufgabenliste";
       } else if (viewMode === 'month') {
           return `${monthNames[currentDate.getMonth()]} ${currentDate.getFullYear()}`;
       } else if (viewMode === 'day') {
@@ -229,42 +249,103 @@ export const Tasks: React.FC<TasksProps> = ({ tasks, onAddTask, onUpdateTask, on
   );
 
   const renderListView = () => {
-    const openTasks = tasks.filter(t => !t.isCompleted).sort((a, b) => {
-        // Sort by Due Date (Ascending)
-        if (a.dueDate < b.dueDate) return -1;
-        if (a.dueDate > b.dueDate) return 1;
-        // Then Priority (High first)
-        const prioValue = { high: 3, medium: 2, low: 1 };
-        return prioValue[b.priority] - prioValue[a.priority];
-    });
+    // Wenn focusedTaskId existiert, zeige nur diese
+    let displayTasks = tasks;
+    
+    if (focusedTaskId) {
+        displayTasks = tasks.filter(t => t.id === focusedTaskId);
+    } else {
+        // Filter basierend auf Tab-Auswahl (Offen / Erledigt)
+        displayTasks = tasks.filter(t => 
+            listFilter === 'open' ? !t.isCompleted : t.isCompleted
+        ).sort((a, b) => {
+            // Sortierung: Überfällige zuerst, dann nach Datum
+            if (a.dueDate < b.dueDate) return -1;
+            if (a.dueDate > b.dueDate) return 1;
+            // Bei gleichem Datum nach Priorität
+            const prioValue = { high: 3, medium: 2, low: 1 };
+            return prioValue[b.priority] - prioValue[a.priority];
+        });
+    }
 
     return (
         <div className="flex-1 overflow-y-auto bg-slate-50 p-8">
             <div className="max-w-4xl mx-auto space-y-4">
-                 <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-lg font-bold text-slate-800">Offene Aufgaben ({openTasks.length})</h2>
+                 
+                 {/* Tabs & Header */}
+                 <div className="flex flex-col gap-6 mb-6">
+                    <div className="flex justify-between items-center">
+                        <h2 className="text-lg font-bold text-slate-800">
+                            {focusedTaskId ? "Suchergebnis" : (listFilter === 'open' ? "Offene Aufgaben" : "Erledigte Aufgaben")}
+                            <span className="ml-2 text-sm font-normal text-slate-500 bg-slate-200 px-2 py-0.5 rounded-full">
+                                {displayTasks.length}
+                            </span>
+                        </h2>
+                        {focusedTaskId && (
+                             <button 
+                                onClick={onClearFocus}
+                                className="text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1"
+                             >
+                                 <X className="w-4 h-4" /> Alle anzeigen
+                             </button>
+                        )}
+                    </div>
+
+                    {/* Filter Toggle (Nur sichtbar wenn kein Fokus) */}
+                    {!focusedTaskId && (
+                        <div className="flex bg-white p-1 rounded-lg border border-slate-200 w-fit shadow-sm">
+                            <button
+                                onClick={() => setListFilter('open')}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                                    listFilter === 'open' 
+                                    ? 'bg-indigo-50 text-indigo-600 shadow-sm ring-1 ring-indigo-200' 
+                                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+                                }`}
+                            >
+                                <Square className="w-4 h-4" />
+                                Offen
+                            </button>
+                            <button
+                                onClick={() => setListFilter('completed')}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                                    listFilter === 'completed' 
+                                    ? 'bg-indigo-50 text-indigo-600 shadow-sm ring-1 ring-indigo-200' 
+                                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+                                }`}
+                            >
+                                <CheckSquare className="w-4 h-4" />
+                                Erledigt
+                            </button>
+                        </div>
+                    )}
                  </div>
 
-                 {openTasks.length === 0 && (
+                 {displayTasks.length === 0 && (
                      <div className="text-center py-12 text-slate-400 bg-white rounded-xl border border-slate-200 border-dashed">
                          <CheckCircle2 className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                         <p className="font-medium">Alles erledigt!</p>
-                         <p className="text-sm opacity-70">Keine offenen Aufgaben gefunden.</p>
+                         <p className="font-medium">
+                             {focusedTaskId 
+                                ? "Aufgabe nicht gefunden." 
+                                : listFilter === 'open' 
+                                    ? "Alles erledigt! Keine offenen Aufgaben." 
+                                    : "Noch keine erledigten Aufgaben."}
+                         </p>
                      </div>
                  )}
 
-                 {openTasks.map(task => (
-                     <div key={task.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4 hover:border-indigo-300 transition-all group animate-in slide-in-from-bottom-2">
+                 {displayTasks.map(task => (
+                     <div key={task.id} className={`bg-white p-4 rounded-xl border shadow-sm flex items-center gap-4 hover:border-indigo-300 transition-all group animate-in slide-in-from-bottom-2 ${focusedTaskId ? 'border-indigo-300 ring-2 ring-indigo-100' : 'border-slate-200'}`}>
                         <div 
                             onClick={(e) => toggleCompletion(e, task)}
                             className={`rounded-full border flex items-center justify-center shrink-0 w-6 h-6 cursor-pointer hover:border-indigo-500 border-slate-300 hover:bg-slate-50 transition-colors`}
-                            title="Als erledigt markieren"
+                            title={task.isCompleted ? "Als offen markieren" : "Als erledigt markieren"}
                         >
+                             {task.isCompleted && <CheckCircle2 className="w-4 h-4 text-slate-400" />}
                         </div>
                         
                         <div className="flex-1 cursor-pointer" onClick={(e) => handleOpenEdit(e, task)}>
                             <div className="flex justify-between items-start">
-                                <h3 className="font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">{task.title}</h3>
+                                <h3 className={`font-bold group-hover:text-indigo-600 transition-colors ${task.isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{task.title}</h3>
                                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wide ${
                                     task.priority === 'high' ? 'bg-red-100 text-red-700' :
                                     task.priority === 'medium' ? 'bg-amber-100 text-amber-700' :
@@ -272,10 +353,10 @@ export const Tasks: React.FC<TasksProps> = ({ tasks, onAddTask, onUpdateTask, on
                                 }`}>{task.priority}</span>
                             </div>
                             <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1.5 text-xs text-slate-500">
-                                <span className={`flex items-center gap-1 font-medium ${new Date(task.dueDate) < new Date(new Date().setHours(0,0,0,0)) ? 'text-red-500' : ''}`}>
+                                <span className={`flex items-center gap-1 font-medium ${!task.isCompleted && new Date(task.dueDate) < new Date(new Date().setHours(0,0,0,0)) ? 'text-red-500' : ''}`}>
                                     <CalendarIcon className="w-3.5 h-3.5" /> 
                                     {new Date(task.dueDate).toLocaleDateString('de-DE')}
-                                    {new Date(task.dueDate) < new Date(new Date().setHours(0,0,0,0)) && " (Überfällig)"}
+                                    {!task.isCompleted && new Date(task.dueDate) < new Date(new Date().setHours(0,0,0,0)) && " (Überfällig)"}
                                 </span>
                                 {!task.isAllDay && task.startTime && (
                                     <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5"/> {task.startTime} - {task.endTime} Uhr</span>
@@ -343,8 +424,8 @@ export const Tasks: React.FC<TasksProps> = ({ tasks, onAddTask, onUpdateTask, on
                                 }}
                                 className={`border-b border-r border-slate-100 p-2 min-h-[100px] hover:bg-slate-50 transition-colors cursor-pointer group relative ${isToday ? 'bg-indigo-50/30' : 'bg-white'}`}
                             >
-                                <div className="flex justify-between items-start mb-2">
-                                    <span className={`text-sm font-medium w-7 h-7 flex items-center justify-center rounded-full ${isToday ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-700'}`}>
+                                <div className="flex justify-end mb-1">
+                                    <span className={`text-xl font-medium ${isToday ? 'text-indigo-600 font-bold' : 'text-slate-400 group-hover:text-slate-600'}`}>
                                         {day}
                                     </span>
                                 </div>
@@ -585,29 +666,32 @@ export const Tasks: React.FC<TasksProps> = ({ tasks, onAddTask, onUpdateTask, on
           {/* Left Controls: View Switcher */}
           <div className="flex bg-slate-100 p-1 rounded-lg">
               <button 
-                onClick={() => setViewMode('month')}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'month' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-              >
-                  Monat
-              </button>
-              <button 
-                onClick={() => setViewMode('week')}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'week' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-              >
-                  Woche
-              </button>
-              <button 
-                onClick={() => setViewMode('day')}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'day' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-              >
-                  Tag
-              </button>
-              <button 
                 onClick={() => setViewMode('list')}
                 className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-1.5 ${viewMode === 'list' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
               >
                   <List className="w-3.5 h-3.5" />
                   Liste
+              </button>
+              <button 
+                onClick={() => setViewMode('month')}
+                disabled={!!focusedTaskId}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'month' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'} ${focusedTaskId ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                  Monat
+              </button>
+              <button 
+                onClick={() => setViewMode('week')}
+                disabled={!!focusedTaskId}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'week' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'} ${focusedTaskId ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                  Woche
+              </button>
+              <button 
+                onClick={() => setViewMode('day')}
+                disabled={!!focusedTaskId}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'day' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'} ${focusedTaskId ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                  Tag
               </button>
           </div>
 

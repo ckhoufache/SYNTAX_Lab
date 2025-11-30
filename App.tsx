@@ -74,6 +74,11 @@ const App: React.FC = () => {
   // State für Navigation mit Filter (z.B. vom Dashboard zu Kontakten)
   const [contactFilterMode, setContactFilterMode] = useState<'all' | 'recent'>('all');
 
+  // --- SUCH FOKUS STATE ---
+  const [focusedContactId, setFocusedContactId] = useState<string | null>(null);
+  const [focusedDealId, setFocusedDealId] = useState<string | null>(null);
+  const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
+
   // Theme Effekt (CSS Klasse setzen)
   useEffect(() => {
     if (theme === 'dark') {
@@ -86,6 +91,15 @@ const App: React.FC = () => {
       document.body.style.color = '#1e293b'; // slate-800
     }
   }, [theme]);
+
+  // Handle View Change via Sidebar (Resets search filters)
+  const handleChangeView = (view: ViewState) => {
+      setCurrentView(view);
+      setFocusedContactId(null);
+      setFocusedDealId(null);
+      setFocusedTaskId(null);
+      setContactFilterMode('all'); // Reset filter when coming from sidebar
+  };
 
   // --- Handlers Contacts ---
   const handleAddContact = (newContact: Contact) => {
@@ -216,17 +230,20 @@ const App: React.FC = () => {
   };
 
   // Navigation Logic
-  const handleNavigateToContacts = (filter: 'all' | 'recent') => {
+  const handleNavigateToContacts = (filter: 'all' | 'recent', focusId?: string) => {
     setContactFilterMode(filter);
+    setFocusedContactId(focusId || null);
     setCurrentView('contacts');
   };
 
-  const handleNavigateToPipelineFilter = (stages: DealStage[]) => {
+  const handleNavigateToPipelineFilter = (stages: DealStage[], focusId?: string) => {
     setPipelineVisibleStages(stages);
+    setFocusedDealId(focusId || null);
     setCurrentView('pipeline');
   };
   
-  const handleNavigateToTasks = () => {
+  const handleNavigateToTasks = (focusId?: string) => {
+      setFocusedTaskId(focusId || null);
       setCurrentView('tasks');
   };
 
@@ -255,6 +272,8 @@ const App: React.FC = () => {
             onDeleteContact={onRequestDeleteContact}
             initialFilter={contactFilterMode}
             onClearFilter={() => setContactFilterMode('all')}
+            focusedId={focusedContactId}
+            onClearFocus={() => setFocusedContactId(null)}
           />
         );
       case 'pipeline':
@@ -271,6 +290,8 @@ const App: React.FC = () => {
             onAddTask={handleAddTask}
             tasks={tasks}
             onAutoDeleteTask={handleAutoDeleteTask}
+            focusedDealId={focusedDealId}
+            onClearFocus={() => setFocusedDealId(null)}
           />
         );
       case 'tasks':
@@ -280,6 +301,8 @@ const App: React.FC = () => {
             onAddTask={handleAddTask}
             onUpdateTask={handleUpdateTask}
             onDeleteTask={onRequestDeleteTask}
+            focusedTaskId={focusedTaskId}
+            onClearFocus={() => setFocusedTaskId(null)}
           />
         );
       case 'settings':
@@ -307,7 +330,7 @@ const App: React.FC = () => {
     <div className={`flex w-full h-screen ${theme === 'dark' ? 'bg-slate-900 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
       <Sidebar 
         currentView={currentView} 
-        onChangeView={setCurrentView} 
+        onChangeView={handleChangeView} 
         userProfile={userProfile}
         theme={theme}
       />

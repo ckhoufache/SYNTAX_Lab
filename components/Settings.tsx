@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Save, Check, Eye, EyeOff, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload } from 'lucide-react';
+import { Save, Check, Eye, EyeOff, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail } from 'lucide-react';
 import { UserProfile, Theme, ProductPreset, Contact, Deal, Task, BackupData } from '../types';
 
 interface SettingsProps {
@@ -92,8 +92,9 @@ export const Settings: React.FC<SettingsProps> = ({
   const [apiKey, setApiKey] = useState('');
   const [showApiKey, setShowApiKey] = useState(false);
   
-  // Google Calendar State
+  // Google Integrations State
   const [isCalendarConnected, setIsCalendarConnected] = useState(false);
+  const [isMailConnected, setIsMailConnected] = useState(false);
   
   const [showSaved, setShowSaved] = useState(false);
 
@@ -119,7 +120,7 @@ export const Settings: React.FC<SettingsProps> = ({
     setLocalPresets(productPresets);
   }, [productPresets]);
 
-  // Load API Key and Calendar Status from LocalStorage on mount
+  // Load Settings from LocalStorage on mount
   useEffect(() => {
     const storedKey = localStorage.getItem('gemini_api_key');
     if (storedKey) {
@@ -128,6 +129,10 @@ export const Settings: React.FC<SettingsProps> = ({
     const storedCalendar = localStorage.getItem('google_calendar_connected');
     if (storedCalendar === 'true') {
         setIsCalendarConnected(true);
+    }
+    const storedMail = localStorage.getItem('google_mail_connected');
+    if (storedMail === 'true') {
+        setIsMailConnected(true);
     }
   }, []);
 
@@ -142,6 +147,10 @@ export const Settings: React.FC<SettingsProps> = ({
 
   const handleToggleCalendar = () => {
       setIsCalendarConnected(!isCalendarConnected);
+  };
+
+  const handleToggleMail = () => {
+      setIsMailConnected(!isMailConnected);
   };
 
   // Preset Handlers
@@ -253,6 +262,9 @@ export const Settings: React.FC<SettingsProps> = ({
 
     // Google Calendar Status speichern
     localStorage.setItem('google_calendar_connected', String(isCalendarConnected));
+    
+    // Google Mail Status speichern
+    localStorage.setItem('google_mail_connected', String(isMailConnected));
 
     // Presets speichern
     onUpdatePresets(localPresets);
@@ -558,6 +570,38 @@ export const Settings: React.FC<SettingsProps> = ({
                      </div>
                  )}
              </div>
+
+             {/* Google Mail */}
+             <div className="pt-6 border-t border-slate-100">
+                 <div className="flex items-center justify-between">
+                     <div className="flex items-center gap-3">
+                         <div className="p-2 bg-red-50 text-red-600 rounded-lg">
+                             <Mail className="w-5 h-5" />
+                         </div>
+                         <div>
+                             <label className={`block text-sm font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Google Mail</label>
+                             <p className="text-xs text-slate-500 mt-0.5">E-Mails direkt über Ihr Google Konto senden.</p>
+                         </div>
+                     </div>
+                     <button 
+                         onClick={handleToggleMail}
+                         className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${
+                             isMailConnected 
+                             ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100' 
+                             : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                         }`}
+                     >
+                         {isMailConnected ? 'Trennen' : 'Verbinden'}
+                     </button>
+                 </div>
+                 {isMailConnected && (
+                     <div className="mt-3 flex items-center gap-2 text-xs text-green-600 bg-green-50 px-3 py-2 rounded-md border border-green-100">
+                         <Check className="w-3 h-3" />
+                         Google Mail Verknüpfung aktiv.
+                     </div>
+                 )}
+             </div>
+
           </div>
         </SettingsSection>
 
