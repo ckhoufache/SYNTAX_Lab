@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "start": "node server.js",
     "electron": "electron .",
-    "electron:build": "vite build && electron ."
+    "electron:build": "vite build && electron .",
+    "dist": "vite build && electron-builder"
   },
   "dependencies": {
     "@google/genai": "*",

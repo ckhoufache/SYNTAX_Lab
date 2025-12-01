@@ -476,7 +476,10 @@ export const Finances: React.FC<FinancesProps> = ({
                             </select>
                             <input type="text" placeholder="Beschreibung (z.B. Projektname)" value={invoiceForm.description} onChange={e=>setInvoiceForm({...invoiceForm, description:e.target.value})} className="w-full border p-2 rounded" />
                             <input type="number" placeholder="Betrag €" value={invoiceForm.amount} onChange={e=>setInvoiceForm({...invoiceForm, amount:e.target.value})} className="w-full border p-2 rounded" />
-                            <div className="flex justify-end pt-4"><button className="bg-indigo-600 text-white px-4 py-2 rounded">Speichern</button></div>
+                            <div className="flex justify-end pt-4 gap-3">
+                                <button type="button" onClick={() => setIsInvoiceModalOpen(false)} className="text-slate-500 hover:bg-slate-100 px-4 py-2 rounded text-sm font-medium transition-colors">Abbrechen</button>
+                                <button type="submit" className="bg-indigo-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-indigo-700 transition-colors">Speichern</button>
+                            </div>
                         </form>
                     </div>
                 </div>
@@ -514,7 +517,10 @@ export const Finances: React.FC<FinancesProps> = ({
                             </div>
 
                             <textarea placeholder="Notizen" value={expenseForm.notes} onChange={e=>setExpenseForm({...expenseForm, notes:e.target.value})} className="w-full border p-2 rounded" rows={3}></textarea>
-                            <div className="flex justify-end pt-4"><button className="bg-red-600 text-white px-4 py-2 rounded">Speichern</button></div>
+                            <div className="flex justify-end pt-4 gap-3">
+                                <button type="button" onClick={() => setIsExpenseModalOpen(false)} className="text-slate-500 hover:bg-slate-100 px-4 py-2 rounded text-sm font-medium transition-colors">Abbrechen</button>
+                                <button type="submit" className="bg-red-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-red-700 transition-colors">Speichern</button>
+                            </div>
                          </form>
                     </div>
                 </div>
