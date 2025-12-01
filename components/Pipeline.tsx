@@ -1,5 +1,5 @@
 
-import React, { useState, DragEvent } from 'react';
+import React, { useState, DragEvent, useMemo } from 'react';
 import { Deal, DealStage, Contact, ProductPreset, Task, Invoice, Activity } from '../types';
 import { Plus, MoreHorizontal, DollarSign, X, Calendar, Trash2, User, Filter, Eye, EyeOff, Package, Pencil, Search } from 'lucide-react';
 
@@ -20,6 +20,7 @@ interface PipelineProps {
   onAddInvoice: (invoice: Invoice) => void;
   invoices: Invoice[];
   onAddActivity: (activity: Activity) => void;
+  onNavigateToContacts: (filter: 'all' | 'recent', focusId?: string) => void;
 }
 
 export const Pipeline: React.FC<PipelineProps> = ({ 
@@ -38,7 +39,8 @@ export const Pipeline: React.FC<PipelineProps> = ({
   onClearFocus,
   onAddInvoice,
   invoices,
-  onAddActivity
+  onAddActivity,
+  onNavigateToContacts
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDealId, setEditingDealId] = useState<string | null>(null);
@@ -200,15 +202,27 @@ export const Pipeline: React.FC<PipelineProps> = ({
     setIsModalOpen(false);
   };
 
+  // OPTIMIZATION: Memoize deals grouped by stage to avoid O(N*M) filtering on every render
+  const dealsByStage = useMemo(() => {
+    const acc: Record<string, Deal[]> = {};
+    Object.values(DealStage).forEach(s => acc[s] = []);
+    deals.forEach(d => {
+        if (acc[d.stage]) acc[d.stage].push(d);
+    });
+    return acc;
+  }, [deals]);
+
   const getDealsForStage = (stage: DealStage) => {
-      if (focusedDealId) return deals.filter(d => d.stage === stage && d.id === focusedDealId);
-      return deals.filter(d => d.stage === stage);
+      if (focusedDealId) {
+          return (dealsByStage[stage] || []).filter(d => d.id === focusedDealId);
+      }
+      return dealsByStage[stage] || [];
   };
 
   return (
     <div className="flex-1 bg-slate-50 h-screen flex flex-col overflow-hidden relative">
       <header className="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center shrink-0">
-        <div><h1 className="text-xl font-bold text-slate-800">Pipeline</h1><p className="text-xs text-slate-500 mt-0.5">Ziehen Sie Karten, um den Status zu ändern.</p></div>
+        <div><h1 className="text-xl font-bold text-slate-800">Pipeline</h1><p className="text-xs text-slate-500 mt-0.5">Ziehen Sie Karten, um den Status zu ändern. Klicken Sie auf eine Karte, um den Kontakt zu öffnen.</p></div>
         <button onClick={openCreateModal} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-2 shadow-sm"><Plus className="w-4 h-4" /> Deal hinzufügen</button>
       </header>
 
@@ -247,7 +261,13 @@ export const Pipeline: React.FC<PipelineProps> = ({
 
                        if (isMinimalStage || deal.isPlaceholder) {
                            return (
-                               <div key={deal.id} draggable onDragStart={(e) => handleDragStart(e, deal.id)} className={`rounded-lg border bg-white border-slate-200 shadow-sm hover:border-indigo-300 flex items-stretch group relative overflow-hidden`}>
+                               <div 
+                                    key={deal.id} 
+                                    draggable 
+                                    onDragStart={(e) => handleDragStart(e, deal.id)} 
+                                    onClick={() => onNavigateToContacts('all', deal.contactId)}
+                                    className={`rounded-lg border bg-white border-slate-200 shadow-sm hover:border-indigo-300 flex items-stretch group relative overflow-hidden cursor-pointer transition-all hover:shadow-md`}
+                                >
                                     <div className="p-2.5 flex items-center gap-2 flex-1 min-w-0">
                                         <div className={`w-8 h-8 rounded-full flex items-center justify-center text-slate-500 shrink-0 bg-slate-200`}>{contact?.avatar ? <img src={contact.avatar} className="w-8 h-8 rounded-full object-cover" /> : <User className="w-4 h-4" />}</div>
                                         <div className="min-w-0 flex-1"><p className="text-sm font-bold text-slate-700 truncate">{contact?.name || 'Unbekannt'}</p><p className="text-[10px] text-slate-400 truncate flex items-center gap-1"><Calendar className="w-2.5 h-2.5" /> {deal.stage === DealStage.LOST ? deal.lostDate : deal.dueDate}</p></div>
@@ -261,7 +281,13 @@ export const Pipeline: React.FC<PipelineProps> = ({
                        }
 
                        return (
-                        <div key={deal.id} draggable onDragStart={(e) => handleDragStart(e, deal.id)} className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 hover:shadow-md hover:border-indigo-300 transition-all cursor-grab active:cursor-grabbing group relative">
+                        <div 
+                            key={deal.id} 
+                            draggable 
+                            onDragStart={(e) => handleDragStart(e, deal.id)} 
+                            onClick={() => onNavigateToContacts('all', deal.contactId)}
+                            className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 hover:shadow-md hover:border-indigo-300 transition-all cursor-pointer active:cursor-grabbing group relative"
+                        >
                           <div className="flex justify-between items-start mb-2"><span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 uppercase tracking-wide">{contact?.company || 'N/A'}</span><div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all -mt-1 -mr-1"><button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => openEditModal(e, deal)} className="text-slate-300 hover:text-indigo-600 p-1"><Pencil className="w-3.5 h-3.5" /></button><button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => handleDeleteClick(e, deal.id)} className="text-slate-300 hover:text-red-500 p-1"><Trash2 className="w-3.5 h-3.5" /></button></div></div>
                           <h4 className="text-sm font-bold text-slate-800 mb-2 leading-snug">{deal.title}</h4>
                           <div className="flex items-center gap-2 text-slate-500 text-xs mb-3"><Calendar className="w-3 h-3" /><span>{deal.dueDate}</span></div>

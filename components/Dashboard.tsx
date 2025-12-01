@@ -4,7 +4,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar
 } from 'recharts';
 import { Bell, Search, Sparkles, CheckCircle2, Phone, Mail, Calendar, ArrowUpRight, Plus, X, Trash2, Circle, User, KanbanSquare, ClipboardList, AlertCircle, Clock, Check, BarChart3, TrendingUp } from 'lucide-react';
-import { Task, Deal, Contact, DealStage, Invoice } from '../types'; // Import Invoice
+import { Task, Deal, Contact, DealStage, Invoice, Activity } from '../types'; // Import Invoice & Activity
 import { generateDailyBriefing } from '../services/gemini';
 
 interface DashboardProps {
@@ -19,6 +19,7 @@ interface DashboardProps {
   onNavigateToTasks: (focusId?: string) => void;
   onNavigateToFinances: () => void;
   invoices?: Invoice[]; // Add invoices prop (made optional to prevent breaking immediately if not passed in parent yet, but should be passed)
+  activities: Activity[]; // Added to fix type error
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ 
@@ -32,7 +33,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onNavigateToPipeline,
   onNavigateToTasks,
   onNavigateToFinances,
-  invoices = [] // Default to empty
+  invoices = [], // Default to empty
+  activities
 }) => {
   const [briefing, setBriefing] = useState<string>('');
   const [loadingBriefing, setLoadingBriefing] = useState<boolean>(false);
@@ -334,7 +336,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
             />
             {showSearchResults && searchTerm.trim() && (
                 <div className="absolute top-full mt-2 right-0 w-80 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-in fade-in slide-in-from-top-2 z-50">
-                    {/* ... Search Results (same as before) ... */}
                      {/* Simplified for brevity - Assume same logic as before */}
                      {searchResults.contacts.length > 0 && <div className="p-2"><h4 className="text-xs uppercase text-slate-400 px-2">Kontakte</h4>{searchResults.contacts.map(c => <div key={c.id} onClick={() => onNavigateToContacts('all', c.id)} className="p-2 hover:bg-slate-50 cursor-pointer text-sm font-medium">{c.name}</div>)}</div>}
                      {searchResults.deals.length > 0 && <div className="p-2 border-t"><h4 className="text-xs uppercase text-slate-400 px-2">Deals</h4>{searchResults.deals.map(d => <div key={d.id} onClick={() => onNavigateToPipeline([d.stage], d.id)} className="p-2 hover:bg-slate-50 cursor-pointer text-sm font-medium">{d.title}</div>)}</div>}

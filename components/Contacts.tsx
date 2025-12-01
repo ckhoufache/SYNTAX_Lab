@@ -1,7 +1,7 @@
 
-import React, { useState, useRef, useEffect } from 'react';
-import { Search, Filter, MoreHorizontal, Mail, Phone, Plus, Linkedin, X, FileText, Pencil, Trash, Clock, Check, Send, Briefcase, Banknote, Calendar } from 'lucide-react';
-import { Contact, Activity, ActivityType } from '../types';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { Search, Filter, MoreHorizontal, Mail, Phone, Plus, Linkedin, X, FileText, Pencil, Trash, Clock, Check, Send, Briefcase, Banknote, Calendar, Building, Globe } from 'lucide-react';
+import { Contact, Activity, ActivityType, EmailTemplate } from '../types';
 import { DataServiceFactory } from '../services/dataService'; 
 
 interface ContactsProps {
@@ -15,6 +15,7 @@ interface ContactsProps {
   onClearFilter: () => void;
   focusedId: string | null;
   onClearFocus: () => void;
+  emailTemplates?: EmailTemplate[];
 }
 
 export const Contacts: React.FC<ContactsProps> = ({ 
@@ -27,7 +28,8 @@ export const Contacts: React.FC<ContactsProps> = ({
   initialFilter,
   onClearFilter,
   focusedId,
-  onClearFocus
+  onClearFocus,
+  emailTemplates
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -59,59 +61,63 @@ export const Contacts: React.FC<ContactsProps> = ({
   const [newActivityContent, setNewActivityContent] = useState('');
 
   // Extract unique values for filter dropdowns
-  const availableCompanies = Array.from(new Set(contacts.map(c => c.company))).sort();
-  const availableRoles = Array.from(new Set(contacts.map(c => c.role))).sort();
+  const availableCompanies = useMemo(() => Array.from(new Set(contacts.map(c => c.company))).sort(), [contacts]);
+  const availableRoles = useMemo(() => Array.from(new Set(contacts.map(c => c.role))).sort(), [contacts]);
 
   // Form State
   const [formData, setFormData] = useState({
     name: '',
     role: '',
     company: '',
+    companyUrl: '',
     email: '',
     linkedin: '',
     notes: '' // Stammdaten-Notiz (nicht Timeline)
   });
 
-  const filteredContacts = contacts.filter(c => {
-    // 0. FOCUSED ID (Search Result)
-    if (focusedId) {
-        return c.id === focusedId;
-    }
+  // OPTIMIZED FILTER LOGIC
+  const filteredContacts = useMemo(() => {
+      return contacts.filter(c => {
+        // 0. FOCUSED ID (Search Result)
+        if (focusedId) {
+            return c.id === focusedId;
+        }
 
-    // 1. Search Term
-    const matchesSearch = c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          c.company.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    // 2. Dashboard Filter
-    let matchesInitialFilter = true;
-    if (initialFilter === 'recent') {
-       const lastDate = new Date(c.lastContact);
-       const sevenDaysAgo = new Date();
-       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-       matchesInitialFilter = lastDate >= sevenDaysAgo;
-    }
+        // 1. Search Term
+        const matchesSearch = c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                              c.company.toLowerCase().includes(searchTerm.toLowerCase());
+        
+        // 2. Dashboard Filter
+        let matchesInitialFilter = true;
+        if (initialFilter === 'recent') {
+           const lastDate = new Date(c.lastContact);
+           const sevenDaysAgo = new Date();
+           sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+           matchesInitialFilter = lastDate >= sevenDaysAgo;
+        }
 
-    // 3. Manual Filters
-    let matchesCompany = true;
-    if (filters.company) matchesCompany = c.company === filters.company;
+        // 3. Manual Filters
+        let matchesCompany = true;
+        if (filters.company) matchesCompany = c.company === filters.company;
 
-    let matchesRole = true;
-    if (filters.role) matchesRole = c.role === filters.role;
+        let matchesRole = true;
+        if (filters.role) matchesRole = c.role === filters.role;
 
-    let matchesTimeframe = true;
-    if (filters.timeframe !== 'all') {
-        const lastDate = new Date(c.lastContact);
-        const now = new Date();
-        const diffTime = Math.abs(now.getTime() - lastDate.getTime());
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        let matchesTimeframe = true;
+        if (filters.timeframe !== 'all') {
+            const lastDate = new Date(c.lastContact);
+            const now = new Date();
+            const diffTime = Math.abs(now.getTime() - lastDate.getTime());
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-        if (filters.timeframe === 'week') matchesTimeframe = diffDays <= 7;
-        if (filters.timeframe === 'month') matchesTimeframe = diffDays <= 30;
-        if (filters.timeframe === 'older') matchesTimeframe = diffDays > 30;
-    }
+            if (filters.timeframe === 'week') matchesTimeframe = diffDays <= 7;
+            if (filters.timeframe === 'month') matchesTimeframe = diffDays <= 30;
+            if (filters.timeframe === 'older') matchesTimeframe = diffDays > 30;
+        }
 
-    return matchesSearch && matchesInitialFilter && matchesCompany && matchesRole && matchesTimeframe;
-  });
+        return matchesSearch && matchesInitialFilter && matchesCompany && matchesRole && matchesTimeframe;
+      });
+  }, [contacts, focusedId, searchTerm, initialFilter, filters]);
 
   // Close menus when clicking outside
   useEffect(() => {
@@ -134,7 +140,7 @@ export const Contacts: React.FC<ContactsProps> = ({
 
   const openCreateModal = () => {
     setEditingContactId(null);
-    setFormData({ name: '', role: '', company: '', email: '', linkedin: '', notes: '' });
+    setFormData({ name: '', role: '', company: '', companyUrl: '', email: '', linkedin: '', notes: '' });
     setIsModalOpen(true);
   };
 
@@ -144,6 +150,7 @@ export const Contacts: React.FC<ContactsProps> = ({
       name: contact.name,
       role: contact.role,
       company: contact.company,
+      companyUrl: contact.companyUrl || '',
       email: contact.email,
       linkedin: contact.linkedin || '',
       notes: contact.notes || ''
@@ -170,6 +177,7 @@ export const Contacts: React.FC<ContactsProps> = ({
           name: formData.name,
           role: formData.role || 'Unbekannt',
           company: formData.company,
+          companyUrl: formData.companyUrl,
           email: formData.email,
           linkedin: formData.linkedin,
           notes: formData.notes,
@@ -183,6 +191,7 @@ export const Contacts: React.FC<ContactsProps> = ({
         name: formData.name,
         role: formData.role || 'Unbekannt',
         company: formData.company,
+        companyUrl: formData.companyUrl,
         email: formData.email,
         linkedin: formData.linkedin,
         notes: formData.notes,
@@ -192,7 +201,7 @@ export const Contacts: React.FC<ContactsProps> = ({
       onAddContact(newContact);
     }
     setIsModalOpen(false);
-    setFormData({ name: '', role: '', company: '', email: '', linkedin: '', notes: '' });
+    setFormData({ name: '', role: '', company: '', companyUrl: '', email: '', linkedin: '', notes: '' });
     setEditingContactId(null);
   };
 
@@ -250,6 +259,14 @@ export const Contacts: React.FC<ContactsProps> = ({
           contactId: contact.id
       });
       setIsEmailModalOpen(true);
+  };
+  
+  const handleTemplateSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const tplId = e.target.value;
+      const tpl = emailTemplates?.find(t => t.id === tplId);
+      if (tpl) {
+          setEmailData(prev => ({ ...prev, subject: tpl.subject, body: tpl.body.replace('{name}', prev.name.split(' ')[0]) }));
+      }
   };
 
   const handleSendEmail = async (e: React.FormEvent) => {
@@ -384,7 +401,16 @@ export const Contacts: React.FC<ContactsProps> = ({
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm text-slate-700">{contact.role}</span></td>
-                  <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm font-medium text-slate-800">{contact.company}</span></td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-slate-800">{contact.company}</span>
+                          {contact.companyUrl && (
+                              <a href={contact.companyUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-slate-400 hover:text-indigo-600 transition-colors">
+                                  <Globe className="w-3.5 h-3.5" />
+                              </a>
+                          )}
+                      </div>
+                  </td>
                   <td className="px-6 py-4">
                     {editingNoteId === contact.id ? (
                       <input 
@@ -451,6 +477,7 @@ export const Contacts: React.FC<ContactsProps> = ({
                             <div className="grid grid-cols-1 gap-4">
                                 <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase">Name</label><input required name="name" value={formData.name} onChange={handleInputChange} type="text" className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Max Mustermann"/></div>
                                 <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase">Firma</label><input required name="company" value={formData.company} onChange={handleInputChange} type="text" className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Firma GmbH"/></div>
+                                <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1"><Globe className="w-3 h-3"/> Firmen-Link</label><input name="companyUrl" value={formData.companyUrl} onChange={handleInputChange} type="url" className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="https://firma.de"/></div>
                                 <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase">Rolle</label><input name="role" value={formData.role} onChange={handleInputChange} type="text" className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="z.B. CEO"/></div>
                                 <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase">E-Mail</label><input required name="email" value={formData.email} onChange={handleInputChange} type="email" className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="max@firma.de"/></div>
                                 <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1"><Linkedin className="w-3 h-3 text-blue-600" /> LinkedIn Profil</label><input name="linkedin" value={formData.linkedin} onChange={handleInputChange} type="url" className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="https://linkedin.com/in/..."/></div>
@@ -540,6 +567,15 @@ export const Contacts: React.FC<ContactsProps> = ({
                 </div>
                 <form onSubmit={handleSendEmail} className="p-6 space-y-4">
                     <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-100 flex justify-between items-center"><div className="text-sm"><span className="text-indigo-600 font-medium">An: </span><span className="text-slate-700">{emailData.name} ({emailData.to})</span></div></div>
+                    {emailTemplates && emailTemplates.length > 0 && (
+                        <div className="space-y-1">
+                            <label className="text-xs font-semibold text-slate-500 uppercase">Vorlage</label>
+                            <select onChange={handleTemplateSelect} className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm">
+                                <option value="">-- Vorlage wählen --</option>
+                                {emailTemplates.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+                            </select>
+                        </div>
+                    )}
                     <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase">Betreff</label><input required autoFocus value={emailData.subject} onChange={(e) => setEmailData({...emailData, subject: e.target.value})} type="text" className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"/></div>
                     <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase">Nachricht</label><textarea required value={emailData.body} onChange={(e) => setEmailData({...emailData, body: e.target.value})} rows={8} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none resize-none font-sans"/></div>
                     <div className="pt-2 flex justify-end gap-3"><button type="button" onClick={() => setIsEmailModalOpen(false)} disabled={sendingEmail} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">Abbrechen</button><button type="submit" disabled={sendingEmail} className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 rounded-lg shadow-md shadow-indigo-200 transition-colors flex items-center gap-2">{sendingEmail ? 'Sende...' : <><Send className="w-4 h-4" />Senden</>}</button></div>

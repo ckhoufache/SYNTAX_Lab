@@ -8,7 +8,7 @@ import { Settings } from './components/Settings';
 import { Tasks } from './components/Tasks';
 import { Finances } from './components/Finances';
 import { ConfirmDialog } from './components/ConfirmDialog';
-import { ViewState, Contact, Deal, UserProfile, Theme, Task, DealStage, ProductPreset, BackupData, BackendConfig, Invoice, Expense, InvoiceConfig, Activity } from './types';
+import { ViewState, Contact, Deal, UserProfile, Theme, Task, DealStage, ProductPreset, BackupData, BackendConfig, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate } from './types';
 import { DataServiceFactory, IDataService } from './services/dataService';
 import { Loader2 } from 'lucide-react';
 
@@ -44,6 +44,7 @@ const App: React.FC = () => {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [invoiceConfig, setInvoiceConfig] = useState<InvoiceConfig | null>(null);
+  const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([]);
 
   // Authentication State
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -59,7 +60,7 @@ const App: React.FC = () => {
             await service.init();
             
             // Parallel loading for speed
-            const [c, a, d, t, i, e, p, presets, invConf] = await Promise.all([
+            const [c, a, d, t, i, e, p, presets, invConf, templ] = await Promise.all([
                 service.getContacts(),
                 service.getActivities(),
                 service.getDeals(),
@@ -68,7 +69,8 @@ const App: React.FC = () => {
                 service.getExpenses(),
                 service.getUserProfile(),
                 service.getProductPresets(),
-                service.getInvoiceConfig()
+                service.getInvoiceConfig(),
+                service.getEmailTemplates()
             ]);
 
             setContacts(c);
@@ -80,6 +82,7 @@ const App: React.FC = () => {
             setUserProfile(p);
             setProductPresets(presets);
             setInvoiceConfig(invConf);
+            setEmailTemplates(templ);
             
             // Check if user is effectively logged in via Google Token
             const token = localStorage.getItem('google_access_token');
@@ -102,7 +105,7 @@ const App: React.FC = () => {
   const [pipelineVisibleStages, setPipelineVisibleStages] = useState<DealStage[]>(Object.values(DealStage));
 
   // State für Lösch-Dialog
-  const [deleteIntent, setDeleteIntent] = useState<{ type: 'contact' | 'deal' | 'task' | 'invoice' | 'expense', id: string } | null>(null);
+  const [deleteIntent, setDeleteIntent] = useState<{ type: 'contact' | 'deal' | 'task' | 'invoice' | 'expense' | 'template', id: string } | null>(null);
 
   // State für Navigation
   const [contactFilterMode, setContactFilterMode] = useState<'all' | 'recent'>('all');
@@ -191,6 +194,7 @@ const App: React.FC = () => {
         timestamp: new Date().toISOString()
     });
     
+    // Auto Create Deal
     const ghostDeal: Deal = {
       id: Math.random().toString(36).substr(2, 9),
       title: 'Neuer Lead',
@@ -301,6 +305,181 @@ const App: React.FC = () => {
   };
   const onRequestDeleteExpense = (id: string) => { setDeleteIntent({ type: 'expense', id }); };
 
+  // --- TEMPLATES ---
+  const handleAddTemplate = async (template: EmailTemplate) => {
+      const saved = await dataService.saveEmailTemplate(template);
+      setEmailTemplates(prev => [saved, ...prev]);
+  };
+  const handleUpdateTemplate = async (template: EmailTemplate) => {
+      await dataService.updateEmailTemplate(template);
+      setEmailTemplates(prev => prev.map(t => t.id === template.id ? template : t));
+  };
+  const onRequestDeleteTemplate = (id: string) => { setDeleteIntent({ type: 'template', id }); };
+
+  // --- CSV IMPORT LOGIC (Optimized) ---
+  const parseCSV = (str: string) => {
+    const arr: string[][] = [];
+    let quote = false;
+    let row: string[] = [];
+    let val = '';
+
+    for (let i = 0; i < str.length; i++) {
+      const c = str[i];
+      if (c === '"') {
+        quote = !quote;
+      } else if (c === ',' && !quote) {
+        row.push(val);
+        val = '';
+      } else if (c === '\n' && !quote) {
+        // Handle Windows CRLF by trimming carriage return from end of val if present
+        if (val.endsWith('\r')) val = val.slice(0, -1);
+        row.push(val);
+        arr.push(row);
+        row = [];
+        val = '';
+      } else if (c !== '\r') {
+        val += c;
+      }
+    }
+    // Push last row if exists
+    if (row.length > 0 || val) {
+        if (val.endsWith('\r')) val = val.slice(0, -1);
+        row.push(val);
+        arr.push(row);
+    }
+    return arr;
+  };
+
+  const handleImportContactsCSV = async (csvText: string) => {
+      setIsLoading(true);
+      try {
+          const rows = parseCSV(csvText);
+          
+          if (rows.length < 2) {
+              alert("Die CSV Datei scheint leer oder ungültig zu sein.");
+              setIsLoading(false);
+              return;
+          }
+
+          const headers = rows[0].map(h => h.replace(/^"|"$/g, '').trim());
+          const lowerHeaders = headers.map(h => h.toLowerCase());
+          
+          // Flexible Header Matching
+          const findCol = (candidates: string[]) => {
+              for (const c of candidates) {
+                  const i = lowerHeaders.indexOf(c.toLowerCase());
+                  if (i !== -1) return i;
+              }
+              return -1;
+          };
+
+          const idx = {
+              fullName: findCol(['fullName', 'Name', 'Full Name', 'Voller Name']),
+              firstName: findCol(['firstName', 'Vorname', 'First Name']),
+              lastName: findCol(['lastName', 'Nachname', 'Last Name']),
+              companyName: findCol(['companyName', 'Company', 'Firma', 'Organization', 'Unternehmen']),
+              companyUrl: findCol(['companyUrl', 'regularCompanyUrl', 'Website', 'Webseite', 'URL', 'Homepage']),
+              role: findCol(['title', 'role', 'Position', 'Job Title', 'Job']),
+              linkedIn: findCol(['linkedInProfileUrl', 'profileUrl', 'LinkedIn', 'Social']),
+              img: findCol(['profileImageUrl', 'avatar', 'image', 'photo', 'bild', 'picture', 'profile picture', 'profilbild']),
+              summary: findCol(['summary', 'About', 'Info', 'Beschreibung']),
+              location: findCol(['location', 'Location', 'Ort', 'Stadt']),
+              email: findCol(['emailAddress', 'Email', 'E-Mail', 'Mail'])
+          };
+
+          let newContactsCount = 0;
+          const newContacts: Contact[] = [];
+          const newDeals: Deal[] = [];
+          const newActivities: Activity[] = [];
+
+          for (let i = 1; i < rows.length; i++) {
+              const row = rows[i];
+              if (row.length < 2) continue;
+
+              const getValue = (index: number) => {
+                  if (index === -1 || index >= row.length) return '';
+                  return row[index].replace(/^"|"$/g, '').trim(); 
+              };
+
+              const name = getValue(idx.fullName) || (getValue(idx.firstName) + ' ' + getValue(idx.lastName)).trim();
+              if (!name) continue;
+
+              const company = getValue(idx.companyName);
+              const companyUrl = getValue(idx.companyUrl);
+              const role = getValue(idx.role) || 'Unbekannt';
+              const linkedin = getValue(idx.linkedIn);
+              
+              // Flexible Avatar Logic
+              let avatar = getValue(idx.img);
+              if (!avatar) {
+                  // Fallback: Generate generic avatar
+                  avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`;
+              }
+              
+              const summary = getValue(idx.summary);
+              const location = getValue(idx.location);
+              let notes = "";
+              if (location) notes += `Standort: ${location}\n\n`;
+              if (summary) notes += `Summary:\n${summary}`;
+
+              const contactId = Math.random().toString(36).substr(2, 9);
+              
+              const newContact: Contact = {
+                  id: contactId,
+                  name,
+                  role,
+                  company,
+                  companyUrl, 
+                  email: getValue(idx.email) || '', 
+                  linkedin,
+                  avatar, 
+                  lastContact: new Date().toISOString().split('T')[0],
+                  notes
+              };
+
+              newContacts.push(newContact);
+              
+              newActivities.push({
+                  id: Math.random().toString(36).substr(2, 9),
+                  contactId: contactId,
+                  type: 'system_deal',
+                  content: 'Kontakt importiert (CSV)',
+                  date: new Date().toISOString().split('T')[0],
+                  timestamp: new Date().toISOString()
+              });
+
+              newDeals.push({
+                  id: Math.random().toString(36).substr(2, 9),
+                  title: 'Neuer Lead',
+                  value: 0,
+                  stage: DealStage.LEAD,
+                  contactId: contactId,
+                  dueDate: new Date().toISOString().split('T')[0],
+                  stageEnteredDate: new Date().toISOString().split('T')[0],
+                  isPlaceholder: true
+              });
+
+              newContactsCount++;
+          }
+
+          for (const c of newContacts) await dataService.saveContact(c);
+          for (const d of newDeals) await dataService.saveDeal(d);
+          for (const a of newActivities) await dataService.saveActivity(a);
+
+          setContacts(prev => [...newContacts, ...prev]);
+          setDeals(prev => [...newDeals, ...prev]);
+          setActivities(prev => [...newActivities, ...prev]);
+
+          alert(`${newContactsCount} Kontakte erfolgreich importiert und Pipelines angelegt.`);
+
+      } catch (e) {
+          console.error(e);
+          alert("Fehler beim Importieren der CSV Datei.");
+      } finally {
+          setIsLoading(false);
+      }
+  };
+
   const handleImportData = async (data: BackupData) => {
       if (!confirm("Importieren überschreibt alle aktuellen Daten. Fortfahren?")) return;
       setIsLoading(true);
@@ -308,6 +487,10 @@ const App: React.FC = () => {
           if (data.userProfile) await dataService.saveUserProfile(data.userProfile);
           if (data.productPresets) await dataService.saveProductPresets(data.productPresets);
           if (data.invoiceConfig) await dataService.saveInvoiceConfig(data.invoiceConfig);
+          if (data.emailTemplates && dataService.saveEmailTemplate) {
+               // Restore Templates (requires deleting old ones first ideally, but loop save works for simple restore)
+               for (const t of data.emailTemplates) await dataService.saveEmailTemplate(t);
+          }
           if (data.theme) setTheme(data.theme);
 
           if (data.contacts) {
@@ -372,6 +555,9 @@ const App: React.FC = () => {
         } else if (deleteIntent.type === 'expense') {
           await dataService.deleteExpense(deleteIntent.id);
           setExpenses(prev => prev.filter(e => e.id !== deleteIntent.id));
+        } else if (deleteIntent.type === 'template') {
+          await dataService.deleteEmailTemplate(deleteIntent.id);
+          setEmailTemplates(prev => prev.filter(t => t.id !== deleteIntent.id));
         }
     } catch (e) {
         console.error("Delete failed", e);
@@ -424,6 +610,7 @@ const App: React.FC = () => {
             onNavigateToTasks={handleNavigateToTasks}
             onNavigateToFinances={handleNavigateToFinances}
             invoices={invoices}
+            activities={activities}
           />
         );
       case 'contacts':
@@ -439,6 +626,7 @@ const App: React.FC = () => {
             onClearFilter={() => setContactFilterMode('all')}
             focusedId={focusedContactId}
             onClearFocus={() => setFocusedContactId(null)}
+            emailTemplates={emailTemplates}
           />
         );
       case 'pipeline':
@@ -460,6 +648,7 @@ const App: React.FC = () => {
             onAddInvoice={handleAddInvoice}
             invoices={invoices}
             onAddActivity={handleAddActivity}
+            onNavigateToContacts={handleNavigateToContacts}
           />
         );
       case 'tasks':
@@ -505,11 +694,16 @@ const App: React.FC = () => {
             expenses={expenses}
             activities={activities}
             onImportData={handleImportData}
+            onImportContactsCSV={handleImportContactsCSV} // CSV Import Handler passed
             backendConfig={backendConfig}
             onUpdateBackendConfig={setBackendConfig}
             dataService={dataService}
             invoiceConfig={invoiceConfig}
             onUpdateInvoiceConfig={handleUpdateInvoiceConfig}
+            emailTemplates={emailTemplates}
+            onAddTemplate={handleAddTemplate}
+            onUpdateTemplate={handleUpdateTemplate}
+            onDeleteTemplate={onRequestDeleteTemplate}
           />
         );
       default: return null;

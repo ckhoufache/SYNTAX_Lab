@@ -41,11 +41,13 @@ export interface Contact {
   name: string;
   role: string;
   company: string;
+  companyUrl?: string; // NEU
   email: string;
   avatar: string;
   lastContact: string;
   linkedin?: string;
   notes?: string;
+  tags?: string[];
 }
 
 export type ActivityType = 'note' | 'call' | 'email' | 'meeting' | 'system_deal' | 'system_invoice';
@@ -124,6 +126,13 @@ export interface InvoiceConfig {
   footerText?: string;
 }
 
+export interface EmailTemplate {
+    id: string;
+    title: string;
+    subject: string;
+    body: string;
+}
+
 export interface DashboardStats {
   totalRevenue: number;
   activeDeals: number;
@@ -141,6 +150,7 @@ export interface BackupData {
   invoiceConfig: InvoiceConfig;
   userProfile: UserProfile;
   productPresets: ProductPreset[];
+  emailTemplates?: EmailTemplate[];
   theme: Theme;
   timestamp: string;
   version: string;

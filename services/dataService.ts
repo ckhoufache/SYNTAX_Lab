@@ -1,4 +1,5 @@
-import { Contact, Deal, Task, UserProfile, ProductPreset, Theme, BackendConfig, BackendMode, BackupData, Invoice, Expense, InvoiceConfig, Activity } from '../types';
+
+import { Contact, Deal, Task, UserProfile, ProductPreset, Theme, BackendConfig, BackendMode, BackupData, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate } from '../types';
 import { mockContacts, mockDeals, mockTasks, mockInvoices, mockExpenses } from './mockData';
 
 // Declare Google Types globally for TS
@@ -60,6 +61,12 @@ export interface IDataService {
     getInvoiceConfig(): Promise<InvoiceConfig>;
     saveInvoiceConfig(config: InvoiceConfig): Promise<InvoiceConfig>;
 
+    // Email Templates
+    getEmailTemplates(): Promise<EmailTemplate[]>;
+    saveEmailTemplate(template: EmailTemplate): Promise<EmailTemplate>;
+    updateEmailTemplate(template: EmailTemplate): Promise<EmailTemplate>;
+    deleteEmailTemplate(id: string): Promise<void>;
+
     // Integrations
     connectGoogle(service: 'calendar' | 'mail', clientId?: string): Promise<boolean>;
     disconnectGoogle(service: 'calendar' | 'mail'): Promise<boolean>;
@@ -90,6 +97,7 @@ class LocalDataService implements IDataService {
         userProfile: UserProfile | null;
         productPresets: ProductPreset[] | null;
         invoiceConfig: InvoiceConfig | null;
+        emailTemplates: EmailTemplate[] | null;
     } = {
         contacts: null,
         activities: null,
@@ -99,7 +107,8 @@ class LocalDataService implements IDataService {
         expenses: null,
         userProfile: null,
         productPresets: null,
-        invoiceConfig: null
+        invoiceConfig: null,
+        emailTemplates: null
     };
 
     // OPTIMIZATION: Sync Lock to prevent race conditions
@@ -125,6 +134,7 @@ class LocalDataService implements IDataService {
         if (!localStorage.getItem('invoices')) localStorage.setItem('invoices', JSON.stringify(mockInvoices));
         if (!localStorage.getItem('expenses')) localStorage.setItem('expenses', JSON.stringify(mockExpenses));
         if (!localStorage.getItem('activities')) localStorage.setItem('activities', JSON.stringify([]));
+        if (!localStorage.getItem('emailTemplates')) localStorage.setItem('emailTemplates', JSON.stringify([]));
 
         this.cache.contacts = this.getFromStorage<Contact[]>('contacts', []);
         this.cache.activities = this.getFromStorage<Activity[]>('activities', []);
@@ -132,6 +142,7 @@ class LocalDataService implements IDataService {
         this.cache.tasks = this.getFromStorage<Task[]>('tasks', []);
         this.cache.invoices = this.getFromStorage<Invoice[]>('invoices', []);
         this.cache.expenses = this.getFromStorage<Expense[]>('expenses', []);
+        this.cache.emailTemplates = this.getFromStorage<EmailTemplate[]>('emailTemplates', []);
         
         this.cache.userProfile = this.getFromStorage<UserProfile>('userProfile', {
             firstName: 'Max',
@@ -169,7 +180,16 @@ class LocalDataService implements IDataService {
     // Helper: Write to Cache AND LS
     private set<T>(key: keyof typeof this.cache, storageKey: string, data: T): void {
         this.cache[key] = data as any;
-        localStorage.setItem(storageKey, JSON.stringify(data));
+        try {
+            localStorage.setItem(storageKey, JSON.stringify(data));
+        } catch (error: any) {
+            // Check for QuotaExceededError
+            if (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
+                 alert("Speicherlimit erreicht! Das Bild ist zu groß für den lokalen Browserspeicher. Änderungen konnten nicht permanent gespeichert werden.");
+            } else {
+                console.error("Storage Error", error);
+            }
+        }
     }
 
     async getContacts(): Promise<Contact[]> { return this.cache.contacts || []; }
@@ -302,6 +322,26 @@ class LocalDataService implements IDataService {
         const list = this.cache.expenses || [];
         const newList = list.filter(e => e.id !== id);
         this.set('expenses', 'expenses', newList);
+    }
+
+    // --- EMAIL TEMPLATES ---
+    async getEmailTemplates(): Promise<EmailTemplate[]> { return this.cache.emailTemplates || []; }
+    async saveEmailTemplate(template: EmailTemplate): Promise<EmailTemplate> {
+        const list = this.cache.emailTemplates || [];
+        const newList = [template, ...list];
+        this.set('emailTemplates', 'emailTemplates', newList);
+        return template;
+    }
+    async updateEmailTemplate(template: EmailTemplate): Promise<EmailTemplate> {
+        const list = this.cache.emailTemplates || [];
+        const newList = list.map(t => t.id === template.id ? template : t);
+        this.set('emailTemplates', 'emailTemplates', newList);
+        return template;
+    }
+    async deleteEmailTemplate(id: string): Promise<void> {
+        const list = this.cache.emailTemplates || [];
+        const newList = list.filter(t => t.id !== id);
+        this.set('emailTemplates', 'emailTemplates', newList);
     }
 
     // --- SETTINGS ---
@@ -627,6 +667,10 @@ class APIDataService implements IDataService {
     saveProductPresets = async (p: ProductPreset[]) => p;
     getInvoiceConfig = async () => ({} as InvoiceConfig);
     saveInvoiceConfig = async (c: InvoiceConfig) => c;
+    getEmailTemplates = async () => [];
+    saveEmailTemplate = async (t: EmailTemplate) => t;
+    updateEmailTemplate = async (t: EmailTemplate) => t;
+    deleteEmailTemplate = async () => {};
     connectGoogle = async () => false;
     disconnectGoogle = async () => true;
     getIntegrationStatus = async () => false;

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle, Key, RefreshCw, Copy, FileText, Image as ImageIcon, Briefcase, Settings as SettingsIcon, HardDrive } from 'lucide-react';
-import { UserProfile, Theme, ProductPreset, Contact, Deal, Task, BackupData, BackendConfig, Invoice, Expense, InvoiceConfig, Activity } from '../types';
+import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle, Key, RefreshCw, Copy, FileText, Image as ImageIcon, Briefcase, Settings as SettingsIcon, HardDrive, Users } from 'lucide-react';
+import { UserProfile, Theme, ProductPreset, Contact, Deal, Task, BackupData, BackendConfig, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate } from '../types';
 import { IDataService } from '../services/dataService';
 
 interface SettingsProps {
@@ -18,11 +18,16 @@ interface SettingsProps {
   expenses: Expense[];
   activities: Activity[];
   onImportData: (data: BackupData) => void;
+  onImportContactsCSV: (csvText: string) => void; // CSV Import
   backendConfig: BackendConfig;
   onUpdateBackendConfig: (config: BackendConfig) => void;
   dataService: IDataService;
   invoiceConfig: InvoiceConfig;
   onUpdateInvoiceConfig: (config: InvoiceConfig) => void;
+  emailTemplates: EmailTemplate[];
+  onAddTemplate: (t: EmailTemplate) => void;
+  onUpdateTemplate: (t: EmailTemplate) => void;
+  onDeleteTemplate: (id: string) => void;
 }
 
 // Haupt-Sektion (Das "Übermenü")
@@ -134,11 +139,16 @@ export const Settings: React.FC<SettingsProps> = ({
   expenses,
   activities,
   onImportData,
+  onImportContactsCSV,
   backendConfig,
   onUpdateBackendConfig,
   dataService,
   invoiceConfig,
-  onUpdateInvoiceConfig
+  onUpdateInvoiceConfig,
+  emailTemplates,
+  onAddTemplate,
+  onUpdateTemplate,
+  onDeleteTemplate
 }) => {
   const isDark = currentTheme === 'dark';
   const [formData, setFormData] = useState<UserProfile>(userProfile);
@@ -163,13 +173,26 @@ export const Settings: React.FC<SettingsProps> = ({
   const [editPresetTitle, setEditPresetTitle] = useState('');
   const [editPresetValue, setEditPresetValue] = useState('');
   
+  // Template States
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [templateForm, setTemplateForm] = useState({ title: '', subject: '', body: '' });
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const csvInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => setFormData(userProfile), [userProfile]);
   useEffect(() => setLocalPresets(productPresets), [productPresets]);
   useEffect(() => setBackendForm(backendConfig), [backendConfig]);
-  useEffect(() => setInvConfigForm(invoiceConfig), [invoiceConfig]);
+  
+  // Only update invoice config form if the prop changes significantly (avoids overwriting local edits on parent re-renders)
+  useEffect(() => {
+      // Basic check to see if we should sync props to state
+      if (invoiceConfig.companyName !== invConfigForm.companyName && !invConfigForm.companyName) {
+           setInvConfigForm(invoiceConfig);
+      }
+  }, [invoiceConfig]);
 
   useEffect(() => {
     const loadIntegrations = async () => {
@@ -199,18 +222,24 @@ export const Settings: React.FC<SettingsProps> = ({
       const file = e.target.files?.[0];
       if (!file) return;
 
-      if (file.size > 1024 * 1024) { // Limit 1MB
-          alert("Das Logo darf maximal 1MB groß sein.");
+      // Limit auf 5MB erhöht
+      if (file.size > 5 * 1024 * 1024) { 
+          alert(`Die Datei "${file.name}" ist zu groß (${(file.size / 1024 / 1024).toFixed(2)} MB). Bitte wählen Sie ein Bild unter 5 MB.`);
+          e.target.value = ''; // Reset input
           return;
       }
 
       const reader = new FileReader();
-      reader.onload = (event) => {
-          setInvConfigForm(prev => ({ ...prev, logoBase64: event.target?.result as string }));
+      reader.onloadend = () => {
+          const result = reader.result;
+          if (typeof result === 'string') {
+              setInvConfigForm(prev => ({ ...prev, logoBase64: result }));
+          }
       };
       reader.readAsDataURL(file);
-      // Reset input
-      if (logoInputRef.current) logoInputRef.current.value = '';
+      
+      // Reset input value to allow re-selection
+      e.target.value = '';
   };
 
   const handleToggleCalendar = async () => {
@@ -284,6 +313,7 @@ export const Settings: React.FC<SettingsProps> = ({
           invoiceConfig: invConfigForm,
           userProfile: formData,
           productPresets: localPresets,
+          emailTemplates: emailTemplates,
           theme: currentTheme,
           timestamp: new Date().toISOString(),
           version: '1.0'
@@ -298,6 +328,7 @@ export const Settings: React.FC<SettingsProps> = ({
   };
 
   const handleImportClick = () => { if (fileInputRef.current) fileInputRef.current.click(); };
+  const handleCSVClick = () => { if (csvInputRef.current) csvInputRef.current.click(); };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
@@ -313,6 +344,45 @@ export const Settings: React.FC<SettingsProps> = ({
           if (fileInputRef.current) fileInputRef.current.value = '';
       };
       reader.readAsText(file);
+  };
+
+  const handleCSVChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (event) => {
+          const text = event.target?.result as string;
+          if (text) onImportContactsCSV(text);
+          if (csvInputRef.current) csvInputRef.current.value = '';
+      };
+      reader.readAsText(file);
+  };
+
+  // --- TEMPLATE LOGIC ---
+  const openTemplateModal = (template?: EmailTemplate) => {
+      if (template) {
+          setEditingTemplateId(template.id);
+          setTemplateForm({ title: template.title, subject: template.subject, body: template.body });
+      } else {
+          setEditingTemplateId(null);
+          setTemplateForm({ title: '', subject: '', body: '' });
+      }
+      setIsTemplateModalOpen(true);
+  };
+
+  const saveTemplate = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!templateForm.title || !templateForm.subject) return;
+      
+      const newTemplate: EmailTemplate = {
+          id: editingTemplateId || Math.random().toString(36).substr(2, 9),
+          title: templateForm.title,
+          subject: templateForm.subject,
+          body: templateForm.body
+      };
+
+      editingTemplateId ? onUpdateTemplate(newTemplate) : onAddTemplate(newTemplate);
+      setIsTemplateModalOpen(false);
   };
 
   const generateApiKey = () => {
@@ -403,7 +473,13 @@ export const Settings: React.FC<SettingsProps> = ({
             <SubSection title="Rechnungsvorlage" isDark={isDark} defaultOpen={false}>
                 <div className="space-y-6">
                     <div className="flex items-start gap-6">
-                        <div className={`w-32 h-32 rounded-lg border-2 border-dashed flex flex-col items-center justify-center cursor-pointer hover:bg-slate-50 transition-colors relative overflow-hidden ${isDark ? 'border-slate-700 hover:bg-slate-800' : 'border-slate-200'}`} onClick={() => logoInputRef.current?.click()}>
+                        <div 
+                            className={`w-32 h-32 rounded-lg border-2 border-dashed flex flex-col items-center justify-center cursor-pointer hover:bg-slate-50 transition-colors relative overflow-hidden ${isDark ? 'border-slate-700 hover:bg-slate-800' : 'border-slate-200'}`} 
+                            onClick={(e) => {
+                                e.preventDefault();
+                                logoInputRef.current?.click();
+                            }}
+                        >
                             {invConfigForm.logoBase64 ? (
                                 <img src={invConfigForm.logoBase64} alt="Logo" className="w-full h-full object-contain" />
                             ) : (
@@ -412,8 +488,15 @@ export const Settings: React.FC<SettingsProps> = ({
                                     <span className="text-xs text-slate-400">Logo Upload</span>
                                 </>
                             )}
-                            <input type="file" ref={logoInputRef} onChange={handleLogoUpload} accept="image/*" className="hidden" />
                         </div>
+                        {/* Moved INPUT out of the CLICK container to avoid bubbling issues */}
+                        <input 
+                            type="file" 
+                            ref={logoInputRef} 
+                            onChange={handleLogoUpload} 
+                            accept="image/*" 
+                            className="hidden" 
+                        />
                         <div className="flex-1 space-y-4">
                             <div>
                                 <label className={labelClass}>Firmenname</label>
@@ -496,6 +579,26 @@ export const Settings: React.FC<SettingsProps> = ({
                     <div className="flex-1"><label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">Neues Produkt</label><input type="text" value={newPresetTitle} onChange={(e) => setNewPresetTitle(e.target.value)} className={`text-sm ${inputClass}`} /></div>
                     <div className="w-32"><label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">Preis</label><input type="number" value={newPresetValue} onChange={(e) => setNewPresetValue(e.target.value)} className={`text-sm ${inputClass}`} /></div>
                     <button onClick={handleAddPreset} disabled={!newPresetTitle || !newPresetValue} className="bg-indigo-600 hover:bg-indigo-700 text-white p-2 rounded-lg"><Plus className="w-5 h-5" /></button>
+                </div>
+            </SubSection>
+
+            <SubSection title="E-Mail Vorlagen" isDark={isDark}>
+                <div className="space-y-4">
+                    {emailTemplates.map(tpl => (
+                        <div key={tpl.id} className={`p-4 rounded-lg border ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
+                            <div className="flex justify-between items-start mb-2">
+                                <h4 className="font-bold text-sm">{tpl.title}</h4>
+                                <div className="flex gap-2">
+                                    <button onClick={() => openTemplateModal(tpl)} className="text-slate-400 hover:text-indigo-600"><Pencil className="w-3.5 h-3.5" /></button>
+                                    <button onClick={() => onDeleteTemplate(tpl.id)} className="text-slate-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
+                                </div>
+                            </div>
+                            <p className="text-xs text-slate-500 truncate">{tpl.subject}</p>
+                        </div>
+                    ))}
+                    <button onClick={() => openTemplateModal()} className="w-full py-2 border border-dashed border-slate-300 rounded-lg text-slate-500 text-sm hover:bg-slate-50 flex items-center justify-center gap-2">
+                        <Plus className="w-4 h-4" /> Neue Vorlage erstellen
+                    </button>
                 </div>
             </SubSection>
         </SettingsSection>
@@ -637,16 +740,24 @@ export const Settings: React.FC<SettingsProps> = ({
             </SubSection>
 
              {/* 5. Datenverwaltung (ehemals eigener Block) */}
-            <SubSection title="Backup & Wiederherstellung" isDark={isDark} defaultOpen={false}>
+            <SubSection title="Datenverwaltung" isDark={isDark} defaultOpen={false}>
                  <div className="flex flex-col md:flex-row gap-4">
+                    {/* Backup Export */}
                     <div className={`flex-1 p-4 rounded-xl border flex flex-col items-center justify-center text-center gap-3 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
                         <div className="p-3 bg-indigo-100 text-indigo-600 rounded-full"><Download className="w-5 h-5" /></div>
                         <button onClick={handleExport} className="mt-1 w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium">Backup herunterladen</button>
                     </div>
+                    {/* Backup Import */}
                     <div className={`flex-1 p-4 rounded-xl border flex flex-col items-center justify-center text-center gap-3 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
                         <div className="p-3 bg-emerald-100 text-emerald-600 rounded-full"><Upload className="w-5 h-5" /></div>
                         <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".json" className="hidden" />
                         <button onClick={handleImportClick} className="mt-1 w-full py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-medium">Backup einspielen</button>
+                    </div>
+                    {/* CSV Import */}
+                    <div className={`flex-1 p-4 rounded-xl border flex flex-col items-center justify-center text-center gap-3 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
+                        <div className="p-3 bg-blue-100 text-blue-600 rounded-full"><Users className="w-5 h-5" /></div>
+                        <input type="file" ref={csvInputRef} onChange={handleCSVChange} accept=".csv" className="hidden" />
+                        <button onClick={handleCSVClick} className="mt-1 w-full py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-medium">Kontakt-CSV Importieren</button>
                     </div>
                 </div>
             </SubSection>
@@ -666,6 +777,36 @@ export const Settings: React.FC<SettingsProps> = ({
             </button>
         </div>
       </main>
+
+      {/* Template Modal */}
+      {isTemplateModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden">
+                  <div className="px-6 py-4 border-b bg-slate-50 flex justify-between">
+                      <h2 className="font-bold">{editingTemplateId ? 'Vorlage bearbeiten' : 'Neue Vorlage'}</h2>
+                      <button onClick={() => setIsTemplateModalOpen(false)}><X className="w-5 h-5" /></button>
+                  </div>
+                  <form onSubmit={saveTemplate} className="p-6 space-y-4">
+                      <div className="space-y-1">
+                          <label className="text-xs font-semibold text-slate-500 uppercase">Name der Vorlage</label>
+                          <input required value={templateForm.title} onChange={(e) => setTemplateForm({...templateForm, title: e.target.value})} className={inputClass} placeholder="z.B. Angebot Standard" />
+                      </div>
+                      <div className="space-y-1">
+                          <label className="text-xs font-semibold text-slate-500 uppercase">Betreff</label>
+                          <input required value={templateForm.subject} onChange={(e) => setTemplateForm({...templateForm, subject: e.target.value})} className={inputClass} />
+                      </div>
+                      <div className="space-y-1">
+                          <label className="text-xs font-semibold text-slate-500 uppercase">Nachricht</label>
+                          <textarea required value={templateForm.body} onChange={(e) => setTemplateForm({...templateForm, body: e.target.value})} rows={6} className={inputClass} />
+                      </div>
+                      <div className="flex justify-end pt-2 gap-2">
+                          <button type="button" onClick={() => setIsTemplateModalOpen(false)} className="px-4 py-2 border rounded hover:bg-slate-50">Abbrechen</button>
+                          <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">Speichern</button>
+                      </div>
+                  </form>
+              </div>
+          </div>
+      )}
     </div>
   );
 };
