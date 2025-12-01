@@ -328,9 +328,17 @@ export const Settings: React.FC<SettingsProps> = ({
   };
 
   const handleSaveAll = () => {
+    // Basic Client ID Validation/Cleanup
+    if (backendForm.googleClientId) {
+        const cleanedId = backendForm.googleClientId.trim();
+        if (cleanedId !== backendForm.googleClientId) {
+            setBackendForm(prev => ({...prev, googleClientId: cleanedId}));
+        }
+    }
+
     onUpdateProfile(formData);
     onUpdatePresets(localPresets);
-    onUpdateBackendConfig(backendForm);
+    onUpdateBackendConfig(backendForm); // This saves the cleaned ID
     onUpdateInvoiceConfig(invConfigForm);
 
     setShowSaved(true);
@@ -562,10 +570,20 @@ export const Settings: React.FC<SettingsProps> = ({
                             <input 
                                 type="text"
                                 value={backendForm.googleClientId || ''}
-                                onChange={(e) => setBackendForm({...backendForm, googleClientId: e.target.value})}
+                                onChange={(e) => {
+                                    // Remove spaces on paste/type
+                                    const cleaned = e.target.value.trim();
+                                    setBackendForm({...backendForm, googleClientId: cleaned});
+                                }}
                                 className={inputClass}
                                 placeholder="z.B. 123456789-abc...apps.googleusercontent.com"
                             />
+                            {backendForm.googleClientId && !backendForm.googleClientId.endsWith('apps.googleusercontent.com') && (
+                                <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                                    <AlertTriangle className="w-3 h-3" />
+                                    Das sieht nicht wie eine gültige Client ID aus (sollte auf ...apps.googleusercontent.com enden).
+                                </p>
+                            )}
                         </div>
                     </div>
                 </SubSection>

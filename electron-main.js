@@ -54,12 +54,19 @@ function createWindow() {
     mainWindow.loadURL(APP_URL);
   }
 
-  // Externe Links im Standard-Browser öffnen, nicht in der App
+  // WICHTIG: Fenster-Management für OAuth Popups
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    // 1. Google Login Popups MÜSSEN in der App bleiben, damit der Token zurückkommt
+    if (url.includes('accounts.google.com') || url.includes('googleusercontent.com')) {
+        return { action: 'allow' };
+    }
+
+    // 2. Alle anderen externen Links (LinkedIn, Firmenwebseite etc.) im Standard-Browser öffnen
     if (url.startsWith('http')) {
       shell.openExternal(url);
       return { action: 'deny' };
     }
+    
     return { action: 'allow' };
   });
 
