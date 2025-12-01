@@ -1,8 +1,14 @@
-
 import React, { useState, useEffect, useRef } from 'react';
-import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle, Key, RefreshCw, Copy, FileText, Image as ImageIcon, Briefcase, Settings as SettingsIcon, HardDrive, Users } from 'lucide-react';
+import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle, Key, RefreshCw, Copy, FileText, Image as ImageIcon, Briefcase, Settings as SettingsIcon, HardDrive, Users, CloudDownload, RefreshCcw, Sparkles } from 'lucide-react';
 import { UserProfile, Theme, ProductPreset, Contact, Deal, Task, BackupData, BackendConfig, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate } from '../types';
 import { IDataService } from '../services/dataService';
+
+// Fix for Electron's window.require
+declare global {
+  interface Window {
+    require: any;
+  }
+}
 
 interface SettingsProps {
   userProfile: UserProfile;
@@ -157,6 +163,9 @@ export const Settings: React.FC<SettingsProps> = ({
   // Invoice Config Form
   const [invConfigForm, setInvConfigForm] = useState<InvoiceConfig>(invoiceConfig);
   
+  // AI Config
+  const [geminiKey, setGeminiKey] = useState('');
+
   // Integration States
   const [isCalendarConnected, setIsCalendarConnected] = useState(false);
   const [isMailConnected, setIsMailConnected] = useState(false);
@@ -178,6 +187,11 @@ export const Settings: React.FC<SettingsProps> = ({
   const [templateForm, setTemplateForm] = useState({ title: '', subject: '', body: '' });
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
 
+  // Update States
+  const [updateUrl, setUpdateUrl] = useState(localStorage.getItem('update_url') || '');
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState('');
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const csvInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -186,9 +200,12 @@ export const Settings: React.FC<SettingsProps> = ({
   useEffect(() => setLocalPresets(productPresets), [productPresets]);
   useEffect(() => setBackendForm(backendConfig), [backendConfig]);
   
-  // Only update invoice config form if the prop changes significantly (avoids overwriting local edits on parent re-renders)
   useEffect(() => {
-      // Basic check to see if we should sync props to state
+      const storedKey = localStorage.getItem('gemini_api_key');
+      if (storedKey) setGeminiKey(storedKey);
+  }, []);
+
+  useEffect(() => {
       if (invoiceConfig.companyName !== invConfigForm.companyName && !invConfigForm.companyName) {
            setInvConfigForm(invoiceConfig);
       }
@@ -222,10 +239,9 @@ export const Settings: React.FC<SettingsProps> = ({
       const file = e.target.files?.[0];
       if (!file) return;
 
-      // Limit auf 5MB erhöht
       if (file.size > 5 * 1024 * 1024) { 
           alert(`Die Datei "${file.name}" ist zu groß (${(file.size / 1024 / 1024).toFixed(2)} MB). Bitte wählen Sie ein Bild unter 5 MB.`);
-          e.target.value = ''; // Reset input
+          e.target.value = ''; 
           return;
       }
 
@@ -237,8 +253,6 @@ export const Settings: React.FC<SettingsProps> = ({
           }
       };
       reader.readAsDataURL(file);
-      
-      // Reset input value to allow re-selection
       e.target.value = '';
   };
 
@@ -358,7 +372,6 @@ export const Settings: React.FC<SettingsProps> = ({
       reader.readAsText(file);
   };
 
-  // --- TEMPLATE LOGIC ---
   const openTemplateModal = (template?: EmailTemplate) => {
       if (template) {
           setEditingTemplateId(template.id);
@@ -397,8 +410,103 @@ export const Settings: React.FC<SettingsProps> = ({
       }
   };
 
+  // --- UPDATE MECHANISM ---
+  const handleCheckUpdate = async () => {
+      if (!updateUrl) {
+          alert("Bitte geben Sie eine URL an.");
+          return;
+      }
+      
+      // Speichere URL für später
+      localStorage.setItem('update_url', updateUrl);
+      
+      setIsUpdating(true);
+      setUpdateStatus('Prüfe URL...');
+
+      try {
+          // 1. Fetch index.html to verify and parse
+          // Ensure URL ends with / if it's a folder, or handle exact index.html link
+          let baseUrl = updateUrl.replace(/\/index\.html$/, '').replace(/\/$/, '');
+          const indexUrl = `${baseUrl}/index.html`;
+
+          const indexResponse = await fetch(indexUrl, { cache: 'no-store' });
+          if (!indexResponse.ok) throw new Error("Konnte index.html nicht laden");
+          const indexHtml = await indexResponse.text();
+
+          setUpdateStatus('Analysiere Version...');
+          
+          // 2. Extract asset filenames (stupid regex parsing, effective for Vite builds)
+          // Look for src="/assets/..." or href="/assets/..."
+          // Note: In Vite build, it's usually ./assets/ or /assets/
+          const assetRegex = /["'](?:\.?\/)?assets\/([^"']+)["']/g;
+          const matches = [...indexHtml.matchAll(assetRegex)];
+          const assets = matches.map(m => m[1]); // filenames only
+          
+          const uniqueAssets = [...new Set(assets)];
+          console.log("Found assets:", uniqueAssets);
+
+          if (uniqueAssets.length === 0) {
+              // Maybe it's not a vite build or path is different.
+              // Warning only.
+              setUpdateStatus("Warnung: Keine Assets gefunden. Fahre fort...");
+          }
+
+          setUpdateStatus(`Lade ${uniqueAssets.length + 1} Dateien...`);
+
+          const filesToInstall = [];
+          
+          // Add Index.html
+          filesToInstall.push({ name: 'index.html', content: indexHtml, type: 'root' });
+
+          // Fetch all assets
+          for (const asset of uniqueAssets) {
+               setUpdateStatus(`Lade Asset: ${asset}...`);
+               const assetRes = await fetch(`${baseUrl}/assets/${asset}`);
+               if (assetRes.ok) {
+                   const content = await assetRes.text();
+                   filesToInstall.push({ name: asset, content: content, type: 'asset' });
+               } else {
+                   console.warn(`Failed to fetch asset ${asset}`);
+               }
+          }
+
+          setUpdateStatus('Installiere Update...');
+          
+          // Send to Electron
+          if (window.require) {
+              const { ipcRenderer } = window.require('electron');
+              const result = await ipcRenderer.invoke('install-update', filesToInstall);
+              
+              if (result.success) {
+                  setUpdateStatus('Update erfolgreich! Neustart...');
+                  setTimeout(() => {
+                      ipcRenderer.invoke('restart-app');
+                  }, 1500);
+              } else {
+                  throw new Error(result.error || "Unbekannter Fehler beim Schreiben");
+              }
+          } else {
+              throw new Error("Electron Umgebung nicht gefunden.");
+          }
+
+      } catch (e: any) {
+          console.error(e);
+          setUpdateStatus(`Fehler: ${e.message}`);
+          setIsUpdating(false);
+      }
+  };
+
+  const handleResetUpdate = async () => {
+      if (confirm("Dies setzt die App auf die Originalversion zurück. Fortfahren?")) {
+          if (window.require) {
+              const { ipcRenderer } = window.require('electron');
+              await ipcRenderer.invoke('reset-update');
+              ipcRenderer.invoke('restart-app');
+          }
+      }
+  };
+
   const handleSaveAll = () => {
-    // Basic Client ID Validation/Cleanup
     if (backendForm.googleClientId) {
         const cleanedId = backendForm.googleClientId.trim();
         if (cleanedId !== backendForm.googleClientId) {
@@ -406,9 +514,15 @@ export const Settings: React.FC<SettingsProps> = ({
         }
     }
 
+    if (geminiKey) {
+        localStorage.setItem('gemini_api_key', geminiKey.trim());
+    } else {
+        localStorage.removeItem('gemini_api_key');
+    }
+
     onUpdateProfile(formData);
     onUpdatePresets(localPresets);
-    onUpdateBackendConfig(backendForm); // This saves the cleaned ID
+    onUpdateBackendConfig(backendForm); 
     onUpdateInvoiceConfig(invConfigForm);
 
     setShowSaved(true);
@@ -428,7 +542,7 @@ export const Settings: React.FC<SettingsProps> = ({
     <div className={`flex-1 h-screen overflow-y-auto ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`}>
       <header className={`px-8 py-6 border-b ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
         <h1 className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-slate-800'}`}>Einstellungen</h1>
-        <p className="text-slate-500 text-sm mt-1">Konfigurieren Sie Ihr CRM, Backend und API Verbindungen.</p>
+        <p className="text-slate-500 text-sm mt-1">Konfigurieren Sie Ihre CRM, Backend und API Verbindungen.</p>
       </header>
 
       <main className="max-w-3xl mx-auto p-8 space-y-6 pb-20">
@@ -489,7 +603,6 @@ export const Settings: React.FC<SettingsProps> = ({
                                 </>
                             )}
                         </div>
-                        {/* Moved INPUT out of the CLICK container to avoid bubbling issues */}
                         <input 
                             type="file" 
                             ref={logoInputRef} 
@@ -603,16 +716,67 @@ export const Settings: React.FC<SettingsProps> = ({
             </SubSection>
         </SettingsSection>
 
-        {/* SYSTEM & VERBINDUNGEN (Zusammengeführt) */}
+        {/* SYSTEM & VERBINDUNGEN */}
         <SettingsSection 
             title="System & Verbindungen" 
             icon={SettingsIcon} 
             isDark={isDark} 
-            description="Backend, API-Integrationen und Datensicherung."
+            description="Backend, Updates und Datensicherung."
             defaultOpen={false}
         >
-            {/* 1. Speichermodus */}
-            <SubSection title="Speichermodus" isDark={isDark} defaultOpen={true}>
+            <SubSection title="Software Update" isDark={isDark} defaultOpen={true}>
+                 <div className="space-y-4">
+                     {!window.require ? (
+                         <div className="p-4 bg-orange-50 border border-orange-100 rounded-lg text-sm text-orange-800 flex items-start gap-2">
+                            <AlertTriangle className="w-5 h-5 shrink-0" />
+                            <div>
+                                <strong>Browser-Modus aktiv</strong>
+                                <p className="mt-1 text-xs">Updates funktionieren nur in der Desktop-App (Electron).</p>
+                            </div>
+                        </div>
+                     ) : (
+                         <>
+                            <p className="text-sm text-slate-600">
+                                Hier können Sie die App aktualisieren, ohne sie neu installieren zu müssen. 
+                                Geben Sie die URL zu Ihrem Webserver an, auf dem die neuen Dateien liegen (z.B. GitHub Pages).
+                            </p>
+                            
+                            <div className="flex gap-2">
+                                <input 
+                                    type="text" 
+                                    value={updateUrl} 
+                                    onChange={(e) => setUpdateUrl(e.target.value)} 
+                                    placeholder="https://mein-server.de/crm-update/" 
+                                    className={`${inputClass} font-mono text-sm`}
+                                />
+                                <button 
+                                    onClick={handleCheckUpdate} 
+                                    disabled={isUpdating || !updateUrl}
+                                    className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2 shrink-0"
+                                >
+                                    {isUpdating ? <Loader2 className="w-4 h-4 animate-spin"/> : <CloudDownload className="w-4 h-4"/>}
+                                    {isUpdating ? 'Lädt...' : 'Prüfen'}
+                                </button>
+                            </div>
+
+                            {updateStatus && (
+                                <div className={`p-3 rounded-lg text-sm font-mono ${updateStatus.includes('Fehler') ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-700'}`}>
+                                    {updateStatus}
+                                </div>
+                            )}
+
+                            <div className="pt-2 border-t border-slate-100">
+                                <button onClick={handleResetUpdate} className="text-xs text-red-500 hover:underline flex items-center gap-1">
+                                    <RefreshCcw className="w-3 h-3"/> Auf Werkseinstellungen zurücksetzen
+                                </button>
+                            </div>
+                         </>
+                     )}
+                 </div>
+            </SubSection>
+
+            {/* Speichermodus */}
+            <SubSection title="Speichermodus" isDark={isDark} defaultOpen={false}>
                  <div className="grid grid-cols-2 gap-4">
                     <button 
                         onClick={() => setBackendForm({...backendForm, mode: 'local'})}
@@ -646,19 +810,10 @@ export const Settings: React.FC<SettingsProps> = ({
                 </div>
             </SubSection>
 
-            {/* 2. Google OAuth (Nur bei Lokal relevant) */}
+            {/* Google OAuth */}
             {backendForm.mode === 'local' && (
                 <SubSection title="Google OAuth Setup" isDark={isDark} defaultOpen={false}>
                     <div className="space-y-4">
-                        {isPreviewEnv && (
-                                <div className="p-4 bg-orange-50 border border-orange-100 rounded-lg text-sm text-orange-800 flex items-start gap-2">
-                                <AlertTriangle className="w-5 h-5 shrink-0" />
-                                <div>
-                                    <strong>Vorschau-Modus erkannt</strong>
-                                    <p className="mt-1 text-xs">Google OAuth ist in der Preview eingeschränkt.</p>
-                                </div>
-                                </div>
-                        )}
                         <div className="p-4 bg-blue-50 border border-blue-100 rounded-lg text-sm text-blue-800">
                                 <strong>Setup Anleitung</strong>
                                 <div className="mt-2 text-xs space-y-1">
@@ -674,25 +829,44 @@ export const Settings: React.FC<SettingsProps> = ({
                                 type="text"
                                 value={backendForm.googleClientId || ''}
                                 onChange={(e) => {
-                                    // Remove spaces on paste/type
                                     const cleaned = e.target.value.trim();
                                     setBackendForm({...backendForm, googleClientId: cleaned});
                                 }}
                                 className={inputClass}
                                 placeholder="z.B. 123456789-abc...apps.googleusercontent.com"
                             />
-                            {backendForm.googleClientId && !backendForm.googleClientId.endsWith('apps.googleusercontent.com') && (
-                                <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
-                                    <AlertTriangle className="w-3 h-3" />
-                                    Das sieht nicht wie eine gültige Client ID aus (sollte auf ...apps.googleusercontent.com enden).
-                                </p>
-                            )}
                         </div>
                     </div>
                 </SubSection>
             )}
 
-            {/* 3. API Zugriff für Drittanbieter */}
+            {/* AI Konfiguration */}
+            <SubSection title="KI & Analyse Features" isDark={isDark} defaultOpen={false}>
+                 <div className="space-y-4">
+                     <div className="flex items-start gap-3">
+                         <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg mt-1"><Sparkles className="w-5 h-5" /></div>
+                         <div>
+                             <p className="text-sm font-medium mb-1">Google Gemini API Key</p>
+                             <p className="text-xs text-slate-500 mb-2">
+                                 Wird benötigt für das tägliche "Smart Insight" Briefing auf dem Dashboard. 
+                                 Der Schlüssel wird nur lokal gespeichert.
+                             </p>
+                             <input 
+                                type="password"
+                                value={geminiKey}
+                                onChange={(e) => setGeminiKey(e.target.value)}
+                                className={inputClass}
+                                placeholder="AIzaSy..."
+                             />
+                             <div className="mt-2 text-xs text-slate-400">
+                                 Kostenlosen Key hier erstellen: <a href="https://aistudio.google.com/app/apikey" target="_blank" className="underline text-indigo-500">Google AI Studio</a>
+                             </div>
+                         </div>
+                     </div>
+                 </div>
+            </SubSection>
+
+            {/* API Zugriff */}
             <SubSection title="API Zugriff (Drittanbieter)" isDark={isDark} defaultOpen={false}>
                  <div className="space-y-2">
                     <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
@@ -706,7 +880,7 @@ export const Settings: React.FC<SettingsProps> = ({
                 </div>
             </SubSection>
 
-            {/* 4. Aktive Integrationen (ehemals eigener Block) */}
+            {/* Verbundene Dienste */}
             <SubSection title="Verbundene Dienste" isDark={isDark} defaultOpen={false}>
                 <div className="space-y-4">
                     <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-slate-50 transition-colors bg-white">
@@ -739,21 +913,18 @@ export const Settings: React.FC<SettingsProps> = ({
                 </div>
             </SubSection>
 
-             {/* 5. Datenverwaltung (ehemals eigener Block) */}
+             {/* Datenverwaltung */}
             <SubSection title="Datenverwaltung" isDark={isDark} defaultOpen={false}>
                  <div className="flex flex-col md:flex-row gap-4">
-                    {/* Backup Export */}
                     <div className={`flex-1 p-4 rounded-xl border flex flex-col items-center justify-center text-center gap-3 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
                         <div className="p-3 bg-indigo-100 text-indigo-600 rounded-full"><Download className="w-5 h-5" /></div>
                         <button onClick={handleExport} className="mt-1 w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium">Backup herunterladen</button>
                     </div>
-                    {/* Backup Import */}
                     <div className={`flex-1 p-4 rounded-xl border flex flex-col items-center justify-center text-center gap-3 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
                         <div className="p-3 bg-emerald-100 text-emerald-600 rounded-full"><Upload className="w-5 h-5" /></div>
                         <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".json" className="hidden" />
                         <button onClick={handleImportClick} className="mt-1 w-full py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-medium">Backup einspielen</button>
                     </div>
-                    {/* CSV Import */}
                     <div className={`flex-1 p-4 rounded-xl border flex flex-col items-center justify-center text-center gap-3 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
                         <div className="p-3 bg-blue-100 text-blue-600 rounded-full"><Users className="w-5 h-5" /></div>
                         <input type="file" ref={csvInputRef} onChange={handleCSVChange} accept=".csv" className="hidden" />
