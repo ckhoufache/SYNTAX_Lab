@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useRef } from 'react';
-import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle, Key, RefreshCw, Copy, FileText, Image as ImageIcon, Briefcase, Settings as SettingsIcon, HardDrive, Users, CloudDownload, RefreshCcw, Sparkles } from 'lucide-react';
+import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle, Key, RefreshCw, Copy, FileText, Image as ImageIcon, Briefcase, Settings as SettingsIcon, HardDrive, Users, DownloadCloud, RefreshCcw, Sparkles } from 'lucide-react';
 import { UserProfile, Theme, ProductPreset, Contact, Deal, Task, BackupData, BackendConfig, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate } from '../types';
 import { IDataService } from '../services/dataService';
 
@@ -754,7 +755,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                     disabled={isUpdating || !updateUrl}
                                     className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2 shrink-0"
                                 >
-                                    {isUpdating ? <Loader2 className="w-4 h-4 animate-spin"/> : <CloudDownload className="w-4 h-4"/>}
+                                    {isUpdating ? <Loader2 className="w-4 h-4 animate-spin"/> : <DownloadCloud className="w-4 h-4"/>}
                                     {isUpdating ? 'Lädt...' : 'Prüfen'}
                                 </button>
                             </div>
@@ -981,3 +982,4 @@ export const Settings: React.FC<SettingsProps> = ({
     </div>
   );
 };
+    
