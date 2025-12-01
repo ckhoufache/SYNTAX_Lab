@@ -1,4 +1,3 @@
-
 import { Contact, Deal, Task, UserProfile, ProductPreset, Theme, BackendConfig, BackendMode, BackupData, Invoice, Expense, InvoiceConfig, Activity } from '../types';
 import { mockContacts, mockDeals, mockTasks, mockInvoices, mockExpenses } from './mockData';
 
@@ -227,7 +226,7 @@ class LocalDataService implements IDataService {
 
     async getTasks(): Promise<Task[]> {
         const isCalConnected = this.getIntegrationStatusSync('calendar');
-        if (isCalConnected && this.accessToken && !this.isPreviewEnv) {
+        if (isCalConnected && this.accessToken) {
             this.syncWithGoogleCalendar().catch(console.error);
         }
         return this.cache.tasks || [];
@@ -236,14 +235,10 @@ class LocalDataService implements IDataService {
         let taskToSave = { ...task };
         const isCalConnected = this.getIntegrationStatusSync('calendar');
         if (isCalConnected && this.accessToken) {
-            if (this.isPreviewEnv) {
-                console.log("[MOCK] Created Google Calendar Event for:", task.title);
-            } else {
-                try {
-                    const eventId = await this.createGoogleCalendarEvent(task);
-                    if (eventId) taskToSave.googleEventId = eventId;
-                } catch (err) { console.error("Calendar Sync Error", err); }
-            }
+            try {
+                const eventId = await this.createGoogleCalendarEvent(task);
+                if (eventId) taskToSave.googleEventId = eventId;
+            } catch (err) { console.error("Calendar Sync Error", err); }
         }
         const list = this.cache.tasks || [];
         const newList = [taskToSave, ...list];
@@ -261,7 +256,7 @@ class LocalDataService implements IDataService {
         const taskToDelete = list.find(t => t.id === id);
         if (taskToDelete && taskToDelete.googleEventId) {
             const isCalConnected = this.getIntegrationStatusSync('calendar');
-            if (isCalConnected && this.accessToken && !this.isPreviewEnv) {
+            if (isCalConnected && this.accessToken) {
                 try { await this.deleteGoogleCalendarEvent(taskToDelete.googleEventId); } catch (e) { console.error(e); }
             }
         }
@@ -343,7 +338,7 @@ class LocalDataService implements IDataService {
     // Generische Funktion für OAuth Request
     async connectGoogle(service: 'calendar' | 'mail', clientIdOverride?: string): Promise<boolean> {
         // Wenn bereits ein globaler Token existiert (durch Login), nutzen wir diesen
-        if (this.accessToken && !this.isPreviewEnv) {
+        if (this.accessToken) {
              localStorage.setItem(`google_${service}_connected`, 'true');
              return true;
         }
@@ -352,23 +347,7 @@ class LocalDataService implements IDataService {
     
     // Globale Login Funktion (Holt alle Rechte auf einmal)
     async loginWithGoogle(): Promise<UserProfile | null> {
-        if (this.isPreviewEnv) {
-            // Mock Login
-            const mockToken = "mock_token_" + Math.random().toString(36);
-            this.accessToken = mockToken;
-            localStorage.setItem('google_access_token', mockToken);
-            localStorage.setItem('google_calendar_connected', 'true');
-            localStorage.setItem('google_mail_connected', 'true');
-            await new Promise(r => setTimeout(r, 800));
-            return {
-                firstName: 'Demo',
-                lastName: 'User',
-                email: 'demo@google.com',
-                role: 'Admin',
-                avatar: 'https://ui-avatars.com/api/?name=Demo+User&background=random'
-            };
-        }
-
+        // Force Real Login - NO MOCK
         // Request ALL scopes at once for full login
         const scopes = [
             'https://www.googleapis.com/auth/userinfo.profile',
@@ -407,7 +386,7 @@ class LocalDataService implements IDataService {
     }
 
     async logout(): Promise<void> {
-        if (this.accessToken && window.google && !this.isPreviewEnv) {
+        if (this.accessToken && window.google) {
             try {
                 window.google.accounts.oauth2.revoke(this.accessToken, () => {});
             } catch(e) {}
@@ -440,7 +419,7 @@ class LocalDataService implements IDataService {
                         if (resp.error) {
                             console.error("OAuth Error:", resp);
                             if (resp.error.includes('origin_mismatch')) {
-                                alert(`Google Error 400: Origin Mismatch.\n\nBitte fügen Sie '${window.location.origin}' in der Google Cloud Console zu den 'Authorized JavaScript origins' hinzu.`);
+                                alert(`Google Error 400: Origin Mismatch.\n\nBitte stellen Sie sicher, dass Sie die Desktop-App über 'npm run electron' starten, damit der interne Server auf http://localhost:3000 läuft.`);
                             } else {
                                 alert(`Fehler bei der Google Anmeldung: ${resp.error}`);
                             }
@@ -596,7 +575,6 @@ class LocalDataService implements IDataService {
     }
 
     async sendMail(to: string, subject: string, body: string): Promise<boolean> {
-        if (this.isPreviewEnv) { await new Promise(r => setTimeout(r, 1000)); return true; }
         if (!this.accessToken) { alert("Keine Verbindung zu Google."); return false; }
         const utf8Subject = `=?utf-8?B?${btoa(unescape(encodeURIComponent(subject)))}?=`;
         const messageParts = [ `To: ${to}`, `Subject: ${utf8Subject}`, "Content-Type: text/plain; charset=utf-8", "MIME-Version: 1.0", "", body ];
