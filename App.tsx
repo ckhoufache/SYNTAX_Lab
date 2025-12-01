@@ -119,10 +119,12 @@ const App: React.FC = () => {
     localStorage.setItem('theme', theme);
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
+      document.documentElement.style.colorScheme = 'dark';
       document.body.style.backgroundColor = '#0f172a';
       document.body.style.color = '#f8fafc';
     } else {
       document.documentElement.classList.remove('dark');
+      document.documentElement.style.colorScheme = 'light';
       document.body.style.backgroundColor = '#f8fafc';
       document.body.style.color = '#1e293b';
     }
@@ -627,6 +629,7 @@ const App: React.FC = () => {
             focusedId={focusedContactId}
             onClearFocus={() => setFocusedContactId(null)}
             emailTemplates={emailTemplates}
+            onImportCSV={handleImportContactsCSV}
           />
         );
       case 'pipeline':
@@ -694,7 +697,6 @@ const App: React.FC = () => {
             expenses={expenses}
             activities={activities}
             onImportData={handleImportData}
-            onImportContactsCSV={handleImportContactsCSV} // CSV Import Handler passed
             backendConfig={backendConfig}
             onUpdateBackendConfig={setBackendConfig}
             dataService={dataService}

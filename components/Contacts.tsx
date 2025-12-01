@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Search, Filter, MoreHorizontal, Mail, Phone, Plus, Linkedin, X, FileText, Pencil, Trash, Clock, Check, Send, Briefcase, Banknote, Calendar, Building, Globe } from 'lucide-react';
+import { Search, Filter, MoreHorizontal, Mail, Phone, Plus, Linkedin, X, FileText, Pencil, Trash, Clock, Check, Send, Briefcase, Banknote, Calendar, Building, Globe, Upload } from 'lucide-react';
 import { Contact, Activity, ActivityType, EmailTemplate } from '../types';
 import { DataServiceFactory } from '../services/dataService'; 
 
@@ -16,6 +16,7 @@ interface ContactsProps {
   focusedId: string | null;
   onClearFocus: () => void;
   emailTemplates?: EmailTemplate[];
+  onImportCSV: (csvText: string) => void;
 }
 
 export const Contacts: React.FC<ContactsProps> = ({ 
@@ -29,7 +30,8 @@ export const Contacts: React.FC<ContactsProps> = ({
   onClearFilter,
   focusedId,
   onClearFocus,
-  emailTemplates
+  emailTemplates,
+  onImportCSV
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -59,6 +61,9 @@ export const Contacts: React.FC<ContactsProps> = ({
   // State für Timeline (Neue Aktivität)
   const [newActivityType, setNewActivityType] = useState<ActivityType>('note');
   const [newActivityContent, setNewActivityContent] = useState('');
+  
+  // File Input Ref für CSV Import
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Extract unique values for filter dropdowns
   const availableCompanies = useMemo(() => Array.from(new Set(contacts.map(c => c.company))).sort(), [contacts]);
@@ -136,6 +141,18 @@ export const Contacts: React.FC<ContactsProps> = ({
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+  };
+  
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (event) => {
+          const text = event.target?.result as string;
+          if (text) onImportCSV(text);
+          if (fileInputRef.current) fileInputRef.current.value = '';
+      };
+      reader.readAsText(file);
   };
 
   const openCreateModal = () => {
@@ -329,9 +346,15 @@ export const Contacts: React.FC<ContactsProps> = ({
           <h1 className="text-2xl font-bold text-slate-800">Kontakte</h1>
           <p className="text-slate-500 text-sm mt-1">Verwalten Sie Ihre Kunden und Leads.</p>
         </div>
-        <button onClick={openCreateModal} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors shadow-sm">
-          <Plus className="w-4 h-4" /> Kontakt hinzufügen
-        </button>
+        <div className="flex gap-3">
+             <input type="file" ref={fileInputRef} hidden accept=".csv" onChange={handleFileChange} />
+             <button onClick={() => fileInputRef.current?.click()} className="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors shadow-sm">
+                <Upload className="w-4 h-4" /> CSV Import
+             </button>
+             <button onClick={openCreateModal} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors shadow-sm">
+                <Plus className="w-4 h-4" /> Kontakt hinzufügen
+             </button>
+        </div>
       </header>
 
       {/* Toolbar */}

@@ -758,7 +758,7 @@ export const Tasks: React.FC<TasksProps> = ({
                             onChange={(e) => setFormData({...formData, title: e.target.value})}
                             type="text" 
                             placeholder="Was ist zu tun?" 
-                            className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                            className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
                         />
                     </div>
 
@@ -768,7 +768,7 @@ export const Tasks: React.FC<TasksProps> = ({
                             <select 
                                 value={formData.type}
                                 onChange={(e) => setFormData({...formData, type: e.target.value as any})}
-                                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
                             >
                                 <option value="call">Anruf</option>
                                 <option value="email">E-Mail</option>
@@ -781,7 +781,7 @@ export const Tasks: React.FC<TasksProps> = ({
                             <select 
                                 value={formData.priority}
                                 onChange={(e) => setFormData({...formData, priority: e.target.value as any})}
-                                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
                             >
                                 <option value="low">Niedrig</option>
                                 <option value="medium">Mittel</option>
@@ -798,7 +798,7 @@ export const Tasks: React.FC<TasksProps> = ({
                                     type="checkbox"
                                     checked={formData.isAllDay}
                                     onChange={(e) => setFormData({...formData, isAllDay: e.target.checked})}
-                                    className="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 dark:bg-slate-800"
+                                    className="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 dark:bg-slate-700"
                                 />
                                 Ganztägig
                              </label>
@@ -808,7 +808,7 @@ export const Tasks: React.FC<TasksProps> = ({
                             type="date"
                             value={formData.dueDate}
                             onChange={(e) => setFormData({...formData, dueDate: e.target.value})}
-                            className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                            className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
                         />
                     </div>
 
@@ -820,7 +820,7 @@ export const Tasks: React.FC<TasksProps> = ({
                                     type="time"
                                     value={formData.startTime}
                                     onChange={(e) => setFormData({...formData, startTime: e.target.value})}
-                                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
                                 />
                              </div>
                              <div className="space-y-1">
@@ -829,7 +829,7 @@ export const Tasks: React.FC<TasksProps> = ({
                                     type="time"
                                     value={formData.endTime}
                                     onChange={(e) => setFormData({...formData, endTime: e.target.value})}
-                                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
                                 />
                              </div>
                         </div>
