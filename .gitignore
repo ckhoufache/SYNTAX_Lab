@@ -1,0 +1,37 @@
+# Dependencies (Bibliotheken nicht hochladen)
+node_modules
+.pnp
+.pnp.js
+
+# Testing
+coverage
+
+# Production Build Ordner
+dist
+release
+hot_update
+
+# Systemdateien (Mac/Windows Müll)
+.DS_Store
+Thumbs.db
+
+# Environment Variables (Sicherheit)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs
+*.njsproj
+*.sln
+*.sw?
