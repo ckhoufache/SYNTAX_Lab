@@ -1,6 +1,6 @@
 
 import React, { useState, DragEvent } from 'react';
-import { Deal, DealStage, Contact, ProductPreset, Task, Invoice } from '../types';
+import { Deal, DealStage, Contact, ProductPreset, Task, Invoice, Activity } from '../types';
 import { Plus, MoreHorizontal, DollarSign, X, Calendar, Trash2, User, Filter, Eye, EyeOff, Package, Pencil, Search } from 'lucide-react';
 
 interface PipelineProps {
@@ -19,6 +19,7 @@ interface PipelineProps {
   onClearFocus: () => void;
   onAddInvoice: (invoice: Invoice) => void;
   invoices: Invoice[];
+  onAddActivity: (activity: Activity) => void;
 }
 
 export const Pipeline: React.FC<PipelineProps> = ({ 
@@ -36,7 +37,8 @@ export const Pipeline: React.FC<PipelineProps> = ({
   focusedDealId,
   onClearFocus,
   onAddInvoice,
-  invoices
+  invoices,
+  onAddActivity
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDealId, setEditingDealId] = useState<string | null>(null);

@@ -1,5 +1,5 @@
 
-import { Contact, Deal, Task, UserProfile, ProductPreset, Theme, BackendConfig, BackendMode, BackupData, Invoice, Expense, InvoiceConfig } from '../types';
+import { Contact, Deal, Task, UserProfile, ProductPreset, Theme, BackendConfig, BackendMode, BackupData, Invoice, Expense, InvoiceConfig, Activity } from '../types';
 import { mockContacts, mockDeals, mockTasks, mockInvoices, mockExpenses } from './mockData';
 
 // Declare Google Types globally for TS
@@ -20,6 +20,11 @@ export interface IDataService {
     saveContact(contact: Contact): Promise<Contact>;
     updateContact(contact: Contact): Promise<Contact>;
     deleteContact(id: string): Promise<void>;
+
+    // Activities (Timeline)
+    getActivities(): Promise<Activity[]>;
+    saveActivity(activity: Activity): Promise<Activity>;
+    deleteActivity(id: string): Promise<void>;
 
     // Deals
     getDeals(): Promise<Deal[]>;
@@ -61,6 +66,10 @@ export interface IDataService {
     disconnectGoogle(service: 'calendar' | 'mail'): Promise<boolean>;
     getIntegrationStatus(service: 'calendar' | 'mail'): Promise<boolean>;
     
+    // Auth
+    loginWithGoogle(): Promise<UserProfile | null>;
+    logout(): Promise<void>;
+    
     // Actions
     sendMail(to: string, subject: string, body: string): Promise<boolean>;
 }
@@ -74,6 +83,7 @@ class LocalDataService implements IDataService {
     // OPTIMIZATION: In-Memory Cache to avoid JSON.parse on every read
     private cache: {
         contacts: Contact[] | null;
+        activities: Activity[] | null;
         deals: Deal[] | null;
         tasks: Task[] | null;
         invoices: Invoice[] | null;
@@ -83,6 +93,7 @@ class LocalDataService implements IDataService {
         invoiceConfig: InvoiceConfig | null;
     } = {
         contacts: null,
+        activities: null,
         deals: null,
         tasks: null,
         invoices: null,
@@ -114,8 +125,10 @@ class LocalDataService implements IDataService {
         if (!localStorage.getItem('tasks')) localStorage.setItem('tasks', JSON.stringify(mockTasks));
         if (!localStorage.getItem('invoices')) localStorage.setItem('invoices', JSON.stringify(mockInvoices));
         if (!localStorage.getItem('expenses')) localStorage.setItem('expenses', JSON.stringify(mockExpenses));
+        if (!localStorage.getItem('activities')) localStorage.setItem('activities', JSON.stringify([]));
 
         this.cache.contacts = this.getFromStorage<Contact[]>('contacts', []);
+        this.cache.activities = this.getFromStorage<Activity[]>('activities', []);
         this.cache.deals = this.getFromStorage<Deal[]>('deals', []);
         this.cache.tasks = this.getFromStorage<Task[]>('tasks', []);
         this.cache.invoices = this.getFromStorage<Invoice[]>('invoices', []);
@@ -177,6 +190,20 @@ class LocalDataService implements IDataService {
         const list = this.cache.contacts || [];
         const newList = list.filter(c => c.id !== id);
         this.set('contacts', 'contacts', newList);
+    }
+
+    // --- ACTIVITIES ---
+    async getActivities(): Promise<Activity[]> { return this.cache.activities || []; }
+    async saveActivity(activity: Activity): Promise<Activity> {
+        const list = this.cache.activities || [];
+        const newList = [activity, ...list];
+        this.set('activities', 'activities', newList);
+        return activity;
+    }
+    async deleteActivity(id: string): Promise<void> {
+        const list = this.cache.activities || [];
+        const newList = list.filter(a => a.id !== id);
+        this.set('activities', 'activities', newList);
     }
 
     async getDeals(): Promise<Deal[]> { return this.cache.deals || []; }
@@ -313,19 +340,88 @@ class LocalDataService implements IDataService {
         return false;
     }
 
+    // Generische Funktion für OAuth Request
     async connectGoogle(service: 'calendar' | 'mail', clientIdOverride?: string): Promise<boolean> {
+        // Wenn bereits ein globaler Token existiert (durch Login), nutzen wir diesen
+        if (this.accessToken && !this.isPreviewEnv) {
+             localStorage.setItem(`google_${service}_connected`, 'true');
+             return true;
+        }
+        return this.requestGoogleScopes(service === 'calendar' ? 'https://www.googleapis.com/auth/calendar.events' : 'https://www.googleapis.com/auth/gmail.send', clientIdOverride);
+    }
+    
+    // Globale Login Funktion (Holt alle Rechte auf einmal)
+    async loginWithGoogle(): Promise<UserProfile | null> {
         if (this.isPreviewEnv) {
+            // Mock Login
             const mockToken = "mock_token_" + Math.random().toString(36);
             this.accessToken = mockToken;
             localStorage.setItem('google_access_token', mockToken);
-            localStorage.setItem(`google_${service}_connected`, 'true'); 
+            localStorage.setItem('google_calendar_connected', 'true');
+            localStorage.setItem('google_mail_connected', 'true');
             await new Promise(r => setTimeout(r, 800));
-            return true;
+            return {
+                firstName: 'Demo',
+                lastName: 'User',
+                email: 'demo@google.com',
+                role: 'Admin',
+                avatar: 'https://ui-avatars.com/api/?name=Demo+User&background=random'
+            };
         }
 
+        // Request ALL scopes at once for full login
+        const scopes = [
+            'https://www.googleapis.com/auth/userinfo.profile',
+            'https://www.googleapis.com/auth/userinfo.email',
+            'https://www.googleapis.com/auth/calendar.events',
+            'https://www.googleapis.com/auth/gmail.compose',
+            'https://www.googleapis.com/auth/gmail.send'
+        ].join(' ');
+
+        const success = await this.requestGoogleScopes(scopes);
+        if (success && this.accessToken) {
+            // Fetch User Info
+            try {
+                const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                    headers: { 'Authorization': `Bearer ${this.accessToken}` }
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    // Mark everything as connected
+                    localStorage.setItem('google_calendar_connected', 'true');
+                    localStorage.setItem('google_mail_connected', 'true');
+                    
+                    const profile: UserProfile = {
+                        firstName: data.given_name || 'User',
+                        lastName: data.family_name || '',
+                        email: data.email,
+                        role: 'Admin',
+                        avatar: data.picture || ''
+                    };
+                    await this.saveUserProfile(profile);
+                    return profile;
+                }
+            } catch (e) { console.error("UserInfo Fetch Error", e); }
+        }
+        return null;
+    }
+
+    async logout(): Promise<void> {
+        if (this.accessToken && window.google && !this.isPreviewEnv) {
+            try {
+                window.google.accounts.oauth2.revoke(this.accessToken, () => {});
+            } catch(e) {}
+        }
+        this.accessToken = null;
+        localStorage.removeItem('google_access_token');
+        localStorage.removeItem('google_calendar_connected');
+        localStorage.removeItem('google_mail_connected');
+    }
+
+    private async requestGoogleScopes(scope: string, clientIdOverride?: string): Promise<boolean> {
         const effectiveClientId = clientIdOverride || this.googleClientId;
         if (!effectiveClientId) {
-            alert("Bitte geben Sie zuerst Ihre Google Client ID in den Backend-Konfigurationen ein.");
+            alert("Bitte geben Sie zuerst Ihre Google Client ID in den Einstellungen ein.");
             return false;
         }
 
@@ -339,7 +435,7 @@ class LocalDataService implements IDataService {
             try {
                 const client = window.google.accounts.oauth2.initTokenClient({
                     client_id: effectiveClientId,
-                    scope: 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.send',
+                    scope: scope,
                     callback: (resp: any) => {
                         if (resp.error) {
                             console.error("OAuth Error:", resp);
@@ -354,7 +450,6 @@ class LocalDataService implements IDataService {
                         if (resp.access_token) {
                             this.accessToken = resp.access_token;
                             localStorage.setItem('google_access_token', resp.access_token);
-                            localStorage.setItem(`google_${service}_connected`, 'true');
                             resolve(true);
                         } else {
                             resolve(false);
@@ -371,16 +466,8 @@ class LocalDataService implements IDataService {
 
     async disconnectGoogle(service: 'calendar' | 'mail'): Promise<boolean> {
         localStorage.setItem(`google_${service}_connected`, 'false');
-        if (this.accessToken && window.google && !this.isPreviewEnv) {
-            try {
-                window.google.accounts.oauth2.revoke(this.accessToken, () => {});
-            } catch(e) {}
-        }
-        const otherService = service === 'calendar' ? 'mail' : 'calendar';
-        if (localStorage.getItem(`google_${otherService}_connected`) !== 'true') {
-             this.accessToken = null;
-             localStorage.removeItem('google_access_token');
-        }
+        // We do NOT revoke token here immediately if other service is still connected
+        // But for simplicity in this single-user app, logout handles full revocation
         return true;
     }
 
@@ -537,6 +624,9 @@ class APIDataService implements IDataService {
     saveContact = async (c: Contact) => c;
     updateContact = async (c: Contact) => c;
     deleteContact = async () => {};
+    getActivities = async () => [];
+    saveActivity = async (a: Activity) => a;
+    deleteActivity = async () => {};
     getDeals = async () => [];
     saveDeal = async (d: Deal) => d;
     updateDeal = async (d: Deal) => d;
@@ -563,6 +653,8 @@ class APIDataService implements IDataService {
     disconnectGoogle = async () => true;
     getIntegrationStatus = async () => false;
     sendMail = async () => false;
+    loginWithGoogle = async () => null;
+    logout = async () => {};
 }
 
 // --- Factory ---

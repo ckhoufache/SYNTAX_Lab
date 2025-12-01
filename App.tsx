@@ -8,7 +8,7 @@ import { Settings } from './components/Settings';
 import { Tasks } from './components/Tasks';
 import { Finances } from './components/Finances';
 import { ConfirmDialog } from './components/ConfirmDialog';
-import { ViewState, Contact, Deal, UserProfile, Theme, Task, DealStage, ProductPreset, BackupData, BackendConfig, Invoice, Expense, InvoiceConfig } from './types';
+import { ViewState, Contact, Deal, UserProfile, Theme, Task, DealStage, ProductPreset, BackupData, BackendConfig, Invoice, Expense, InvoiceConfig, Activity } from './types';
 import { DataServiceFactory, IDataService } from './services/dataService';
 import { Loader2 } from 'lucide-react';
 
@@ -27,7 +27,7 @@ const App: React.FC = () => {
   // --- APP STATE ---
   const [isLoading, setIsLoading] = useState(true);
   
-  // OPTIMIZED THEME INITIALIZATION (Prevents flash of wrong theme)
+  // OPTIMIZED THEME INITIALIZATION
   const [theme, setTheme] = useState<Theme>(() => {
       if (typeof window !== 'undefined') {
           return (localStorage.getItem('theme') as Theme) || 'light';
@@ -38,11 +38,15 @@ const App: React.FC = () => {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [productPresets, setProductPresets] = useState<ProductPreset[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]); // HISTORY STATE
   const [deals, setDeals] = useState<Deal[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [invoiceConfig, setInvoiceConfig] = useState<InvoiceConfig | null>(null);
+
+  // Authentication State
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   // Re-Initialize Service when Config changes
   useEffect(() => {
@@ -55,8 +59,9 @@ const App: React.FC = () => {
             await service.init();
             
             // Parallel loading for speed
-            const [c, d, t, i, e, p, presets, invConf] = await Promise.all([
+            const [c, a, d, t, i, e, p, presets, invConf] = await Promise.all([
                 service.getContacts(),
+                service.getActivities(),
                 service.getDeals(),
                 service.getTasks(),
                 service.getInvoices(),
@@ -67,6 +72,7 @@ const App: React.FC = () => {
             ]);
 
             setContacts(c);
+            setActivities(a);
             setDeals(d);
             setTasks(t);
             setInvoices(i);
@@ -74,6 +80,10 @@ const App: React.FC = () => {
             setUserProfile(p);
             setProductPresets(presets);
             setInvoiceConfig(invConf);
+            
+            // Check if user is effectively logged in via Google Token
+            const token = localStorage.getItem('google_access_token');
+            setIsLoggedIn(!!token);
 
         } catch (error) {
             console.error("Failed to load data", error);
@@ -123,8 +133,29 @@ const App: React.FC = () => {
       setContactFilterMode('all');
   };
 
-  // --- DATA MODIFICATION HANDLERS ---
+  // --- AUTH HANDLERS ---
+  const handleLogin = async () => {
+      if (!backendConfig.googleClientId && backendConfig.mode === 'local') {
+          alert("Bitte geben Sie zuerst Ihre Google Client ID in den Einstellungen unter 'System & Verbindungen' ein.");
+          setCurrentView('settings');
+          return;
+      }
+      setIsLoading(true);
+      const profile = await dataService.loginWithGoogle();
+      if (profile) {
+          setUserProfile(profile);
+          setIsLoggedIn(true);
+      }
+      setIsLoading(false);
+  };
 
+  const handleLogout = async () => {
+      await dataService.logout();
+      setIsLoggedIn(false);
+      alert("Sie wurden erfolgreich abgemeldet.");
+  };
+
+  // --- DATA MODIFICATION HANDLERS ---
   const handleUpdateProfile = async (profile: UserProfile) => {
       const updated = await dataService.saveUserProfile(profile);
       setUserProfile(updated);
@@ -140,12 +171,26 @@ const App: React.FC = () => {
       setInvoiceConfig(updated);
   };
 
-  // --- Handlers Contacts ---
+  // --- ACTIVITIES ---
+  const handleAddActivity = async (newActivity: Activity) => {
+      const saved = await dataService.saveActivity(newActivity);
+      setActivities(prev => [saved, ...prev]);
+  };
+
   const handleAddContact = async (newContact: Contact) => {
     const savedContact = await dataService.saveContact(newContact);
     setContacts(prev => [savedContact, ...prev]);
     
-    // Auto-Create Ghost Deal
+    // Log Activity
+    handleAddActivity({
+        id: Math.random().toString(36).substr(2, 9),
+        contactId: savedContact.id,
+        type: 'system_deal',
+        content: 'Kontakt erstellt',
+        date: new Date().toISOString().split('T')[0],
+        timestamp: new Date().toISOString()
+    });
+    
     const ghostDeal: Deal = {
       id: Math.random().toString(36).substr(2, 9),
       title: 'Neuer Lead',
@@ -167,7 +212,6 @@ const App: React.FC = () => {
 
   const onRequestDeleteContact = (contactId: string) => { setDeleteIntent({ type: 'contact', id: contactId }); };
 
-  // --- Handlers Deals ---
   const handleAddDeal = async (newDeal: Deal) => {
     const dealWithDate = { ...newDeal, stageEnteredDate: new Date().toISOString().split('T')[0] };
     const saved = await dataService.saveDeal(dealWithDate);
@@ -175,13 +219,26 @@ const App: React.FC = () => {
   };
 
   const handleUpdateDeal = async (updatedDeal: Deal) => {
+    // Check for Status Change to WON for Logging
+    const oldDeal = deals.find(d => d.id === updatedDeal.id);
+    if (oldDeal && oldDeal.stage !== DealStage.WON && updatedDeal.stage === DealStage.WON) {
+        handleAddActivity({
+            id: Math.random().toString(36).substr(2, 9),
+            contactId: updatedDeal.contactId,
+            type: 'system_deal',
+            content: `Deal gewonnen: ${updatedDeal.title} (${updatedDeal.value} €)`,
+            date: new Date().toISOString().split('T')[0],
+            timestamp: new Date().toISOString(),
+            relatedId: updatedDeal.id
+        });
+    }
+
     await dataService.updateDeal(updatedDeal);
     setDeals(prev => prev.map(d => d.id === updatedDeal.id ? updatedDeal : d));
   };
 
   const onRequestDeleteDeal = (dealId: string) => { setDeleteIntent({ type: 'deal', id: dealId }); };
 
-  // --- Handlers Tasks ---
   const handleAddTask = async (newTask: Task) => {
     const saved = await dataService.saveTask(newTask);
     setTasks(prev => [saved, ...prev]);
@@ -212,11 +269,22 @@ const App: React.FC = () => {
       setTasks(prev => prev.filter(t => t.id !== taskId));
   };
 
-  // --- Handlers Invoices & Expenses ---
   const handleAddInvoice = async (newInvoice: Invoice) => {
       const saved = await dataService.saveInvoice(newInvoice);
       setInvoices(prev => [saved, ...prev]);
+      
+      // Log Activity
+      handleAddActivity({
+          id: Math.random().toString(36).substr(2, 9),
+          contactId: newInvoice.contactId,
+          type: 'system_invoice',
+          content: `Rechnung erstellt: ${newInvoice.invoiceNumber} (${newInvoice.amount} €)`,
+          date: new Date().toISOString().split('T')[0],
+          timestamp: new Date().toISOString(),
+          relatedId: newInvoice.id
+      });
   };
+  
   const handleUpdateInvoice = async (updatedInvoice: Invoice) => {
       await dataService.updateInvoice(updatedInvoice);
       setInvoices(prev => prev.map(i => i.id === updatedInvoice.id ? updatedInvoice : i));
@@ -233,7 +301,6 @@ const App: React.FC = () => {
   };
   const onRequestDeleteExpense = (id: string) => { setDeleteIntent({ type: 'expense', id }); };
 
-  // --- IMPORT / EXPORT ---
   const handleImportData = async (data: BackupData) => {
       if (!confirm("Importieren überschreibt alle aktuellen Daten. Fortfahren?")) return;
       setIsLoading(true);
@@ -243,11 +310,8 @@ const App: React.FC = () => {
           if (data.invoiceConfig) await dataService.saveInvoiceConfig(data.invoiceConfig);
           if (data.theme) setTheme(data.theme);
 
-          // IMPORTANT: Update cache & storage, then state
           if (data.contacts) {
-               // We need to loop because local service is granular, but this is fine for import
-               // For optimized import we would add a bulkSave method, but loop works for now
-               localStorage.setItem('contacts', JSON.stringify(data.contacts)); // Direct write for speed
+               localStorage.setItem('contacts', JSON.stringify(data.contacts)); 
                setContacts(data.contacts);
           }
            if (data.deals) {
@@ -265,6 +329,10 @@ const App: React.FC = () => {
            if (data.expenses) {
               localStorage.setItem('expenses', JSON.stringify(data.expenses));
               setExpenses(data.expenses);
+          }
+          if (data.activities) {
+              localStorage.setItem('activities', JSON.stringify(data.activities));
+              setActivities(data.activities);
           }
           
           window.location.reload(); 
@@ -288,6 +356,9 @@ const App: React.FC = () => {
           const tasksToDelete = tasks.filter(t => t.relatedEntityId === contactId);
           for (const t of tasksToDelete) await dataService.deleteTask(t.id);
           setTasks(prev => prev.filter(t => t.relatedEntityId !== contactId));
+          const actsToDelete = activities.filter(a => a.contactId === contactId);
+          for (const a of actsToDelete) await dataService.deleteActivity(a.id);
+          setActivities(prev => prev.filter(a => a.contactId !== contactId));
 
         } else if (deleteIntent.type === 'deal') {
           await dataService.deleteDeal(deleteIntent.id);
@@ -310,7 +381,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Navigation Logic
   const handleNavigateToContacts = (filter: 'all' | 'recent', focusId?: string) => {
     setContactFilterMode(filter);
     setFocusedContactId(focusId || null);
@@ -360,9 +430,11 @@ const App: React.FC = () => {
         return (
           <Contacts 
             contacts={contacts} 
+            activities={activities}
             onAddContact={handleAddContact} 
             onUpdateContact={handleUpdateContact}
             onDeleteContact={onRequestDeleteContact}
+            onAddActivity={handleAddActivity}
             initialFilter={contactFilterMode}
             onClearFilter={() => setContactFilterMode('all')}
             focusedId={focusedContactId}
@@ -387,6 +459,7 @@ const App: React.FC = () => {
             onClearFocus={() => setFocusedDealId(null)}
             onAddInvoice={handleAddInvoice}
             invoices={invoices}
+            onAddActivity={handleAddActivity}
           />
         );
       case 'tasks':
@@ -413,6 +486,7 @@ const App: React.FC = () => {
             onUpdateExpense={handleUpdateExpense}
             onDeleteExpense={onRequestDeleteExpense}
             invoiceConfig={invoiceConfig}
+            onAddActivity={handleAddActivity}
           />
         );
       case 'settings':
@@ -429,6 +503,7 @@ const App: React.FC = () => {
             tasks={tasks}
             invoices={invoices}
             expenses={expenses}
+            activities={activities}
             onImportData={handleImportData}
             backendConfig={backendConfig}
             onUpdateBackendConfig={setBackendConfig}
@@ -443,7 +518,14 @@ const App: React.FC = () => {
 
   return (
     <div className={`flex w-full h-screen ${theme === 'dark' ? 'bg-slate-900 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
-      <Sidebar currentView={currentView} onChangeView={handleChangeView} userProfile={userProfile} theme={theme} />
+      <Sidebar 
+        currentView={currentView} 
+        onChangeView={handleChangeView} 
+        userProfile={isLoggedIn ? userProfile : null} 
+        theme={theme}
+        onLogin={handleLogin}
+        onLogout={handleLogout}
+      />
       <div className="flex-1 flex flex-col h-screen overflow-hidden relative">
         {renderView()}
         <ConfirmDialog 

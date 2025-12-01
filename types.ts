@@ -48,6 +48,18 @@ export interface Contact {
   notes?: string;
 }
 
+export type ActivityType = 'note' | 'call' | 'email' | 'meeting' | 'system_deal' | 'system_invoice';
+
+export interface Activity {
+    id: string;
+    contactId: string;
+    type: ActivityType;
+    content: string; // "Hat Rechnung 2025-101 erhalten" oder "Notiz: Kunde will Rabatt"
+    date: string; // YYYY-MM-DD
+    timestamp: string; // ISO String für Sortierung
+    relatedId?: string; // ID von Deal oder Invoice
+}
+
 export interface Deal {
   id: string;
   title: string;
@@ -125,6 +137,7 @@ export interface BackupData {
   tasks: Task[];
   invoices: Invoice[];
   expenses: Expense[];
+  activities: Activity[];
   invoiceConfig: InvoiceConfig;
   userProfile: UserProfile;
   productPresets: ProductPreset[];

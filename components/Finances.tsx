@@ -1,7 +1,7 @@
 
 import React, { useState, useRef } from 'react';
 import { Plus, X, Trash2, CheckCircle2, AlertTriangle, Info, Calendar, Download, Upload, Filter, PieChart as PieChartIcon, Clock, TrendingUp, TrendingDown, PiggyBank, Printer, Paperclip } from 'lucide-react';
-import { Invoice, Contact, Expense, InvoiceConfig } from '../types';
+import { Invoice, Contact, Expense, InvoiceConfig, Activity } from '../types';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 interface FinancesProps {
@@ -17,6 +17,7 @@ interface FinancesProps {
     onUpdateExpense: (expense: Expense) => void;
     onDeleteExpense: (id: string) => void;
     invoiceConfig: InvoiceConfig;
+    onAddActivity: (activity: Activity) => void;
 }
 
 export const Finances: React.FC<FinancesProps> = ({
@@ -29,7 +30,8 @@ export const Finances: React.FC<FinancesProps> = ({
     onAddExpense,
     onUpdateExpense,
     onDeleteExpense,
-    invoiceConfig
+    invoiceConfig,
+    onAddActivity
 }) => {
     // TABS
     const [activeTab, setActiveTab] = useState<'income' | 'expenses'>('income');

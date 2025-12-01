@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle, Key, RefreshCw, Copy, FileText, Image as ImageIcon, Briefcase, Settings as SettingsIcon, HardDrive } from 'lucide-react';
-import { UserProfile, Theme, ProductPreset, Contact, Deal, Task, BackupData, BackendConfig, Invoice, Expense, InvoiceConfig } from '../types';
+import { UserProfile, Theme, ProductPreset, Contact, Deal, Task, BackupData, BackendConfig, Invoice, Expense, InvoiceConfig, Activity } from '../types';
 import { IDataService } from '../services/dataService';
 
 interface SettingsProps {
@@ -16,6 +16,7 @@ interface SettingsProps {
   tasks: Task[];
   invoices: Invoice[];
   expenses: Expense[];
+  activities: Activity[];
   onImportData: (data: BackupData) => void;
   backendConfig: BackendConfig;
   onUpdateBackendConfig: (config: BackendConfig) => void;
@@ -131,6 +132,7 @@ export const Settings: React.FC<SettingsProps> = ({
   tasks,
   invoices,
   expenses,
+  activities,
   onImportData,
   backendConfig,
   onUpdateBackendConfig,
@@ -278,7 +280,7 @@ export const Settings: React.FC<SettingsProps> = ({
   
   const handleExport = () => {
       const backup: BackupData = {
-          contacts, deals, tasks, invoices, expenses,
+          contacts, deals, tasks, invoices, expenses, activities,
           invoiceConfig: invConfigForm,
           userProfile: formData,
           productPresets: localPresets,
@@ -594,7 +596,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                 <span className="text-xs text-slate-500">{isCalendarConnected ? 'Verbunden' : 'Nicht verbunden'}</span>
                             </div>
                         </div>
-                        <button onClick={handleToggleCalendar} disabled={!!isConnecting} className="px-3 py-1.5 border rounded-lg text-xs font-medium flex items-center gap-2 hover:bg-slate-100">
+                        <button onClick={handleToggleCalendar} disabled={!!isConnecting || (localStorage.getItem('google_access_token') && !isCalendarConnected)} className="px-3 py-1.5 border rounded-lg text-xs font-medium flex items-center gap-2 hover:bg-slate-100">
                             {isConnecting === 'calendar' && <Loader2 className="w-3 h-3 animate-spin" />}
                             {isCalendarConnected ? 'Trennen' : 'Verbinden'}
                         </button>
@@ -608,7 +610,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                 <span className="text-xs text-slate-500">{isMailConnected ? 'Verbunden' : 'Nicht verbunden'}</span>
                             </div>
                         </div>
-                        <button onClick={handleToggleMail} disabled={!!isConnecting} className="px-3 py-1.5 border rounded-lg text-xs font-medium flex items-center gap-2 hover:bg-slate-100">
+                        <button onClick={handleToggleMail} disabled={!!isConnecting || (localStorage.getItem('google_access_token') && !isMailConnected)} className="px-3 py-1.5 border rounded-lg text-xs font-medium flex items-center gap-2 hover:bg-slate-100">
                             {isConnecting === 'mail' && <Loader2 className="w-3 h-3 animate-spin" />}
                             {isMailConnected ? 'Trennen' : 'Verbinden'}
                         </button>
