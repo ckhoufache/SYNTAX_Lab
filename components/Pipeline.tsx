@@ -2,7 +2,7 @@
 import React, { useState, DragEvent, useMemo } from 'react';
 import { Deal, DealStage, Contact, ProductPreset, Task, Invoice, Activity, InvoiceConfig, EmailTemplate } from '../types';
 import { Plus, MoreHorizontal, DollarSign, X, Calendar, Trash2, User, Filter, Eye, EyeOff, Package, Pencil, Search } from 'lucide-react';
-import { DataServiceFactory } from '../services/dataService';
+import { DataServiceFactory, compileInvoiceTemplate } from '../services/dataService';
 
 interface PipelineProps {
   deals: Deal[];
@@ -141,7 +141,7 @@ export const Pipeline: React.FC<PipelineProps> = ({
         const contactName = contact ? `${contact.name} (${contact.company})` : 'Unbekannt';
         
         // 1. Auto Invoice
-        onAddInvoice({
+        const newInvoice: Invoice = {
             id: Math.random().toString(36).substr(2, 9),
             invoiceNumber: generateNextInvoiceNumber(),
             date: new Date().toISOString().split('T')[0],
@@ -150,7 +150,8 @@ export const Pipeline: React.FC<PipelineProps> = ({
             description: deal.title,
             amount: deal.value,
             isPaid: false
-        });
+        };
+        onAddInvoice(newInvoice);
 
         // 2. Auto Welcome Email (UPDATED to use new Config Structure)
         if (invoiceConfig && invoiceConfig.emailSettings?.welcome?.enabled && contact && contact.email) {
@@ -162,16 +163,56 @@ export const Pipeline: React.FC<PipelineProps> = ({
                  const config = storedConfig ? JSON.parse(storedConfig) : { mode: 'local' };
                  const service = DataServiceFactory.create(config);
                  
-                 const body = welcomeConfig.body.replace('{name}', contact.name.split(' ')[0]);
+                 // Generate PDF content using service
+                 const invoiceHtml = compileInvoiceTemplate(newInvoice, invoiceConfig);
+                 let pdfBase64 = '';
+                 
+                 try {
+                     pdfBase64 = await service.generatePdf(invoiceHtml);
+                 } catch (e) {
+                     console.error("PDF Generation failed", e);
+                 }
+
+                 // Attachments list
+                 const attachments = [...(welcomeConfig.attachments || [])];
+                 if (pdfBase64) {
+                     attachments.push({
+                         name: `Rechnung_${newInvoice.invoiceNumber}.pdf`,
+                         data: pdfBase64,
+                         type: 'application/pdf',
+                         size: 0
+                     });
+                 }
+
+                 // --- PLACEHOLDER REPLACEMENT FOR EMAIL BODY ---
+                 const replacements: Record<string, string> = {
+                    '{name}': contact.name || '',
+                    '{firstName}': contact.name.split(' ')[0] || '',
+                    '{lastName}': contact.name.split(' ').slice(1).join(' ') || '',
+                    '{company}': contact.company || '',
+                    '{invoiceNumber}': newInvoice.invoiceNumber,
+                    '{amount}': newInvoice.amount.toLocaleString('de-DE') + ' €',
+                    '{date}': new Date().toLocaleDateString('de-DE'),
+                    '{myCompany}': invoiceConfig.companyName || ''
+                 };
+
+                 let body = welcomeConfig.body;
+                 let subject = welcomeConfig.subject;
+
+                 for (const [key, value] of Object.entries(replacements)) {
+                     const regex = new RegExp(key, 'g');
+                     body = body.replace(regex, value);
+                     subject = subject.replace(regex, value);
+                 }
                  
                  // Send non-blocking with attachments
-                 service.sendMail(contact.email, welcomeConfig.subject, body, welcomeConfig.attachments).then(success => {
+                 service.sendMail(contact.email, subject, body, attachments).then(success => {
                      if (success) {
                          onAddActivity({
                             id: Math.random().toString(36).substr(2, 9),
                             contactId: contact.id,
                             type: 'email',
-                            content: `Automatische Willkommens-Mail gesendet (${welcomeConfig.attachments?.length ? 'mit Anhängen' : 'ohne Anhänge'})`,
+                            content: `Automatische Willkommens-Mail gesendet (mit Rechnung PDF)`,
                             date: new Date().toISOString().split('T')[0],
                             timestamp: new Date().toISOString()
                         });

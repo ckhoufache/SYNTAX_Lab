@@ -1,5 +1,5 @@
 
-import { Contact, Deal, Task, UserProfile, ProductPreset, Theme, BackendConfig, BackendMode, BackupData, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate, EmailAttachment } from '../types';
+import { Contact, Deal, Task, UserProfile, ProductPreset, Theme, BackendConfig, BackendMode, BackupData, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate, EmailAttachment, DealStage } from '../types';
 import { mockContacts, mockDeals, mockTasks, mockInvoices, mockExpenses } from './mockData';
 
 // Declare Google Types globally for TS
@@ -159,6 +159,57 @@ const DEFAULT_PDF_TEMPLATE = `<!DOCTYPE html>
 </body>
 </html>`;
 
+export const compileInvoiceTemplate = (invoice: Invoice, config: InvoiceConfig) => {
+    if (!config.pdfTemplate) return "<h1>Fehler: Keine Vorlage gefunden</h1>";
+
+    const isStorno = invoice.amount < 0;
+    const isStandardTax = config.taxRule === 'standard';
+    
+    // Calculations
+    const netAmount = invoice.amount;
+    const taxRate = isStandardTax ? 0.19 : 0;
+    const taxAmount = netAmount * taxRate;
+    const grossAmount = netAmount + taxAmount;
+
+    let template = config.pdfTemplate;
+
+    const replacements: Record<string, string> = {
+        '{companyName}': config.companyName || '',
+        '{addressLine1}': config.addressLine1 || '',
+        '{addressLine2}': config.addressLine2 || '',
+        '{email}': config.email || '',
+        '{website}': config.website || '',
+        '{taxId}': config.taxId || '',
+        '{bankName}': config.bankName || '',
+        '{iban}': config.iban || '',
+        '{bic}': config.bic || '',
+        '{footerText}': config.footerText || '',
+        
+        '{invoiceNumber}': invoice.invoiceNumber,
+        '{date}': new Date(invoice.date).toLocaleDateString('de-DE'),
+        '{customerId}': invoice.contactId.substring(0,6).toUpperCase(),
+        '{contactName}': invoice.contactName,
+        '{titlePrefix}': isStorno ? 'Gutschrift' : 'Rechnung',
+        '{description}': invoice.description || 'Dienstleistung',
+        
+        '{netAmount}': netAmount.toLocaleString('de-DE', {minimumFractionDigits: 2}) + ' €',
+        '{taxAmount}': taxAmount.toLocaleString('de-DE', {minimumFractionDigits: 2}) + ' €',
+        '{grossAmount}': grossAmount.toLocaleString('de-DE', {minimumFractionDigits: 2}) + ' €',
+        
+        '{taxLabel}': isStandardTax ? 'Umsatzsteuer 19%' : 'Umsatzsteuer 0% (Kleinunternehmer)',
+        '{taxNote}': !isStandardTax ? 'Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.' : '',
+        '{dueDate}': invoice.date ? new Date(new Date(invoice.date).getTime() + 14 * 24 * 60 * 60 * 1000).toLocaleDateString('de-DE') : 'sofort',
+        '{logoSection}': config.logoBase64 ? `<img src="${config.logoBase64}" style="max-height: 80px; width: auto;" alt="Logo"/>` : `<h1 style="font-size: 24px; font-weight: bold;">${config.companyName}</h1>`
+    };
+
+    // Replace all keys
+    for (const [key, value] of Object.entries(replacements)) {
+        template = template.replace(new RegExp(key, 'g'), value);
+    }
+
+    return template;
+};
+
 // --- Interfaces ---
 export interface IDataService {
     // Initialization
@@ -169,6 +220,7 @@ export interface IDataService {
     saveContact(contact: Contact): Promise<Contact>;
     updateContact(contact: Contact): Promise<Contact>;
     deleteContact(id: string): Promise<void>;
+    importContactsFromCSV(csvText: string): Promise<{ contacts: Contact[], deals: Deal[], activities: Activity[] }>;
 
     // Activities (Timeline)
     getActivities(): Promise<Activity[]>;
@@ -235,6 +287,9 @@ export interface IDataService {
     // System
     checkAndInstallUpdate(url: string, statusCallback?: (status: string) => void): Promise<boolean>;
     
+    // PDF Generation
+    generatePdf(htmlContent: string): Promise<string>; // Returns Base64
+
     // MAINTENANCE
     wipeAllData(): Promise<void>;
 }
@@ -447,6 +502,105 @@ Buchhaltung
         const list = this.cache.contacts || [];
         const newList = list.filter(c => c.id !== id);
         this.set('contacts', 'contacts', newList);
+    }
+    
+    async importContactsFromCSV(csvText: string): Promise<{ contacts: Contact[], deals: Deal[], activities: Activity[] }> {
+        const parseCSV = (str: string) => {
+            const arr: string[][] = [];
+            let quote = false;
+            let row: string[] = [];
+            let val = '';
+            for (let i = 0; i < str.length; i++) {
+                const c = str[i];
+                if (c === '"') { quote = !quote; } 
+                else if (c === ',' && !quote) { row.push(val); val = ''; } 
+                else if (c === '\n' && !quote) {
+                    if (val.endsWith('\r')) val = val.slice(0, -1);
+                    row.push(val); arr.push(row); row = []; val = '';
+                } else if (c !== '\r') { val += c; }
+            }
+            if (row.length > 0 || val) { if (val.endsWith('\r')) val = val.slice(0, -1); row.push(val); arr.push(row); }
+            return arr;
+        };
+
+        const rows = parseCSV(csvText);
+        if (rows.length < 2) throw new Error("Die CSV Datei scheint leer oder ungültig zu sein.");
+        
+        const headers = rows[0].map(h => h.replace(/^"|"$/g, '').trim());
+        const lowerHeaders = headers.map(h => h.toLowerCase());
+        const findCol = (candidates: string[]) => { for (const c of candidates) { const i = lowerHeaders.indexOf(c.toLowerCase()); if (i !== -1) return i; } return -1; };
+        
+        const idx = {
+            fullName: findCol(['fullName', 'Name', 'Full Name', 'Voller Name']),
+            firstName: findCol(['firstName', 'Vorname', 'First Name']),
+            lastName: findCol(['lastName', 'Nachname', 'Last Name']),
+            companyName: findCol(['companyName', 'Company', 'Firma', 'Organization']),
+            companyUrl: findCol(['companyUrl', 'Website', 'Webseite', 'URL']),
+            role: findCol(['title', 'role', 'Position', 'Job Title']),
+            linkedIn: findCol(['linkedInProfileUrl', 'LinkedIn', 'Social']),
+            img: findCol(['profileImageUrl', 'avatar', 'image', 'photo']),
+            summary: findCol(['summary', 'About', 'Info']),
+            location: findCol(['location', 'Ort', 'Stadt']),
+            email: findCol(['emailAddress', 'Email', 'Mail'])
+        };
+
+        const newContacts: Contact[] = [];
+        const newDeals: Deal[] = [];
+        const newActivities: Activity[] = [];
+
+        for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            if (row.length < 2) continue;
+            const getValue = (index: number) => { if (index === -1 || index >= row.length) return ''; return row[index].replace(/^"|"$/g, '').trim(); };
+            const name = getValue(idx.fullName) || (getValue(idx.firstName) + ' ' + getValue(idx.lastName)).trim();
+            if (!name) continue;
+            const contactId = Math.random().toString(36).substr(2, 9);
+            let notes = "";
+            if (getValue(idx.location)) notes += `Standort: ${getValue(idx.location)}\n\n`;
+            if (getValue(idx.summary)) notes += `Summary:\n${getValue(idx.summary)}`;
+
+            const contact: Contact = {
+                id: contactId,
+                name,
+                role: getValue(idx.role) || 'Unbekannt',
+                company: getValue(idx.companyName),
+                companyUrl: getValue(idx.companyUrl),
+                email: getValue(idx.email) || '',
+                linkedin: getValue(idx.linkedIn),
+                avatar: getValue(idx.img) || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
+                lastContact: new Date().toISOString().split('T')[0],
+                notes,
+                type: 'lead'
+            };
+            newContacts.push(contact);
+            await this.saveContact(contact);
+            
+            const activity: Activity = {
+                id: Math.random().toString(36).substr(2, 9),
+                contactId: contactId,
+                type: 'system_deal',
+                content: 'Kontakt importiert (CSV)',
+                date: new Date().toISOString().split('T')[0],
+                timestamp: new Date().toISOString()
+            };
+            newActivities.push(activity);
+            await this.saveActivity(activity);
+
+            const deal: Deal = {
+                id: Math.random().toString(36).substr(2, 9),
+                title: 'Neuer Lead',
+                value: 0,
+                stage: DealStage.LEAD,
+                contactId: contactId,
+                dueDate: new Date().toISOString().split('T')[0],
+                stageEnteredDate: new Date().toISOString().split('T')[0],
+                isPlaceholder: true
+            };
+            newDeals.push(deal);
+            await this.saveDeal(deal);
+        }
+        
+        return { contacts: newContacts, deals: newDeals, activities: newActivities };
     }
 
     // --- ACTIVITIES ---
@@ -1155,6 +1309,22 @@ Buchhaltung
         }
     }
     
+    // --- PDF GENERATION VIA ELECTRON ---
+    async generatePdf(htmlContent: string): Promise<string> {
+        // Only works in Electron
+        if (window.require) {
+            const { ipcRenderer } = window.require('electron');
+            const buffer = await ipcRenderer.invoke('generate-pdf', htmlContent);
+            // Convert Buffer to Base64 String
+            const base64 = btoa(
+                new Uint8Array(buffer)
+                    .reduce((data, byte) => data + String.fromCharCode(byte), '')
+            );
+            return base64;
+        }
+        throw new Error("PDF Generierung ist nur in der Desktop-App verfügbar.");
+    }
+    
     // --- FACTORY RESET ---
     async wipeAllData(): Promise<void> {
         localStorage.clear();
@@ -1172,6 +1342,7 @@ class APIDataService implements IDataService {
     saveContact = async (c: Contact) => c;
     updateContact = async (c: Contact) => c;
     deleteContact = async () => {};
+    importContactsFromCSV = async () => ({ contacts: [], deals: [], activities: [] });
     getActivities = async () => [];
     saveActivity = async (a: Activity) => a;
     deleteActivity = async () => {};
@@ -1210,6 +1381,7 @@ class APIDataService implements IDataService {
     logout = async () => {};
     processDueRetainers = async () => ({ updatedContacts: [], newInvoices: [], newActivities: [] });
     checkAndInstallUpdate = async () => false;
+    generatePdf = async () => "";
     wipeAllData = async () => {};
 }
 

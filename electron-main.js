@@ -23,18 +23,6 @@ function startLocalServer() {
   
   // FIX: Wir löschen beim Start einmalig den Hot-Update Ordner, falls vorhanden,
   // um sicherzustellen, dass nach einem EXE-Rebuild auch wirklich die neue Version läuft.
-  // In einer reinen Prod-Umgebung würde man hier Versionen vergleichen, aber für deinen Fall
-  // ist das der sicherste Weg, um den "alten Cache" loszuwerden.
-  /* 
-  // Alter Code (verursachte das Problem):
-  if (fs.existsSync(hotUpdatePath) && fs.existsSync(path.join(hotUpdatePath, 'index.html'))) {
-    console.log('Serving from Hot-Update folder:', hotUpdatePath);
-    serverApp.use(express.static(hotUpdatePath));
-    // ...
-  } else { ... }
-  */
- 
-  // Neuer Code: Erzwinge immer die interne Version (ignoriere Cache für diesen Build)
   console.log('Force serving from internal dist folder');
   serverApp.use(express.static(path.join(__dirname, 'dist')));
   
@@ -145,6 +133,31 @@ ipcMain.handle('reset-update', async () => {
 ipcMain.handle('restart-app', () => {
   app.relaunch();
   app.exit();
+});
+
+// --- NEU: PDF GENERATOR ---
+ipcMain.handle('generate-pdf', async (event, htmlContent) => {
+    let pdfWindow = new BrowserWindow({ show: false, width: 800, height: 1200 });
+    try {
+        // Load HTML content
+        await pdfWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
+        
+        // Generate PDF
+        const pdfData = await pdfWindow.webContents.printToPDF({
+            printBackground: true,
+            pageSize: 'A4',
+            margins: { top: 0, bottom: 0, left: 0, right: 0 } // CSS handles margins
+        });
+        
+        pdfWindow.close();
+        pdfWindow = null;
+        
+        return pdfData; // Returns Buffer (Uint8Array)
+    } catch (error) {
+        if (pdfWindow) pdfWindow.close();
+        console.error('PDF Generation failed:', error);
+        throw error;
+    }
 });
 
 app.whenReady().then(() => {

@@ -3,6 +3,7 @@ import React, { useState, useRef } from 'react';
 import { Plus, X, Trash2, CheckCircle2, AlertTriangle, Info, Calendar, Download, Upload, Filter, PieChart as PieChartIcon, Clock, TrendingUp, TrendingDown, PiggyBank, Printer, Paperclip, Pencil, RefreshCw, User, Ban } from 'lucide-react';
 import { Invoice, Contact, Expense, InvoiceConfig, Activity } from '../types';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { compileInvoiceTemplate } from '../services/dataService';
 
 interface FinancesProps {
     invoices: Invoice[];
@@ -209,60 +210,6 @@ export const Finances: React.FC<FinancesProps> = ({
         if (win) {
             win.document.write(`<iframe src="${ex.attachment}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
         }
-    };
-
-    // --- TEMPLATE ENGINE ---
-    const compileInvoiceTemplate = (invoice: Invoice, config: InvoiceConfig) => {
-        if (!config.pdfTemplate) return "<h1>Fehler: Keine Vorlage gefunden</h1>";
-
-        const isStorno = invoice.amount < 0;
-        const isStandardTax = config.taxRule === 'standard';
-        
-        // Calculations
-        const netAmount = invoice.amount;
-        const taxRate = isStandardTax ? 0.19 : 0;
-        const taxAmount = netAmount * taxRate;
-        const grossAmount = netAmount + taxAmount;
-
-        let template = config.pdfTemplate;
-
-        const replacements: Record<string, string> = {
-            '{companyName}': config.companyName || '',
-            '{addressLine1}': config.addressLine1 || '',
-            '{addressLine2}': config.addressLine2 || '',
-            '{email}': config.email || '',
-            '{website}': config.website || '',
-            '{taxId}': config.taxId || '',
-            '{bankName}': config.bankName || '',
-            '{iban}': config.iban || '',
-            '{bic}': config.bic || '',
-            '{footerText}': config.footerText || '',
-            
-            '{invoiceNumber}': invoice.invoiceNumber,
-            '{date}': new Date(invoice.date).toLocaleDateString('de-DE'),
-            '{customerId}': invoice.contactId.substring(0,6).toUpperCase(), // Mock Customer ID
-            '{contactName}': invoice.contactName,
-            '{titlePrefix}': isStorno ? 'Gutschrift' : 'Rechnung',
-            '{description}': invoice.description || 'Dienstleistung',
-            
-            '{netAmount}': netAmount.toLocaleString('de-DE', {minimumFractionDigits: 2}) + ' €',
-            '{taxAmount}': taxAmount.toLocaleString('de-DE', {minimumFractionDigits: 2}) + ' €',
-            '{grossAmount}': grossAmount.toLocaleString('de-DE', {minimumFractionDigits: 2}) + ' €',
-            
-            '{taxLabel}': isStandardTax ? 'Umsatzsteuer 19%' : 'Umsatzsteuer 0% (Kleinunternehmer)',
-            '{taxNote}': !isStandardTax ? 'Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.' : '',
-            '{dueDate}': invoice.date ? new Date(new Date(invoice.date).getTime() + 14 * 24 * 60 * 60 * 1000).toLocaleDateString('de-DE') : 'sofort',
-            
-            // Logo Logic: If logo exists, create img tag, else empty
-            '{logoSection}': config.logoBase64 ? `<img src="${config.logoBase64}" style="max-height: 80px; width: auto;" alt="Logo"/>` : `<h1 style="font-size: 24px; font-weight: bold;">${config.companyName}</h1>`
-        };
-
-        // Replace all keys
-        for (const [key, value] of Object.entries(replacements)) {
-            template = template.replace(new RegExp(key, 'g'), value);
-        }
-
-        return template;
     };
 
     // --- PRINT ---

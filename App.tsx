@@ -297,14 +297,6 @@ const App: React.FC = () => {
   }, [dataService]);
 
   const handleUpdateDeal = useCallback(async (updatedDeal: Deal) => {
-    // Check if stage changed to won
-    // We need to check existing deal state from the state variable, not closure if possible, 
-    // but here we might rely on the closure of deals. To be safe, we'll fetch inside if needed, or rely on caller context.
-    // Optimization: logic moved to service or kept simple here.
-    
-    // To properly check previous stage we would need 'deals' dependency. 
-    // However, for performance we want to avoid recreating this function on every 'deals' change.
-    // Compromise: We fetch the deal from the current state inside the setter to avoid dependency cycle or stale closure.
     setDeals(currentDeals => {
         const oldDeal = currentDeals.find(d => d.id === updatedDeal.id);
         if (oldDeal && oldDeal.stage !== DealStage.WON && updatedDeal.stage === DealStage.WON) {
@@ -426,104 +418,23 @@ const App: React.FC = () => {
       setIsLoading(false);
   }, [dataService]);
 
-  const parseCSV = (str: string) => {
-    const arr: string[][] = [];
-    let quote = false;
-    let row: string[] = [];
-    let val = '';
-    for (let i = 0; i < str.length; i++) {
-      const c = str[i];
-      if (c === '"') { quote = !quote; } 
-      else if (c === ',' && !quote) { row.push(val); val = ''; } 
-      else if (c === '\n' && !quote) {
-        if (val.endsWith('\r')) val = val.slice(0, -1);
-        row.push(val); arr.push(row); row = []; val = '';
-      } else if (c !== '\r') { val += c; }
-    }
-    if (row.length > 0 || val) { if (val.endsWith('\r')) val = val.slice(0, -1); row.push(val); arr.push(row); }
-    return arr;
-  };
-
+  // --- CSV Import Moved to DataService ---
   const handleImportContactsCSV = useCallback(async (csvText: string) => {
       setIsLoading(true);
       try {
-          const rows = parseCSV(csvText);
-          if (rows.length < 2) { alert("Die CSV Datei scheint leer oder ungültig zu sein."); setIsLoading(false); return; }
-          const headers = rows[0].map(h => h.replace(/^"|"$/g, '').trim());
-          const lowerHeaders = headers.map(h => h.toLowerCase());
-          const findCol = (candidates: string[]) => { for (const c of candidates) { const i = lowerHeaders.indexOf(c.toLowerCase()); if (i !== -1) return i; } return -1; };
-          const idx = {
-              fullName: findCol(['fullName', 'Name', 'Full Name', 'Voller Name']),
-              firstName: findCol(['firstName', 'Vorname', 'First Name']),
-              lastName: findCol(['lastName', 'Nachname', 'Last Name']),
-              companyName: findCol(['companyName', 'Company', 'Firma', 'Organization']),
-              companyUrl: findCol(['companyUrl', 'Website', 'Webseite', 'URL']),
-              role: findCol(['title', 'role', 'Position', 'Job Title']),
-              linkedIn: findCol(['linkedInProfileUrl', 'LinkedIn', 'Social']),
-              img: findCol(['profileImageUrl', 'avatar', 'image', 'photo']),
-              summary: findCol(['summary', 'About', 'Info']),
-              location: findCol(['location', 'Ort', 'Stadt']),
-              email: findCol(['emailAddress', 'Email', 'Mail'])
-          };
-
-          let newContactsCount = 0;
-          const newContacts: Contact[] = [];
-          const newDeals: Deal[] = [];
-          const newActivities: Activity[] = [];
-
-          for (let i = 1; i < rows.length; i++) {
-              const row = rows[i];
-              if (row.length < 2) continue;
-              const getValue = (index: number) => { if (index === -1 || index >= row.length) return ''; return row[index].replace(/^"|"$/g, '').trim(); };
-              const name = getValue(idx.fullName) || (getValue(idx.firstName) + ' ' + getValue(idx.lastName)).trim();
-              if (!name) continue;
-              const contactId = Math.random().toString(36).substr(2, 9);
-              let notes = "";
-              if (getValue(idx.location)) notes += `Standort: ${getValue(idx.location)}\n\n`;
-              if (getValue(idx.summary)) notes += `Summary:\n${getValue(idx.summary)}`;
-
-              newContacts.push({
-                  id: contactId,
-                  name,
-                  role: getValue(idx.role) || 'Unbekannt',
-                  company: getValue(idx.companyName),
-                  companyUrl: getValue(idx.companyUrl),
-                  email: getValue(idx.email) || '',
-                  linkedin: getValue(idx.linkedIn),
-                  avatar: getValue(idx.img) || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
-                  lastContact: new Date().toISOString().split('T')[0],
-                  notes
-              });
-              
-              newActivities.push({
-                  id: Math.random().toString(36).substr(2, 9),
-                  contactId: contactId,
-                  type: 'system_deal',
-                  content: 'Kontakt importiert (CSV)',
-                  date: new Date().toISOString().split('T')[0],
-                  timestamp: new Date().toISOString()
-              });
-
-              newDeals.push({
-                  id: Math.random().toString(36).substr(2, 9),
-                  title: 'Neuer Lead',
-                  value: 0,
-                  stage: DealStage.LEAD,
-                  contactId: contactId,
-                  dueDate: new Date().toISOString().split('T')[0],
-                  stageEnteredDate: new Date().toISOString().split('T')[0],
-                  isPlaceholder: true
-              });
-              newContactsCount++;
-          }
-          for (const c of newContacts) await dataService.saveContact(c);
-          for (const d of newDeals) await dataService.saveDeal(d);
-          for (const a of newActivities) await dataService.saveActivity(a);
-          setContacts(prev => [...newContacts, ...prev]);
-          setDeals(prev => [...newDeals, ...prev]);
-          setActivities(prev => [...newActivities, ...prev]);
-          alert(`${newContactsCount} Kontakte erfolgreich importiert.`);
-      } catch (e) { console.error(e); alert("Fehler beim Importieren der CSV Datei."); } finally { setIsLoading(false); }
+          const result = await dataService.importContactsFromCSV(csvText);
+          
+          setContacts(prev => [...result.contacts, ...prev]);
+          setDeals(prev => [...result.deals, ...prev]);
+          setActivities(prev => [...result.activities, ...prev]);
+          
+          alert(`${result.contacts.length} Kontakte erfolgreich importiert.`);
+      } catch (e: any) {
+          console.error(e);
+          alert(`Fehler beim Importieren: ${e.message}`);
+      } finally {
+          setIsLoading(false);
+      }
   }, [dataService]);
 
   const handleImportData = useCallback(async (data: BackupData) => {

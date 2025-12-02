@@ -23,7 +23,7 @@ interface DashboardProps {
   activities: Activity[]; 
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ 
+export const Dashboard: React.FC<DashboardProps> = React.memo(({ 
   tasks, 
   deals, 
   contacts,
@@ -605,4 +605,4 @@ export const Dashboard: React.FC<DashboardProps> = ({
       )}
     </div>
   );
-};
+});
