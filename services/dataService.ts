@@ -1236,8 +1236,8 @@ Buchhaltung
         try {
             if (statusCallback) statusCallback("Prüfe Version...");
             
-            // Fetch Remote
-            const response = await fetch(`${url}/index.html`, { cache: 'no-store' });
+            // Fetch Remote (with timestamp to bust cache)
+            const response = await fetch(`${url}/index.html?t=${Date.now()}`, { cache: 'no-store' });
             if (!response.ok) throw new Error("Manifest nicht gefunden");
             const remoteHtml = await response.text();
 
@@ -1247,8 +1247,10 @@ Buchhaltung
 
             // Compare Assets
             const extractAssets = (html: string) => {
-                const scriptMatch = html.match(/src="\/assets\/index-([a-zA-Z0-9]+)\.js"/);
-                const cssMatch = html.match(/href="\/assets\/index-([a-zA-Z0-9]+)\.css"/);
+                // More robust regex: finds index-HASH.js/css anywhere
+                // This handles relative paths (./assets/...) and absolute paths (/assets/...)
+                const scriptMatch = html.match(/index-([a-zA-Z0-9]+)\.js/);
+                const cssMatch = html.match(/index-([a-zA-Z0-9]+)\.css/);
                 return {
                     jsHash: scriptMatch ? scriptMatch[1] : null,
                     cssHash: cssMatch ? cssMatch[1] : null
@@ -1257,19 +1259,32 @@ Buchhaltung
             const localAssets = extractAssets(localHtml);
             const remoteAssets = extractAssets(remoteHtml);
 
-            if (localAssets.jsHash === remoteAssets.jsHash && localAssets.cssHash === remoteAssets.cssHash) {
+            // Debug logging
+            console.log('Local Hash:', localAssets);
+            console.log('Remote Hash:', remoteAssets);
+
+            if (localAssets.jsHash && remoteAssets.jsHash && 
+                localAssets.jsHash === remoteAssets.jsHash && 
+                localAssets.cssHash === remoteAssets.cssHash) {
                 return false; // No update
             }
 
             if (statusCallback) statusCallback("Neue Version gefunden. Lade herunter...");
 
              // 1. Parse Assets from Remote HTML
-            const assetFiles = [];
-            const scriptRegex = /src="\/assets\/([^"]+)"/g;
-            const cssRegex = /href="\/assets\/([^"]+)"/g;
+            const assetFiles: string[] = [];
+            
+            // Regex to find files in assets folder (e.g. src="./assets/foo.js" or href="/assets/bar.css")
+            // Captures the filename after assets/
+            const assetRegex = /["'](?:[^"']+\/)?assets\/([^"']+)["']/g;
+            
             let match;
-            while ((match = scriptRegex.exec(remoteHtml)) !== null) assetFiles.push(match[1]);
-            while ((match = cssRegex.exec(remoteHtml)) !== null) assetFiles.push(match[1]);
+            while ((match = assetRegex.exec(remoteHtml)) !== null) {
+                // Avoid duplicates
+                if (!assetFiles.includes(match[1])) {
+                    assetFiles.push(match[1]);
+                }
+            }
 
             // 2. Download Assets
             const downloadedFiles = [];
@@ -1277,7 +1292,8 @@ Buchhaltung
 
             for (const fileName of assetFiles) {
                 if (statusCallback) statusCallback(`Lade ${fileName}...`);
-                const fileRes = await fetch(`${url}/assets/${fileName}`);
+                // Append timestamp to avoid caching old assets during update
+                const fileRes = await fetch(`${url}/assets/${fileName}?t=${Date.now()}`);
                 if (!fileRes.ok) throw new Error(`Fehler beim Laden von ${fileName}`);
                 const content = await fileRes.text();
                 downloadedFiles.push({ name: fileName, content: content, type: 'asset' });
