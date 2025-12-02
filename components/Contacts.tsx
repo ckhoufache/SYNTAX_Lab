@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Search, Filter, MoreHorizontal, Mail, Phone, Plus, Linkedin, X, FileText, Pencil, Trash, Trash2, Clock, Check, Send, Briefcase, Banknote, Calendar, Building, Globe, Upload, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
-import { Contact, Activity, ActivityType, EmailTemplate } from '../types';
+import { Search, Filter, MoreHorizontal, Mail, Phone, Plus, Linkedin, X, FileText, Pencil, Trash, Trash2, Clock, Check, Send, Briefcase, Banknote, Calendar, Building, Globe, Upload, ArrowUpDown, ArrowUp, ArrowDown, TrendingUp, TrendingDown, Percent } from 'lucide-react';
+import { Contact, Activity, ActivityType, EmailTemplate, Invoice, Expense } from '../types';
 import { DataServiceFactory } from '../services/dataService'; 
 
 interface ContactsProps {
@@ -19,6 +19,10 @@ interface ContactsProps {
   emailTemplates?: EmailTemplate[];
   onImportCSV: (csvText: string) => void;
   onBulkDeleteContacts: (ids: string[]) => void;
+  
+  // New props for Financials
+  invoices: Invoice[];
+  expenses: Expense[];
 }
 
 type SortKey = keyof Contact;
@@ -37,7 +41,9 @@ export const Contacts: React.FC<ContactsProps> = ({
   onClearFocus,
   emailTemplates,
   onImportCSV,
-  onBulkDeleteContacts
+  onBulkDeleteContacts,
+  invoices,
+  expenses
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -72,14 +78,19 @@ export const Contacts: React.FC<ContactsProps> = ({
   const availableCompanies = useMemo(() => Array.from(new Set(contacts.map(c => c.company))).sort(), [contacts]);
   const availableRoles = useMemo(() => Array.from(new Set(contacts.map(c => c.role))).sort(), [contacts]);
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<Partial<Contact>>({
     name: '',
     role: '',
     company: '',
     companyUrl: '',
     email: '',
     linkedin: '',
-    notes: '' 
+    notes: '',
+    retainerActive: false,
+    retainerAmount: 0,
+    retainerStartDate: '',
+    retainerNextBilling: '',
+    retainerInterval: 'monthly'
   });
 
   // HELPER: Explicitly close and reset form to avoid state ghosting
@@ -87,7 +98,7 @@ export const Contacts: React.FC<ContactsProps> = ({
       setIsModalOpen(false);
       setEditingContactId(null);
       // Explicitly wipe state
-      setFormData({ name: '', role: '', company: '', companyUrl: '', email: '', linkedin: '', notes: '' });
+      setFormData({ name: '', role: '', company: '', companyUrl: '', email: '', linkedin: '', notes: '', retainerActive: false, retainerAmount: 0, retainerStartDate: '', retainerNextBilling: '', retainerInterval: 'monthly' });
       setNewActivityContent('');
   };
 
@@ -197,9 +208,14 @@ export const Contacts: React.FC<ContactsProps> = ({
       }
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value, type } = e.target as HTMLInputElement;
+    if (type === 'checkbox') {
+        const checked = (e.target as HTMLInputElement).checked;
+        setFormData(prev => ({ ...prev, [name]: checked }));
+    } else {
+        setFormData(prev => ({ ...prev, [name]: value }));
+    }
   };
   
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -216,7 +232,7 @@ export const Contacts: React.FC<ContactsProps> = ({
 
   const openCreateModal = () => {
     setEditingContactId(null);
-    setFormData({ name: '', role: '', company: '', companyUrl: '', email: '', linkedin: '', notes: '' });
+    setFormData({ name: '', role: '', company: '', companyUrl: '', email: '', linkedin: '', notes: '', retainerActive: false, retainerAmount: 0, retainerStartDate: '', retainerNextBilling: '', retainerInterval: 'monthly' });
     setIsModalOpen(true);
   };
 
@@ -229,7 +245,12 @@ export const Contacts: React.FC<ContactsProps> = ({
       companyUrl: contact.companyUrl || '',
       email: contact.email,
       linkedin: contact.linkedin || '',
-      notes: contact.notes || ''
+      notes: contact.notes || '',
+      retainerActive: contact.retainerActive || false,
+      retainerAmount: contact.retainerAmount || 0,
+      retainerStartDate: contact.retainerStartDate || '',
+      retainerNextBilling: contact.retainerNextBilling || '',
+      retainerInterval: contact.retainerInterval || 'monthly'
     });
     setNewActivityContent(''); 
     setIsModalOpen(true);
@@ -249,28 +270,38 @@ export const Contacts: React.FC<ContactsProps> = ({
       if (originalContact) {
         const updatedContact: Contact = {
           ...originalContact,
-          name: formData.name,
+          name: formData.name || '',
           role: formData.role || 'Unbekannt',
-          company: formData.company,
+          company: formData.company || '',
           companyUrl: formData.companyUrl,
-          email: formData.email,
+          email: formData.email || '',
           linkedin: formData.linkedin,
           notes: formData.notes,
+          retainerActive: formData.retainerActive,
+          retainerAmount: Number(formData.retainerAmount),
+          retainerStartDate: formData.retainerStartDate,
+          retainerNextBilling: formData.retainerNextBilling,
+          retainerInterval: formData.retainerInterval as any
         };
         onUpdateContact(updatedContact);
       }
     } else {
       const newContact: Contact = {
         id: Math.random().toString(36).substr(2, 9),
-        name: formData.name,
+        name: formData.name || '',
         role: formData.role || 'Unbekannt',
-        company: formData.company,
+        company: formData.company || '',
         companyUrl: formData.companyUrl,
-        email: formData.email,
+        email: formData.email || '',
         linkedin: formData.linkedin,
         notes: formData.notes,
-        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name)}&background=random`,
-        lastContact: new Date().toISOString().split('T')[0] 
+        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name || '')}&background=random`,
+        lastContact: new Date().toISOString().split('T')[0],
+        retainerActive: formData.retainerActive,
+        retainerAmount: Number(formData.retainerAmount),
+        retainerStartDate: formData.retainerStartDate,
+        retainerNextBilling: formData.retainerNextBilling,
+        retainerInterval: formData.retainerInterval as any
       };
       onAddContact(newContact);
     }
@@ -297,6 +328,26 @@ export const Contacts: React.FC<ContactsProps> = ({
           new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
       );
   };
+
+  // --- FINANCIAL CALCULATION HELPER ---
+  const getProfitability = (contactId: string) => {
+      // 1. Total Revenue (Invoices)
+      const revenue = invoices
+          .filter(i => i.contactId === contactId) // Sum all invoices (paid & unpaid for 'total billed revenue') or filter i.isPaid for 'realized revenue'. Using ALL for now.
+          .reduce((sum, i) => sum + i.amount, 0);
+
+      // 2. Variable Costs (Expenses assigned to this contact)
+      const costs = expenses
+          .filter(e => e.contactId === contactId)
+          .reduce((sum, e) => sum + e.amount, 0);
+
+      // 3. Margin
+      const margin = revenue - costs;
+      const marginPercent = revenue > 0 ? (margin / revenue) * 100 : 0;
+      
+      return { revenue, costs, margin, marginPercent };
+  };
+
 
   const ActivityIcon = ({ type }: { type: ActivityType }) => {
       switch(type) {
@@ -512,11 +563,19 @@ export const Contacts: React.FC<ContactsProps> = ({
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center gap-3">
-                      {contact.linkedin && (
-                        <a href={contact.linkedin} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors" title="LinkedIn Profil"><Linkedin className="w-4 h-4" /></a>
-                      )}
-                      <img src={contact.avatar} alt={contact.name} className="w-9 h-9 rounded-full object-cover ring-2 ring-white" />
-                      <div><p className="text-sm font-semibold text-slate-900">{contact.name}</p><p className="text-xs text-slate-500">{contact.email}</p></div>
+                      <div className="flex items-center gap-2 relative">
+                         <img src={contact.avatar} alt={contact.name} className="w-9 h-9 rounded-full object-cover ring-2 ring-white" />
+                         {contact.linkedin && (
+                            <a href={contact.linkedin} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="p-0.5 text-blue-600 bg-white rounded-full absolute -bottom-1 -right-1 shadow-sm border border-slate-100 hover:scale-110 transition-transform" title="LinkedIn Profil"><Linkedin className="w-3 h-3 fill-current" /></a>
+                         )}
+                      </div>
+                      <div>
+                          <div className="flex items-center gap-2">
+                             <p className="text-sm font-semibold text-slate-900">{contact.name}</p>
+                             {contact.retainerActive && <span className="bg-green-100 text-green-700 text-[10px] px-1.5 py-0.5 rounded-full font-bold">Retainer</span>}
+                          </div>
+                          <p className="text-xs text-slate-500">{contact.email}</p>
+                      </div>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm text-slate-700">{contact.role}</span></td>
@@ -578,7 +637,7 @@ export const Contacts: React.FC<ContactsProps> = ({
       {/* CREATE / EDIT & HISTORY MODAL */}
       {isModalOpen && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-            <div className={`bg-white rounded-xl shadow-2xl w-full ${editingContactId ? 'max-w-4xl' : 'max-w-lg'} overflow-hidden flex flex-col max-h-[90vh]`}>
+            <div className={`bg-white rounded-xl shadow-2xl w-full ${editingContactId ? 'max-w-5xl' : 'max-w-lg'} overflow-hidden flex flex-col max-h-[90vh]`}>
                 <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 bg-slate-50 shrink-0">
                     <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                         {editingContactId ? <><Briefcase className="w-5 h-5 text-indigo-600"/> Kontaktakte: {formData.name}</> : 'Neuen Kontakt erstellen'}
@@ -590,16 +649,63 @@ export const Contacts: React.FC<ContactsProps> = ({
                     
                     {/* LEFT COLUMN: FORM */}
                     <div className={`${editingContactId ? 'col-span-2 border-r border-slate-100' : 'w-full'} overflow-y-auto p-6`}>
-                         <form id="contactForm" onSubmit={handleSubmit} className="space-y-4">
-                            <h3 className="text-xs font-bold text-slate-400 uppercase mb-4 tracking-wider">Stammdaten</h3>
-                            <div className="grid grid-cols-1 gap-4">
-                                <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase">Name</label><input required name="name" value={formData.name} onChange={handleInputChange} type="text" className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Max Mustermann"/></div>
-                                <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase">Firma</label><input required name="company" value={formData.company} onChange={handleInputChange} type="text" className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Firma GmbH"/></div>
-                                <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1"><Globe className="w-3 h-3"/> Firmen-Link</label><input name="companyUrl" value={formData.companyUrl} onChange={handleInputChange} type="url" className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="https://firma.de"/></div>
-                                <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase">Rolle</label><input name="role" value={formData.role} onChange={handleInputChange} type="text" className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="z.B. CEO"/></div>
-                                <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase">E-Mail</label><input required name="email" value={formData.email} onChange={handleInputChange} type="email" className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="max@firma.de"/></div>
-                                <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1"><Linkedin className="w-3 h-3 text-blue-600" /> LinkedIn Profil</label><input name="linkedin" value={formData.linkedin} onChange={handleInputChange} type="url" className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="https://linkedin.com/in/..."/></div>
-                                <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase">Allgemeine Notiz</label><textarea name="notes" value={formData.notes} onChange={handleInputChange} rows={3} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none resize-none" placeholder="Statische Infos..."/></div>
+                         <form id="contactForm" onSubmit={handleSubmit} className="space-y-6">
+                            
+                            {/* Stammdaten Section */}
+                            <div>
+                                <h3 className="text-xs font-bold text-slate-400 uppercase mb-4 tracking-wider">Stammdaten</h3>
+                                <div className="grid grid-cols-1 gap-4">
+                                    <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase">Name</label><input required name="name" value={formData.name} onChange={handleInputChange} type="text" className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Max Mustermann"/></div>
+                                    <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase">Firma</label><input required name="company" value={formData.company} onChange={handleInputChange} type="text" className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Firma GmbH"/></div>
+                                    <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1"><Globe className="w-3 h-3"/> Firmen-Link</label><input name="companyUrl" value={formData.companyUrl} onChange={handleInputChange} type="url" className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="https://firma.de"/></div>
+                                    <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase">Rolle</label><input name="role" value={formData.role} onChange={handleInputChange} type="text" className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="z.B. CEO"/></div>
+                                    <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase">E-Mail</label><input required name="email" value={formData.email} onChange={handleInputChange} type="email" className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="max@firma.de"/></div>
+                                    <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1"><Linkedin className="w-3 h-3 text-blue-600" /> LinkedIn Profil</label><input name="linkedin" value={formData.linkedin} onChange={handleInputChange} type="url" className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="https://linkedin.com/in/..."/></div>
+                                    <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase">Allgemeine Notiz</label><textarea name="notes" value={formData.notes} onChange={handleInputChange} rows={3} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none resize-none" placeholder="Statische Infos..."/></div>
+                                </div>
+                            </div>
+
+                            {/* Retainer / Vertrag Section (Neu) */}
+                            <div className="pt-4 border-t border-slate-100">
+                                <div className="flex items-center justify-between mb-4">
+                                     <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2"><Banknote className="w-4 h-4"/> Retainer / Vertrag</h3>
+                                     <label className="flex items-center cursor-pointer">
+                                        <div className="relative">
+                                            <input type="checkbox" name="retainerActive" className="sr-only" checked={formData.retainerActive} onChange={handleInputChange} />
+                                            <div className={`block w-10 h-6 rounded-full transition-colors ${formData.retainerActive ? 'bg-indigo-600' : 'bg-slate-300'}`}></div>
+                                            <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${formData.retainerActive ? 'translate-x-4' : ''}`}></div>
+                                        </div>
+                                        <span className="ml-2 text-xs font-medium text-slate-600">Aktiv</span>
+                                     </label>
+                                </div>
+                                
+                                {formData.retainerActive && (
+                                    <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2">
+                                        <div className="space-y-1 col-span-2">
+                                            <label className="text-xs font-semibold text-slate-500 uppercase">Monatlicher Betrag (Netto)</label>
+                                            <div className="relative">
+                                                <input type="number" name="retainerAmount" value={formData.retainerAmount} onChange={handleInputChange} className="w-full pl-8 px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-medium" placeholder="0.00"/>
+                                                <span className="absolute left-3 top-2 text-slate-400">€</span>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-semibold text-slate-500 uppercase">Vertragsstart</label>
+                                            <input type="date" name="retainerStartDate" value={formData.retainerStartDate} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"/>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-semibold text-slate-500 uppercase">Nächste Rechn.</label>
+                                            <input type="date" name="retainerNextBilling" value={formData.retainerNextBilling} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"/>
+                                        </div>
+                                        <div className="space-y-1 col-span-2">
+                                            <label className="text-xs font-semibold text-slate-500 uppercase">Abrechnungsintervall</label>
+                                            <select name="retainerInterval" value={formData.retainerInterval} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white text-sm">
+                                                <option value="monthly">Monatlich</option>
+                                                <option value="quarterly">Vierteljährlich</option>
+                                                <option value="yearly">Jährlich</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </form>
                     </div>
@@ -607,7 +713,56 @@ export const Contacts: React.FC<ContactsProps> = ({
                     {/* RIGHT COLUMN: TIMELINE (Only when editing) */}
                     {editingContactId && (
                         <div className="col-span-3 bg-slate-50/50 flex flex-col h-full overflow-hidden">
-                            <div className="p-4 border-b border-slate-100 bg-white shrink-0">
+                            {/* NEW WIDGET: PROFITABILITY */}
+                            <div className="bg-white border-b border-slate-100 p-4 shrink-0">
+                                <h3 className="text-xs font-bold text-slate-400 uppercase mb-3 tracking-wider flex items-center gap-2">
+                                    <TrendingUp className="w-4 h-4"/> Rentabilität & Marge
+                                </h3>
+                                {(() => {
+                                    const { revenue, costs, margin, marginPercent } = getProfitability(editingContactId);
+                                    let marginColor = 'bg-slate-200';
+                                    let textColor = 'text-slate-600';
+                                    
+                                    if (revenue > 0) {
+                                        if (marginPercent >= 80) { marginColor = 'bg-green-500'; textColor = 'text-green-600'; }
+                                        else if (marginPercent >= 50) { marginColor = 'bg-yellow-500'; textColor = 'text-yellow-600'; }
+                                        else { marginColor = 'bg-red-500'; textColor = 'text-red-600'; }
+                                    }
+
+                                    return (
+                                        <div className="space-y-3">
+                                            <div className="flex items-center gap-6 text-sm">
+                                                <div>
+                                                    <span className="text-xs text-slate-400 block uppercase font-semibold">Umsatz (Gesamt)</span>
+                                                    <span className="font-bold text-slate-800">{revenue.toLocaleString('de-DE')} €</span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-xs text-slate-400 block uppercase font-semibold">Var. Kosten</span>
+                                                    <span className="font-bold text-red-600">-{costs.toLocaleString('de-DE')} €</span>
+                                                </div>
+                                                <div className="flex-1 text-right">
+                                                     <span className="text-xs text-slate-400 block uppercase font-semibold">Deckungsbeitrag 1</span>
+                                                     <span className={`font-bold ${textColor}`}>{margin.toLocaleString('de-DE')} €</span>
+                                                </div>
+                                            </div>
+                                            
+                                            {/* Progress Bar */}
+                                            <div className="relative pt-1">
+                                                <div className="flex mb-1 items-center justify-between">
+                                                    <span className={`text-xs font-semibold inline-block py-0.5 px-2 rounded uppercase ${revenue > 0 ? (marginPercent >= 80 ? 'text-green-600 bg-green-100' : marginPercent >= 50 ? 'text-yellow-600 bg-yellow-100' : 'text-red-600 bg-red-100') : 'text-slate-500 bg-slate-100'}`}>
+                                                        Marge: {revenue > 0 ? marginPercent.toFixed(1) : 0}%
+                                                    </span>
+                                                </div>
+                                                <div className="overflow-hidden h-2 mb-1 text-xs flex rounded bg-slate-200">
+                                                    <div style={{ width: `${Math.max(0, marginPercent)}%` }} className={`shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center ${marginColor}`}></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+
+                            <div className="p-4 border-b border-slate-100 bg-white shrink-0 mt-2">
                                 <h3 className="text-xs font-bold text-slate-400 uppercase mb-3 tracking-wider">Historie & Aktivitäten</h3>
                                 <div className="flex gap-2 mb-2">
                                     <button onClick={() => setNewActivityType('note')} className={`flex-1 py-1.5 text-xs font-medium rounded border ${newActivityType === 'note' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white border-slate-200 text-slate-600'}`}>Notiz</button>

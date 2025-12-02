@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { Plus, X, Trash2, CheckCircle2, AlertTriangle, Info, Calendar, Download, Upload, Filter, PieChart as PieChartIcon, Clock, TrendingUp, TrendingDown, PiggyBank, Printer, Paperclip, Pencil } from 'lucide-react';
+import { Plus, X, Trash2, CheckCircle2, AlertTriangle, Info, Calendar, Download, Upload, Filter, PieChart as PieChartIcon, Clock, TrendingUp, TrendingDown, PiggyBank, Printer, Paperclip, Pencil, RefreshCw, User } from 'lucide-react';
 import { Invoice, Contact, Expense, InvoiceConfig, Activity } from '../types';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
@@ -18,6 +18,9 @@ interface FinancesProps {
     onDeleteExpense: (id: string) => void;
     invoiceConfig: InvoiceConfig;
     onAddActivity: (activity: Activity) => void;
+    
+    // NEU: Retainer Automation
+    onRunRetainer: () => void;
 }
 
 export const Finances: React.FC<FinancesProps> = ({
@@ -31,7 +34,8 @@ export const Finances: React.FC<FinancesProps> = ({
     onUpdateExpense,
     onDeleteExpense,
     invoiceConfig,
-    onAddActivity
+    onAddActivity,
+    onRunRetainer
 }) => {
     // TABS
     const [activeTab, setActiveTab] = useState<'income' | 'expenses'>('income');
@@ -56,8 +60,8 @@ export const Finances: React.FC<FinancesProps> = ({
     }>({ invoiceNumber: '', date: new Date().toISOString().split('T')[0], contactId: '', amount: '', sentDate: '', isPaid: false, paidDate: '', description: '' });
 
     const [expenseForm, setExpenseForm] = useState<{
-        title: string; amount: string; date: string; category: Expense['category']; notes: string; attachment?: string; attachmentName?: string;
-    }>({ title: '', amount: '', date: new Date().toISOString().split('T')[0], category: 'office', notes: '', attachment: '', attachmentName: '' });
+        title: string; amount: string; date: string; category: Expense['category']; notes: string; attachment?: string; attachmentName?: string; contactId: string;
+    }>({ title: '', amount: '', date: new Date().toISOString().split('T')[0], category: 'office', notes: '', attachment: '', attachmentName: '', contactId: '' });
 
     // --- FINANCIAL CALCULATIONS ---
     const LIMIT = 22000;
@@ -143,13 +147,13 @@ export const Finances: React.FC<FinancesProps> = ({
     // --- EXPENSE HANDLERS ---
     const handleOpenCreateExpense = () => {
         setEditingExpenseId(null);
-        setExpenseForm({ title: '', amount: '', date: new Date().toISOString().split('T')[0], category: 'office', notes: '', attachment: '', attachmentName: '' });
+        setExpenseForm({ title: '', amount: '', date: new Date().toISOString().split('T')[0], category: 'office', notes: '', attachment: '', attachmentName: '', contactId: '' });
         setIsExpenseModalOpen(true);
     };
 
     const handleOpenEditExpense = (ex: Expense) => {
         setEditingExpenseId(ex.id);
-        setExpenseForm({ title: ex.title, amount: ex.amount.toString(), date: ex.date, category: ex.category, notes: ex.notes || '', attachment: ex.attachment || '', attachmentName: ex.attachmentName || '' });
+        setExpenseForm({ title: ex.title, amount: ex.amount.toString(), date: ex.date, category: ex.category, notes: ex.notes || '', attachment: ex.attachment || '', attachmentName: ex.attachmentName || '', contactId: ex.contactId || '' });
         setIsExpenseModalOpen(true);
     };
 
@@ -176,6 +180,9 @@ export const Finances: React.FC<FinancesProps> = ({
     const handleSubmitExpense = (e: React.FormEvent) => {
         e.preventDefault();
         if (!expenseForm.title || !expenseForm.amount) return;
+        
+        const selectedContact = contacts.find(c => c.id === expenseForm.contactId);
+        
         const expenseData: Expense = {
             id: editingExpenseId || Math.random().toString(36).substr(2, 9),
             title: expenseForm.title,
@@ -184,7 +191,9 @@ export const Finances: React.FC<FinancesProps> = ({
             category: expenseForm.category,
             notes: expenseForm.notes,
             attachment: expenseForm.attachment,
-            attachmentName: expenseForm.attachmentName
+            attachmentName: expenseForm.attachmentName,
+            contactId: expenseForm.contactId || undefined,
+            contactName: selectedContact ? selectedContact.name : undefined
         };
         editingExpenseId ? onUpdateExpense(expenseData) : onAddExpense(expenseData);
         setIsExpenseModalOpen(false);
@@ -243,6 +252,18 @@ export const Finances: React.FC<FinancesProps> = ({
         }
     };
 
+    // --- CALCULATE TAXES FOR PRINTING ---
+    const getInvoiceCalculations = (inv: Invoice) => {
+        const isStandardTax = invoiceConfig.taxRule === 'standard';
+        // Annahme: Der erfasste Betrag ist Netto
+        const netAmount = inv.amount;
+        const taxRate = isStandardTax ? 0.19 : 0;
+        const taxAmount = netAmount * taxRate;
+        const grossAmount = netAmount + taxAmount;
+        
+        return { netAmount, taxAmount, grossAmount, isStandardTax };
+    };
+
     // --- RENDER HELPERS ---
     const filteredInvoices = invoices.filter(inv => {
         if (filter === 'paid') return inv.isPaid;
@@ -261,15 +282,24 @@ export const Finances: React.FC<FinancesProps> = ({
                     <h1 className="text-2xl font-bold text-slate-800">Finanzen</h1>
                     <p className="text-slate-500 text-sm mt-1">Einnahmen, Ausgaben & Profitabilität</p>
                 </div>
-                <div className="flex bg-slate-100 p-1 rounded-lg">
+                <div className="flex items-center gap-4">
                     <button 
-                        onClick={() => setActiveTab('income')}
-                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'income' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    >Einnahmen</button>
-                    <button 
-                        onClick={() => setActiveTab('expenses')}
-                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'expenses' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    >Ausgaben</button>
+                         onClick={onRunRetainer}
+                         className="bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-50 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 shadow-sm transition-colors"
+                         title="Prüft auf fällige Retainer-Verträge und erstellt automatisch Rechnungen."
+                    >
+                         <RefreshCw className="w-4 h-4" /> Retainer-Lauf starten
+                    </button>
+                    <div className="flex bg-slate-100 p-1 rounded-lg">
+                        <button 
+                            onClick={() => setActiveTab('income')}
+                            className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'income' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        >Einnahmen</button>
+                        <button 
+                            onClick={() => setActiveTab('expenses')}
+                            className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'expenses' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        >Ausgaben</button>
+                    </div>
                 </div>
             </header>
 
@@ -388,7 +418,7 @@ export const Finances: React.FC<FinancesProps> = ({
                                         <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">Nr.</th>
                                         <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">Datum</th>
                                         <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">Kunde / Beschreibung</th>
-                                        <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">Betrag</th>
+                                        <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">Betrag (Netto)</th>
                                         <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">Status</th>
                                         <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase text-right">Aktionen</th>
                                     </tr>
@@ -452,11 +482,14 @@ export const Finances: React.FC<FinancesProps> = ({
                                     {expenses.map(ex => (
                                         <tr key={ex.id} className="hover:bg-slate-50 group">
                                             <td className="px-6 py-4 text-sm text-slate-700">{ex.date}</td>
-                                            <td className="px-6 py-4 text-sm font-medium text-slate-900 flex items-center gap-2">
-                                                {ex.title}
-                                                {ex.attachment && (
-                                                    <Paperclip className="w-3.5 h-3.5 text-indigo-500" />
-                                                )}
+                                            <td className="px-6 py-4 text-sm font-medium text-slate-900">
+                                                <div className="flex items-center gap-2">
+                                                    {ex.title}
+                                                    {ex.attachment && (
+                                                        <Paperclip className="w-3.5 h-3.5 text-indigo-500" />
+                                                    )}
+                                                </div>
+                                                {ex.contactName && <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-1"><User className="w-3 h-3"/> {ex.contactName}</div>}
                                             </td>
                                             <td className="px-6 py-4 text-sm text-slate-600"><span className="bg-slate-100 px-2 py-0.5 rounded text-xs">{categoryLabel[ex.category]}</span></td>
                                             <td className="px-6 py-4 text-sm font-bold text-red-600">-{ex.amount.toLocaleString('de-DE')} €</td>
@@ -498,7 +531,7 @@ export const Finances: React.FC<FinancesProps> = ({
                                 {contacts.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
                             </select>
                             <input type="text" placeholder="Beschreibung (z.B. Projektname)" value={invoiceForm.description} onChange={e=>setInvoiceForm({...invoiceForm, description:e.target.value})} className="w-full border p-2 rounded" />
-                            <input type="number" placeholder="Betrag €" value={invoiceForm.amount} onChange={e=>setInvoiceForm({...invoiceForm, amount:e.target.value})} className="w-full border p-2 rounded" />
+                            <input type="number" placeholder="Betrag (Netto) €" value={invoiceForm.amount} onChange={e=>setInvoiceForm({...invoiceForm, amount:e.target.value})} className="w-full border p-2 rounded" />
                             <div className="flex justify-end pt-4 gap-3">
                                 <button type="button" onClick={() => setIsInvoiceModalOpen(false)} className="text-slate-500 hover:bg-slate-100 px-4 py-2 rounded text-sm font-medium transition-colors">Abbrechen</button>
                                 <button type="submit" className="bg-indigo-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-indigo-700 transition-colors">Speichern</button>
@@ -519,9 +552,15 @@ export const Finances: React.FC<FinancesProps> = ({
                                 <input type="number" placeholder="Betrag €" value={expenseForm.amount} onChange={e=>setExpenseForm({...expenseForm, amount:e.target.value})} className="border p-2 rounded" />
                                 <input type="date" value={expenseForm.date} onChange={e=>setExpenseForm({...expenseForm, date:e.target.value})} className="border p-2 rounded" />
                             </div>
-                            <select value={expenseForm.category} onChange={e=>setExpenseForm({...expenseForm, category:e.target.value as any})} className="w-full border p-2 rounded bg-white">
-                                {Object.entries(categoryLabel).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-                            </select>
+                            <div className="grid grid-cols-2 gap-4">
+                                <select value={expenseForm.category} onChange={e=>setExpenseForm({...expenseForm, category:e.target.value as any})} className="w-full border p-2 rounded bg-white">
+                                    {Object.entries(categoryLabel).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                                </select>
+                                <select value={expenseForm.contactId} onChange={e=>setExpenseForm({...expenseForm, contactId:e.target.value})} className="w-full border p-2 rounded bg-white">
+                                    <option value="">Projekt/Kunde zuordnen (Optional)</option>
+                                    {contacts.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+                                </select>
+                            </div>
                             
                             {/* File Upload for Attachment */}
                             <div className="border border-dashed border-slate-300 rounded-lg p-4 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-50 transition-colors" onClick={() => expenseFileRef.current?.click()}>
@@ -565,99 +604,108 @@ export const Finances: React.FC<FinancesProps> = ({
                         <div className="flex-1 overflow-y-auto p-8 flex justify-center bg-slate-500/10">
                             {/* A4 PAPER SIMULATION */}
                             <div id="printable-invoice" className="bg-white shadow-2xl p-[10mm] w-[210mm] min-h-[297mm] text-slate-800 relative">
-                                {/* HEADER */}
-                                <div className="flex justify-between items-start mb-12">
-                                    <div>
-                                        {invoiceConfig.logoBase64 ? (
-                                            <img src={invoiceConfig.logoBase64} alt="Logo" className="max-h-32 w-auto object-contain mb-4 -mt-6" />
-                                        ) : (
-                                            <h1 className="text-3xl font-bold text-slate-800 mb-2">{invoiceConfig.companyName}</h1>
-                                        )}
-                                        <p className="text-xs text-slate-500">
-                                            {invoiceConfig.addressLine1} • {invoiceConfig.addressLine2}
-                                        </p>
-                                    </div>
-                                    <div className="text-right text-sm text-slate-600">
-                                        <p>Datum: {new Date(printInvoice.date).toLocaleDateString('de-DE')}</p>
-                                        <p>Rechnung Nr.: {printInvoice.invoiceNumber}</p>
-                                        {printInvoice.sentDate && <p>Leistungsdatum: {new Date(printInvoice.sentDate).toLocaleDateString('de-DE')}</p>}
-                                    </div>
-                                </div>
+                                {(() => {
+                                    const calc = getInvoiceCalculations(printInvoice);
+                                    return (
+                                        <>
+                                            {/* HEADER */}
+                                            <div className="flex justify-between items-start mb-12">
+                                                <div>
+                                                    {invoiceConfig.logoBase64 ? (
+                                                        <img src={invoiceConfig.logoBase64} alt="Logo" className="max-h-32 w-auto object-contain mb-4 -mt-6" />
+                                                    ) : (
+                                                        <h1 className="text-3xl font-bold text-slate-800 mb-2">{invoiceConfig.companyName}</h1>
+                                                    )}
+                                                    <p className="text-xs text-slate-500">
+                                                        {invoiceConfig.addressLine1} • {invoiceConfig.addressLine2}
+                                                    </p>
+                                                </div>
+                                                <div className="text-right text-sm text-slate-600">
+                                                    <p>Datum: {new Date(printInvoice.date).toLocaleDateString('de-DE')}</p>
+                                                    <p>Rechnung Nr.: {printInvoice.invoiceNumber}</p>
+                                                    {printInvoice.sentDate && <p>Leistungsdatum: {new Date(printInvoice.sentDate).toLocaleDateString('de-DE')}</p>}
+                                                </div>
+                                            </div>
 
-                                {/* RECIPIENT */}
-                                <div className="mb-16 text-sm">
-                                    <p className="font-bold text-slate-900">{printInvoice.contactName}</p>
-                                    {/* Mock address for contact as we don't have it in schema yet */}
-                                    <p className="text-slate-600">Musterstraße 1</p>
-                                    <p className="text-slate-600">12345 Musterstadt</p>
-                                </div>
+                                            {/* RECIPIENT */}
+                                            <div className="mb-16 text-sm">
+                                                <p className="font-bold text-slate-900">{printInvoice.contactName}</p>
+                                                {/* Mock address for contact as we don't have it in schema yet */}
+                                                <p className="text-slate-600">Musterstraße 1</p>
+                                                <p className="text-slate-600">12345 Musterstadt</p>
+                                            </div>
 
-                                {/* TITLE */}
-                                <h2 className="text-xl font-bold mb-6">Rechnung {printInvoice.invoiceNumber}</h2>
-                                <p className="text-sm text-slate-600 mb-8">
-                                    Sehr geehrte Damen und Herren,<br/>
-                                    vielen Dank für Ihren Auftrag. Wir stellen Ihnen folgende Leistungen in Rechnung:
-                                </p>
+                                            {/* TITLE */}
+                                            <h2 className="text-xl font-bold mb-6">Rechnung {printInvoice.invoiceNumber}</h2>
+                                            <p className="text-sm text-slate-600 mb-8">
+                                                Sehr geehrte Damen und Herren,<br/>
+                                                vielen Dank für Ihren Auftrag. Wir stellen Ihnen folgende Leistungen in Rechnung:
+                                            </p>
 
-                                {/* TABLE */}
-                                <table className="w-full text-left text-sm mb-8">
-                                    <thead>
-                                        <tr className="border-b-2 border-slate-800">
-                                            <th className="py-2">Beschreibung</th>
-                                            <th className="py-2 text-right">Menge</th>
-                                            <th className="py-2 text-right">Einzelpreis</th>
-                                            <th className="py-2 text-right">Gesamt</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="border-b border-slate-200">
-                                        <tr>
-                                            <td className="py-4">{printInvoice.description || "Dienstleistung / Produkt laut Auftrag"}</td>
-                                            <td className="py-4 text-right">1,00</td>
-                                            <td className="py-4 text-right">{printInvoice.amount.toLocaleString('de-DE', {minimumFractionDigits: 2})} €</td>
-                                            <td className="py-4 text-right">{printInvoice.amount.toLocaleString('de-DE', {minimumFractionDigits: 2})} €</td>
-                                        </tr>
-                                    </tbody>
-                                    <tfoot>
-                                        <tr>
-                                            <td colSpan={3} className="py-2 text-right font-medium">Nettobetrag</td>
-                                            <td className="py-2 text-right">{printInvoice.amount.toLocaleString('de-DE', {minimumFractionDigits: 2})} €</td>
-                                        </tr>
-                                        <tr>
-                                            <td colSpan={3} className="py-2 text-right font-medium">Umsatzsteuer 0% (Kleinunternehmer)</td>
-                                            <td className="py-2 text-right">0,00 €</td>
-                                        </tr>
-                                        <tr className="text-lg font-bold">
-                                            <td colSpan={3} className="py-4 text-right">Gesamtbetrag</td>
-                                            <td className="py-4 text-right">{printInvoice.amount.toLocaleString('de-DE', {minimumFractionDigits: 2})} €</td>
-                                        </tr>
-                                    </tfoot>
-                                </table>
+                                            {/* TABLE */}
+                                            <table className="w-full text-left text-sm mb-8">
+                                                <thead>
+                                                    <tr className="border-b-2 border-slate-800">
+                                                        <th className="py-2">Beschreibung</th>
+                                                        <th className="py-2 text-right">Menge</th>
+                                                        <th className="py-2 text-right">Einzelpreis</th>
+                                                        <th className="py-2 text-right">Gesamt</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="border-b border-slate-200">
+                                                    <tr>
+                                                        <td className="py-4">{printInvoice.description || "Dienstleistung / Produkt laut Auftrag"}</td>
+                                                        <td className="py-4 text-right">1,00</td>
+                                                        <td className="py-4 text-right">{calc.netAmount.toLocaleString('de-DE', {minimumFractionDigits: 2})} €</td>
+                                                        <td className="py-4 text-right">{calc.netAmount.toLocaleString('de-DE', {minimumFractionDigits: 2})} €</td>
+                                                    </tr>
+                                                </tbody>
+                                                <tfoot>
+                                                    <tr>
+                                                        <td colSpan={3} className="py-2 text-right font-medium">Nettobetrag</td>
+                                                        <td className="py-2 text-right">{calc.netAmount.toLocaleString('de-DE', {minimumFractionDigits: 2})} €</td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td colSpan={3} className="py-2 text-right font-medium">
+                                                            {calc.isStandardTax ? 'Umsatzsteuer 19%' : 'Umsatzsteuer 0% (Kleinunternehmer)'}
+                                                        </td>
+                                                        <td className="py-2 text-right">{calc.taxAmount.toLocaleString('de-DE', {minimumFractionDigits: 2})} €</td>
+                                                    </tr>
+                                                    <tr className="text-lg font-bold">
+                                                        <td colSpan={3} className="py-4 text-right">Gesamtbetrag</td>
+                                                        <td className="py-4 text-right">{calc.grossAmount.toLocaleString('de-DE', {minimumFractionDigits: 2})} €</td>
+                                                    </tr>
+                                                </tfoot>
+                                            </table>
 
-                                <p className="text-sm text-slate-600 mb-8">
-                                    Bitte überweisen Sie den Betrag innerhalb von 14 Tagen auf das unten genannte Konto.<br/>
-                                    Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.
-                                </p>
+                                            <p className="text-sm text-slate-600 mb-8">
+                                                Bitte überweisen Sie den Betrag innerhalb von 14 Tagen auf das unten genannte Konto.<br/>
+                                                {!calc.isStandardTax && 'Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.'}
+                                            </p>
 
-                                {/* FOOTER */}
-                                <div className="absolute bottom-[15mm] left-[10mm] right-[10mm] text-[10px] text-slate-500 border-t border-slate-200 pt-4 flex justify-between">
-                                    <div>
-                                        <p className="font-bold">{invoiceConfig.companyName}</p>
-                                        <p>{invoiceConfig.addressLine1}</p>
-                                        <p>{invoiceConfig.addressLine2}</p>
-                                        <p>{invoiceConfig.email}</p>
-                                    </div>
-                                    <div>
-                                        <p className="font-bold">Bankverbindung</p>
-                                        <p>{invoiceConfig.bankName}</p>
-                                        <p>IBAN: {invoiceConfig.iban}</p>
-                                        <p>BIC: {invoiceConfig.bic}</p>
-                                    </div>
-                                    <div>
-                                        <p className="font-bold">Steuernummer</p>
-                                        <p>{invoiceConfig.taxId}</p>
-                                        <p>{invoiceConfig.footerText}</p>
-                                    </div>
-                                </div>
+                                            {/* FOOTER */}
+                                            <div className="absolute bottom-[15mm] left-[10mm] right-[10mm] text-[10px] text-slate-500 border-t border-slate-200 pt-4 flex justify-between">
+                                                <div>
+                                                    <p className="font-bold">{invoiceConfig.companyName}</p>
+                                                    <p>{invoiceConfig.addressLine1}</p>
+                                                    <p>{invoiceConfig.addressLine2}</p>
+                                                    <p>{invoiceConfig.email}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="font-bold">Bankverbindung</p>
+                                                    <p>{invoiceConfig.bankName}</p>
+                                                    <p>IBAN: {invoiceConfig.iban}</p>
+                                                    <p>BIC: {invoiceConfig.bic}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="font-bold">Steuernummer</p>
+                                                    <p>{invoiceConfig.taxId}</p>
+                                                    <p>{invoiceConfig.footerText}</p>
+                                                </div>
+                                            </div>
+                                        </>
+                                    );
+                                })()}
                             </div>
                         </div>
                     </div>

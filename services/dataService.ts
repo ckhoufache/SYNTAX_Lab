@@ -78,6 +78,9 @@ export interface IDataService {
     
     // Actions
     sendMail(to: string, subject: string, body: string): Promise<boolean>;
+    
+    // Automation
+    processDueRetainers(): Promise<{ updatedContacts: Contact[], newInvoices: Invoice[], newActivities: Activity[] }>;
 }
 
 // --- Local Storage Implementation (Cached & Optimized) ---
@@ -165,7 +168,8 @@ class LocalDataService implements IDataService {
             bic: 'MUSTERBIC',
             email: 'info@meinefirma.de',
             website: 'www.meinefirma.de',
-            footerText: 'Vielen Dank für Ihren Auftrag.'
+            footerText: 'Vielen Dank für Ihren Auftrag.',
+            taxRule: 'small_business' // DEFAULT Migration
         });
 
         return Promise.resolve();
@@ -630,6 +634,91 @@ class LocalDataService implements IDataService {
             return true;
         } catch (e) { alert("Netzwerkfehler."); return false; }
     }
+
+    // --- AUTOMATION: RETAINER CHECK ---
+    async processDueRetainers(): Promise<{ updatedContacts: Contact[], newInvoices: Invoice[], newActivities: Activity[] }> {
+        // 1. Get Data
+        const contacts = await this.getContacts();
+        const invoices = await this.getInvoices();
+        
+        // 2. Identify due retainers
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const dueContacts = contacts.filter(c => 
+            c.retainerActive && 
+            c.retainerNextBilling && 
+            new Date(c.retainerNextBilling) <= today &&
+            (c.retainerAmount || 0) > 0
+        );
+
+        const newInvoices: Invoice[] = [];
+        const updatedContacts: Contact[] = [];
+        const newActivities: Activity[] = [];
+
+        if (dueContacts.length === 0) {
+            return { updatedContacts, newInvoices, newActivities };
+        }
+
+        // Helper to find max invoice number
+        let maxNum = 100;
+        invoices.forEach(i => {
+             const parts = i.invoiceNumber.split('-');
+             if (parts.length > 1) {
+                 const n = parseInt(parts[1]);
+                 if (!isNaN(n) && n > maxNum) maxNum = n;
+             }
+        });
+        
+        // 3. Process each contact
+        for (const contact of dueContacts) {
+            maxNum++;
+            const invoiceNum = `2025-${maxNum}`;
+            const invAmount = contact.retainerAmount!;
+            
+            // Create Invoice
+            const inv: Invoice = {
+                id: Math.random().toString(36).substr(2, 9),
+                invoiceNumber: invoiceNum,
+                date: new Date().toISOString().split('T')[0],
+                contactId: contact.id,
+                contactName: `${contact.name} (${contact.company})`,
+                description: `Retainer-Service (${contact.retainerInterval === 'monthly' ? 'Monatlich' : contact.retainerInterval})`,
+                amount: invAmount,
+                isPaid: false
+            };
+            newInvoices.push(inv);
+            await this.saveInvoice(inv); // Save immediately
+
+            // Calculate Next Billing Date
+            let nextDate = new Date(contact.retainerNextBilling!);
+            if (contact.retainerInterval === 'yearly') nextDate.setFullYear(nextDate.getFullYear() + 1);
+            else if (contact.retainerInterval === 'quarterly') nextDate.setMonth(nextDate.getMonth() + 3);
+            else nextDate.setMonth(nextDate.getMonth() + 1); // monthly default
+
+            const updatedContact = { 
+                ...contact, 
+                retainerNextBilling: nextDate.toISOString().split('T')[0] 
+            };
+            updatedContacts.push(updatedContact);
+            await this.updateContact(updatedContact);
+
+            // Log Activity
+            const act: Activity = {
+                id: Math.random().toString(36).substr(2, 9),
+                contactId: contact.id,
+                type: 'system_invoice',
+                content: `Automatische Retainer-Rechnung erstellt: ${invoiceNum} (${invAmount} €)`,
+                date: new Date().toISOString().split('T')[0],
+                timestamp: new Date().toISOString(),
+                relatedId: inv.id
+            };
+            newActivities.push(act);
+            await this.saveActivity(act);
+        }
+
+        return { updatedContacts, newInvoices, newActivities };
+    }
 }
 
 // --- API Implementation (Placeholder) ---
@@ -677,6 +766,7 @@ class APIDataService implements IDataService {
     sendMail = async () => false;
     loginWithGoogle = async () => null;
     logout = async () => {};
+    processDueRetainers = async () => ({ updatedContacts: [], newInvoices: [], newActivities: [] });
 }
 
 // --- Factory ---

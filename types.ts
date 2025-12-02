@@ -48,6 +48,13 @@ export interface Contact {
   linkedin?: string;
   notes?: string;
   tags?: string[];
+  
+  // Retainer Details
+  retainerActive?: boolean;
+  retainerAmount?: number; // Monthly Netto
+  retainerStartDate?: string;
+  retainerNextBilling?: string;
+  retainerInterval?: 'monthly' | 'quarterly' | 'yearly';
 }
 
 export type ActivityType = 'note' | 'call' | 'email' | 'meeting' | 'system_deal' | 'system_invoice';
@@ -110,6 +117,8 @@ export interface Expense {
   notes?: string;
   attachment?: string;
   attachmentName?: string;
+  contactId?: string; // NEU: Zuordnung zu Kunde/Projekt
+  contactName?: string; // NEU: Cache Name
 }
 
 export interface InvoiceConfig {
@@ -124,6 +133,7 @@ export interface InvoiceConfig {
   website: string;
   logoBase64?: string;
   footerText?: string;
+  taxRule?: 'small_business' | 'standard'; // NEU: Steuermodus
 }
 
 export interface EmailTemplate {

@@ -247,7 +247,7 @@ export const Settings: React.FC<SettingsProps> = ({
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleInvConfigChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleInvConfigChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
       const { name, value } = e.target;
       setInvConfigForm(prev => ({ ...prev, [name]: value }));
   };
@@ -625,6 +625,41 @@ export const Settings: React.FC<SettingsProps> = ({
                          <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">BIC</label><input name="bic" value={invConfigForm.bic} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
                          <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Bankname</label><input name="bankName" value={invConfigForm.bankName} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
                          <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Steuernummer</label><input name="taxId" value={invConfigForm.taxId} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
+                         
+                         {/* Neuer Tax Rule Selector */}
+                         <div className="col-span-2 mt-2 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg border dark:border-slate-700">
+                             <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400 block mb-2">Besteuerungsart (Umsatzsteuer)</label>
+                             <div className="flex gap-4">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input 
+                                        type="radio" 
+                                        name="taxRule" 
+                                        value="small_business" 
+                                        checked={invConfigForm.taxRule === 'small_business' || !invConfigForm.taxRule}
+                                        onChange={handleInvConfigChange}
+                                        className="text-indigo-600 focus:ring-indigo-500"
+                                    />
+                                    <span className="text-sm dark:text-slate-300">Kleinunternehmer (§19 UStG)</span>
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input 
+                                        type="radio" 
+                                        name="taxRule" 
+                                        value="standard" 
+                                        checked={invConfigForm.taxRule === 'standard'}
+                                        onChange={handleInvConfigChange}
+                                        className="text-indigo-600 focus:ring-indigo-500"
+                                    />
+                                    <span className="text-sm dark:text-slate-300">Regelbesteuerung (19%)</span>
+                                </label>
+                             </div>
+                             <p className="text-xs text-slate-400 mt-2">
+                                 {invConfigForm.taxRule === 'standard' 
+                                    ? 'Rechnungen weisen 19% MwSt. und Brutto/Netto Beträge aus.' 
+                                    : 'Es wird keine Umsatzsteuer erhoben (Hinweis auf §19 UStG wird gedruckt).'}
+                             </p>
+                         </div>
+
                          <div className="col-span-2"><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Fußzeile (Text)</label><textarea name="footerText" value={invConfigForm.footerText || ''} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" rows={2} /></div>
                          <div className="col-span-2 flex justify-end"><button onClick={() => { onUpdateInvoiceConfig(invConfigForm); alert('Gespeichert'); }} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">Speichern</button></div>
                      </div>

@@ -1,10 +1,10 @@
 
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { 
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, ReferenceLine
 } from 'recharts';
-import { Bell, Search, Sparkles, CheckCircle2, Phone, Mail, Calendar, ArrowUpRight, Plus, X, Trash2, Circle, User, KanbanSquare, ClipboardList, AlertCircle, Clock, Check, BarChart3, TrendingUp } from 'lucide-react';
-import { Task, Deal, Contact, DealStage, Invoice, Activity } from '../types'; // Import Invoice & Activity
+import { Bell, Search, Sparkles, CheckCircle2, Phone, Mail, Calendar, ArrowUpRight, Plus, X, Trash2, Circle, User, KanbanSquare, ClipboardList, AlertCircle, Clock, Check, BarChart3, TrendingUp, DollarSign } from 'lucide-react';
+import { Task, Deal, Contact, DealStage, Invoice, Activity, Expense } from '../types'; // Import Invoice & Activity
 import { generateDailyBriefing } from '../services/gemini';
 
 interface DashboardProps {
@@ -18,8 +18,9 @@ interface DashboardProps {
   onNavigateToPipeline: (stages: DealStage[], focusId?: string) => void;
   onNavigateToTasks: (focusId?: string) => void;
   onNavigateToFinances: () => void;
-  invoices?: Invoice[]; // Add invoices prop (made optional to prevent breaking immediately if not passed in parent yet, but should be passed)
-  activities: Activity[]; // Added to fix type error
+  invoices?: Invoice[]; // Default to empty
+  expenses: Expense[]; // New prop
+  activities: Activity[]; 
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ 
@@ -33,7 +34,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onNavigateToPipeline,
   onNavigateToTasks,
   onNavigateToFinances,
-  invoices = [], // Default to empty
+  invoices = [], 
+  expenses,
   activities
 }) => {
   const [briefing, setBriefing] = useState<string>('');
@@ -101,17 +103,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
       return 0;
   });
 
-  // --- DYNAMIC CHART DATA GENERATION ---
+  // --- DYNAMIC CHART DATA GENERATION (YTD Revenue) ---
   const dynamicChartData = useMemo(() => {
     const today = new Date();
     const currentYear = today.getFullYear();
     const currentMonthIndex = today.getMonth(); // 0 = Jan
     const currentDay = today.getDate();
-
-    // Strategy:
-    // If we are in January and day < 7: Show Days (1. Jan, 2. Jan...)
-    // If we are in January and day >= 7: Show Weeks (KW 1, KW 2...)
-    // If we are past January: Show Months (Jan, Feb...)
 
     if (currentMonthIndex === 0 && currentDay < 7) {
         // Daily View (Jan 1 to today)
@@ -126,12 +123,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
             return { name: `${day}. Jan`, value: dailyRevenue };
         });
     } else if (currentMonthIndex === 0) {
-        // Weekly View (KW 1 to current KW)
-        // Simplified: Split month into 4 weeks
+        // Weekly View
         const weeks = Math.ceil(currentDay / 7);
         return Array.from({ length: weeks }, (_, i) => {
             const weekNum = i + 1;
-            // Filter invoices for this "week" roughly
             const weeklyRevenue = invoices
                 .filter(inv => {
                     const d = new Date(inv.date);
@@ -142,7 +137,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
              return { name: `KW ${weekNum}`, value: weeklyRevenue };
         });
     } else {
-        // Monthly View (Jan to Current Month)
+        // Monthly View
         const monthNames = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
         return Array.from({ length: currentMonthIndex + 1 }, (_, i) => {
             const monthlyRevenue = invoices
@@ -155,6 +150,57 @@ export const Dashboard: React.FC<DashboardProps> = ({
         });
     }
   }, [invoices]);
+
+  // --- RUNWAY FORECAST CALCULATION ---
+  const runwayData = useMemo(() => {
+    // 1. Current Liquid Assets (Start Point)
+    // Formula: Sum of ALL Paid Invoices - Sum of ALL Expenses
+    const totalPaidRevenue = invoices.filter(i => i.isPaid).reduce((sum, i) => sum + i.amount, 0);
+    const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
+    let currentBalance = totalPaidRevenue - totalExpenses;
+
+    // 2. MRR (Monthly Recurring Revenue from Active Retainers)
+    const mrr = contacts.reduce((sum, c) => {
+        if (!c.retainerActive || !c.retainerAmount) return sum;
+        let monthlyAmount = c.retainerAmount;
+        if (c.retainerInterval === 'quarterly') monthlyAmount = c.retainerAmount / 3;
+        if (c.retainerInterval === 'yearly') monthlyAmount = c.retainerAmount / 12;
+        return sum + monthlyAmount;
+    }, 0);
+
+    // 3. Burn Rate (Average Monthly Expenses - Last 3 Months)
+    const today = new Date();
+    const threeMonthsAgo = new Date();
+    threeMonthsAgo.setMonth(today.getMonth() - 3);
+
+    const recentExpenses = expenses.filter(e => new Date(e.date) >= threeMonthsAgo);
+    const recentExpensesSum = recentExpenses.reduce((sum, e) => sum + e.amount, 0);
+    // Use 3 months as divisor for stability, or actual months passed if < 3? 
+    // Using simple logic: Sum / 3 (assuming business exists > 3 months)
+    const burnRate = recentExpensesSum / 3;
+
+    const data = [];
+    const monthNames = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
+
+    // Forecast for next 6 months
+    // Month 0 is "Now"
+    for (let i = 0; i <= 6; i++) {
+        const d = new Date();
+        d.setMonth(d.getMonth() + i);
+        
+        data.push({
+            name: i === 0 ? 'Heute' : monthNames[d.getMonth()],
+            balance: currentBalance,
+            burnRate: burnRate,
+            mrr: mrr
+        });
+
+        // Calculate next month's starting balance
+        currentBalance = currentBalance + mrr - burnRate;
+    }
+
+    return { data, mrr, burnRate, currentBalance: totalPaidRevenue - totalExpenses };
+  }, [invoices, expenses, contacts]);
 
   // --- Notifications Logic ---
   const notifications = useMemo(() => {
@@ -403,6 +449,65 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <StatCard title="Aktive Pipeline" value={`${activeVolume.toLocaleString('de-DE')} €`} sub="Verhandlung & Angebot" icon={Calendar} color="bg-blue-500" onClick={() => onNavigateToPipeline([DealStage.PROPOSAL, DealStage.NEGOTIATION])}/>
           <StatCard title="Neue Kontakte" value={`+${contacts.length}`} sub="Gesamt" icon={Phone} color="bg-orange-500" onClick={() => onNavigateToContacts('recent')}/>
           <StatCard title="Offene Aufgaben" value={dueTasksCount} sub="Dringend" icon={Mail} color="bg-pink-500" onClick={() => onNavigateToTasks()}/>
+        </div>
+        
+        {/* NEW: RUNWAY CHART */}
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm">
+            <div className="flex justify-between items-start mb-6">
+                <div>
+                     <h3 className="text-lg font-bold flex items-center gap-2 dark:text-white">
+                        <TrendingUp className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                        Liquiditäts-Forecast (Runway)
+                     </h3>
+                     <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Projektion der Liquidität für 6 Monate.</p>
+                </div>
+                <div className="flex gap-4 text-sm">
+                     <div className="text-right">
+                         <p className="text-slate-400 text-xs uppercase font-bold">MRR (Retainer)</p>
+                         <p className="font-bold text-green-600">+{runwayData.mrr.toLocaleString('de-DE', {maximumFractionDigits:0})} €</p>
+                     </div>
+                     <div className="text-right">
+                         <p className="text-slate-400 text-xs uppercase font-bold">Burn Rate (Ø 3M)</p>
+                         <p className="font-bold text-red-600">-{runwayData.burnRate.toLocaleString('de-DE', {maximumFractionDigits:0})} €</p>
+                     </div>
+                     <div className="text-right border-l pl-4 dark:border-slate-700">
+                         <p className="text-slate-400 text-xs uppercase font-bold">Aktuell (Cash)</p>
+                         <p className={`font-bold ${runwayData.currentBalance < 0 ? 'text-red-600' : 'text-slate-800 dark:text-white'}`}>{runwayData.currentBalance.toLocaleString('de-DE', {maximumFractionDigits:0})} €</p>
+                     </div>
+                </div>
+            </div>
+            
+            <div className="h-64 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={runwayData.data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <defs>
+                        <linearGradient id="colorBalance" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.2}/>
+                            <stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/>
+                        </linearGradient>
+                        <linearGradient id="colorNegative" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#ef4444" stopOpacity={0.2}/>
+                            <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
+                        </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" strokeOpacity={0.5} />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} dy={10} />
+                    <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
+                    <Tooltip 
+                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                        formatter={(value: any) => [`${value.toLocaleString('de-DE')} €`, 'Kontostand']}
+                    />
+                    <ReferenceLine y={0} stroke="red" strokeDasharray="3 3" strokeOpacity={0.5} />
+                    <Area 
+                        type="monotone" 
+                        dataKey="balance" 
+                        stroke="#4f46e5" 
+                        strokeWidth={3} 
+                        fill="url(#colorBalance)" 
+                    />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

@@ -360,6 +360,27 @@ const App: React.FC = () => {
   };
   const onRequestDeleteTemplate = (id: string) => { setDeleteIntent({ type: 'template', id }); };
 
+  // --- AUTOMATION: RETAINER RUN ---
+  const handleRunRetainer = async () => {
+      setIsLoading(true);
+      const result = await dataService.processDueRetainers();
+      
+      if (result.newInvoices.length > 0) {
+          // Update State
+          setInvoices(prev => [...result.newInvoices, ...prev]);
+          setContacts(prev => prev.map(c => {
+              const updated = result.updatedContacts.find(u => u.id === c.id);
+              return updated || c;
+          }));
+          setActivities(prev => [...result.newActivities, ...prev]);
+          
+          alert(`${result.newInvoices.length} Retainer-Rechnungen erfolgreich erstellt.`);
+      } else {
+          alert("Keine fälligen Retainer-Verträge gefunden.");
+      }
+      setIsLoading(false);
+  };
+
   const parseCSV = (str: string) => {
     const arr: string[][] = [];
     let quote = false;
@@ -565,6 +586,7 @@ const App: React.FC = () => {
             onNavigateToTasks={handleNavigateToTasks}
             onNavigateToFinances={handleNavigateToFinances}
             invoices={invoices}
+            expenses={expenses}
             activities={activities}
           />
         );
@@ -585,6 +607,8 @@ const App: React.FC = () => {
             emailTemplates={emailTemplates}
             onImportCSV={handleImportContactsCSV}
             onBulkDeleteContacts={handleBulkDeleteContacts} // NEW PROP
+            invoices={invoices} // PASSED PROP
+            expenses={expenses} // PASSED PROP
           />
         );
       case 'pipeline':
@@ -634,6 +658,7 @@ const App: React.FC = () => {
             onDeleteExpense={onRequestDeleteExpense}
             invoiceConfig={invoiceConfig}
             onAddActivity={handleAddActivity}
+            onRunRetainer={handleRunRetainer}
           />
         );
       case 'settings':
