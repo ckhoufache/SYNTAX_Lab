@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle, Key, RefreshCw, Copy, FileText, Image as ImageIcon, Briefcase, Settings as SettingsIcon, HardDrive, Users, DownloadCloud, RefreshCcw, Sparkles } from 'lucide-react';
+import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle, Key, RefreshCw, Copy, FileText, Image as ImageIcon, Briefcase, Settings as SettingsIcon, HardDrive, Users, DownloadCloud, RefreshCcw, Sparkles, Sliders } from 'lucide-react';
 import { UserProfile, Theme, ProductPreset, Contact, Deal, Task, BackupData, BackendConfig, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate } from '../types';
 import { IDataService } from '../services/dataService';
 
@@ -36,30 +36,30 @@ interface SettingsProps {
   onDeleteTemplate: (id: string) => void;
 }
 
-// Haupt-Sektion (Das "Übermenü")
+// Haupt-Sektion (Das "Übermenü") - Jetzt Controlled Component
 const SettingsSection = ({ 
     title, 
     icon: Icon, 
     children, 
     isDark, 
     description,
-    defaultOpen = false
+    isOpen,
+    onToggle
 }: { 
     title: string; 
     icon: any; 
     children?: React.ReactNode; 
     isDark: boolean; 
     description?: string;
-    defaultOpen?: boolean;
+    isOpen: boolean;
+    onToggle: () => void;
 }) => {
-    const [isOpen, setIsOpen] = useState(defaultOpen);
-
     return (
         <div className={`rounded-xl shadow-sm border transition-all duration-200 overflow-hidden ${
             isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
         }`}>
             <button 
-                onClick={() => setIsOpen(!isOpen)}
+                onClick={onToggle}
                 className={`w-full flex items-center justify-between p-6 transition-colors ${
                     !isOpen && !isDark ? 'hover:bg-slate-50' : ''
                 } ${!isOpen && isDark ? 'hover:bg-slate-800' : ''}`}
@@ -93,27 +93,27 @@ const SettingsSection = ({
     );
 };
 
-// Unter-Sektion (Zum Aufklappen innerhalb einer Haupt-Sektion)
+// Unter-Sektion (Zum Aufklappen innerhalb einer Haupt-Sektion) - Jetzt Controlled Component
 const SubSection = ({
     title,
     children,
     isDark,
-    defaultOpen = false
+    isOpen,
+    onToggle
 }: {
     title: string;
     children?: React.ReactNode;
     isDark: boolean;
-    defaultOpen?: boolean;
+    isOpen: boolean;
+    onToggle: () => void;
 }) => {
-    const [isOpen, setIsOpen] = useState(defaultOpen);
-
     return (
         <div className={`border-b last:border-0 ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
             <button 
-                onClick={() => setIsOpen(!isOpen)}
+                onClick={onToggle}
                 className={`w-full flex items-center justify-between py-4 text-sm font-semibold transition-colors hover:text-indigo-600 ${
                     isDark ? 'text-slate-200' : 'text-slate-700'
-                }`}
+                } ${isOpen ? 'text-indigo-600' : ''}`}
             >
                 {title}
                 {isOpen ? (
@@ -158,6 +158,25 @@ export const Settings: React.FC<SettingsProps> = ({
   const isDark = currentTheme === 'dark';
   const [formData, setFormData] = useState<UserProfile>(userProfile);
   const [backendForm, setBackendForm] = useState<BackendConfig>(backendConfig);
+  
+  // Accordion State Management
+  const [activeSection, setActiveSection] = useState<string | null>('profile');
+  const [activeSubSection, setActiveSubSection] = useState<string | null>('profile_data');
+
+  const toggleSection = (id: string) => {
+      // Wenn wir eine neue Sektion öffnen, schließen wir die alte und setzen Sub-Sektion zurück (oder setzen eine Standard Sub-Sektion)
+      if (activeSection === id) {
+          setActiveSection(null);
+      } else {
+          setActiveSection(id);
+          // Optional: Automatisch ersten Sub-Punkt öffnen? Hier lassen wir es erstmal leer, bis der User klickt
+          setActiveSubSection(null);
+      }
+  };
+
+  const toggleSubSection = (id: string) => {
+      setActiveSubSection(activeSubSection === id ? null : id);
+  };
   
   // Invoice Config Form
   const [invConfigForm, setInvConfigForm] = useState<InvoiceConfig>(invoiceConfig);
@@ -510,10 +529,22 @@ export const Settings: React.FC<SettingsProps> = ({
       
       <main className="p-8 space-y-6 pb-20 max-w-5xl mx-auto w-full">
          
-         {/* Profile Section */}
-         <SettingsSection title="Profil & Darstellung" icon={User} isDark={isDark} description="Persönliche Daten und Design" defaultOpen={true}>
+         {/* --- 1. PROFIL & DARSTELLUNG --- */}
+         <SettingsSection 
+            title="Profil & Darstellung" 
+            icon={User} 
+            isDark={isDark} 
+            description="Persönliche Daten und Design"
+            isOpen={activeSection === 'profile'}
+            onToggle={() => toggleSection('profile')}
+         >
              <div className="px-6">
-                <SubSection title="Stammdaten" isDark={isDark} defaultOpen={true}>
+                <SubSection 
+                    title="Stammdaten" 
+                    isDark={isDark}
+                    isOpen={activeSubSection === 'profile_data'}
+                    onToggle={() => toggleSubSection('profile_data')}
+                >
                     <div className="flex items-center gap-6 mb-6">
                         <img src={formData.avatar} alt="Avatar" className="w-16 h-16 rounded-full object-cover ring-4 ring-slate-50 dark:ring-slate-800" />
                         <div className="space-y-2 flex-1">
@@ -540,7 +571,12 @@ export const Settings: React.FC<SettingsProps> = ({
                     </div>
                 </SubSection>
                 
-                <SubSection title="Design & Theme" isDark={isDark}>
+                <SubSection 
+                    title="Design & Theme" 
+                    isDark={isDark}
+                    isOpen={activeSubSection === 'profile_theme'}
+                    onToggle={() => toggleSubSection('profile_theme')}
+                >
                     <div className="py-2">
                          <div className="flex gap-4">
                              <button onClick={() => onUpdateTheme('light')} className={`flex-1 py-3 border rounded-xl flex items-center justify-center gap-2 ${currentTheme === 'light' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 hover:bg-slate-50 text-slate-600'}`}>
@@ -555,34 +591,130 @@ export const Settings: React.FC<SettingsProps> = ({
              </div>
          </SettingsSection>
 
-         {/* Invoice Config */}
-         <SettingsSection title="Rechnungskonfiguration" icon={FileText} isDark={isDark} description="Firmendaten für PDF Rechnungen">
-             <div className="p-6 grid grid-cols-2 gap-4">
-                 <div className="col-span-2">
-                     <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Firmenlogo</label>
-                     <div className="mt-1 flex items-center gap-4">
-                         {invConfigForm.logoBase64 && <img src={invConfigForm.logoBase64} alt="Logo Preview" className="h-12 w-auto object-contain" />}
-                         <button onClick={() => logoInputRef.current?.click()} className="text-sm text-indigo-600 hover:underline">Logo hochladen...</button>
-                         <input ref={logoInputRef} type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
+         {/* --- 2. SYSTEMKONFIGURATION (NEU: Gruppiert) --- */}
+         <SettingsSection
+             title="Systemkonfiguration"
+             icon={Sliders}
+             isDark={isDark}
+             description="Rechnungen, Produkte & E-Mail Vorlagen"
+             isOpen={activeSection === 'configuration'}
+             onToggle={() => toggleSection('configuration')}
+         >
+             <div className="px-6">
+                 {/* Rechnungen */}
+                 <SubSection
+                     title="Rechnungskonfiguration"
+                     isDark={isDark}
+                     isOpen={activeSubSection === 'config_invoice'}
+                     onToggle={() => toggleSubSection('config_invoice')}
+                 >
+                     <div className="py-2 grid grid-cols-2 gap-4">
+                         <div className="col-span-2">
+                             <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Firmenlogo</label>
+                             <div className="mt-1 flex items-center gap-4">
+                                 {invConfigForm.logoBase64 && <img src={invConfigForm.logoBase64} alt="Logo Preview" className="h-12 w-auto object-contain" />}
+                                 <button onClick={() => logoInputRef.current?.click()} className="text-sm text-indigo-600 hover:underline">Logo hochladen...</button>
+                                 <input ref={logoInputRef} type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
+                             </div>
+                         </div>
+                         <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Firmenname</label><input name="companyName" value={invConfigForm.companyName} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
+                         <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">E-Mail (Firma)</label><input name="email" value={invConfigForm.email} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
+                         <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Straße & Nr.</label><input name="addressLine1" value={invConfigForm.addressLine1} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
+                         <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">PLZ & Ort</label><input name="addressLine2" value={invConfigForm.addressLine2} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
+                         <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">IBAN</label><input name="iban" value={invConfigForm.iban} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
+                         <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">BIC</label><input name="bic" value={invConfigForm.bic} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
+                         <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Bankname</label><input name="bankName" value={invConfigForm.bankName} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
+                         <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Steuernummer</label><input name="taxId" value={invConfigForm.taxId} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
+                         <div className="col-span-2"><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Fußzeile (Text)</label><textarea name="footerText" value={invConfigForm.footerText || ''} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" rows={2} /></div>
+                         <div className="col-span-2 flex justify-end"><button onClick={() => { onUpdateInvoiceConfig(invConfigForm); alert('Gespeichert'); }} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">Speichern</button></div>
                      </div>
-                 </div>
-                 <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Firmenname</label><input name="companyName" value={invConfigForm.companyName} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
-                 <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">E-Mail (Firma)</label><input name="email" value={invConfigForm.email} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
-                 <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Straße & Nr.</label><input name="addressLine1" value={invConfigForm.addressLine1} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
-                 <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">PLZ & Ort</label><input name="addressLine2" value={invConfigForm.addressLine2} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
-                 <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">IBAN</label><input name="iban" value={invConfigForm.iban} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
-                 <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">BIC</label><input name="bic" value={invConfigForm.bic} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
-                 <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Bankname</label><input name="bankName" value={invConfigForm.bankName} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
-                 <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Steuernummer</label><input name="taxId" value={invConfigForm.taxId} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
-                 <div className="col-span-2"><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Fußzeile (Text)</label><textarea name="footerText" value={invConfigForm.footerText || ''} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" rows={2} /></div>
-                 <div className="col-span-2 flex justify-end"><button onClick={() => { onUpdateInvoiceConfig(invConfigForm); alert('Gespeichert'); }} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">Speichern</button></div>
+                 </SubSection>
+
+                 {/* Produkt Presets */}
+                 <SubSection
+                     title="Produkt Presets"
+                     isDark={isDark}
+                     isOpen={activeSubSection === 'config_products'}
+                     onToggle={() => toggleSubSection('config_products')}
+                 >
+                     <div className="py-2">
+                        <div className="space-y-2 mb-4">
+                            {localPresets.map(preset => (
+                                <div key={preset.id} className="flex items-center justify-between p-3 border rounded-lg bg-white dark:bg-slate-800 dark:border-slate-700">
+                                    {editingPresetId === preset.id ? (
+                                        <div className="flex gap-2 flex-1 items-center">
+                                            <input value={editPresetTitle} onChange={e=>setEditPresetTitle(e.target.value)} className="flex-1 border p-1 rounded text-sm dark:bg-slate-700 dark:text-white" />
+                                            <input value={editPresetValue} onChange={e=>setEditPresetValue(e.target.value)} type="number" className="w-24 border p-1 rounded text-sm dark:bg-slate-700 dark:text-white" />
+                                            <button onClick={handleSaveEditPreset} className="text-green-600"><Check className="w-4 h-4"/></button>
+                                            <button onClick={handleCancelEditPreset} className="text-red-500"><X className="w-4 h-4"/></button>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="flex gap-4">
+                                                <span className="font-medium text-sm text-slate-800 dark:text-slate-200">{preset.title}</span>
+                                                <span className="text-sm text-slate-500">{preset.value} €</span>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button onClick={() => handleStartEditPreset(preset)} className="text-slate-400 hover:text-indigo-600"><Pencil className="w-4 h-4"/></button>
+                                                <button onClick={() => handleDeletePreset(preset.id)} className="text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4"/></button>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                        <div className="flex gap-2">
+                            <input placeholder="Neues Produkt" value={newPresetTitle} onChange={e=>setNewPresetTitle(e.target.value)} className="flex-1 px-3 py-2 border rounded-lg text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white" />
+                            <input placeholder="Preis" type="number" value={newPresetValue} onChange={e=>setNewPresetValue(e.target.value)} className="w-24 px-3 py-2 border rounded-lg text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white" />
+                            <button onClick={() => { handleAddPreset(); onUpdatePresets(localPresets); }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-sm"><Plus className="w-4 h-4" /></button>
+                        </div>
+                     </div>
+                 </SubSection>
+
+                 {/* Email Vorlagen */}
+                 <SubSection
+                     title="E-Mail Vorlagen"
+                     isDark={isDark}
+                     isOpen={activeSubSection === 'config_email'}
+                     onToggle={() => toggleSubSection('config_email')}
+                 >
+                     <div className="py-2">
+                        <div className="space-y-2 mb-4">
+                            {emailTemplates.map(template => (
+                                <div key={template.id} className="flex items-center justify-between p-3 border rounded-lg bg-white dark:bg-slate-800 dark:border-slate-700">
+                                    <div>
+                                        <p className="font-medium text-sm text-slate-800 dark:text-slate-200">{template.title}</p>
+                                        <p className="text-xs text-slate-500">{template.subject}</p>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => openTemplateModal(template)} className="text-slate-400 hover:text-indigo-600"><Pencil className="w-4 h-4"/></button>
+                                        <button onClick={() => onDeleteTemplate(template.id)} className="text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4"/></button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        <button onClick={() => openTemplateModal()} className="w-full py-2 border border-dashed border-slate-300 rounded-lg text-slate-500 hover:bg-slate-50 flex items-center justify-center gap-2 text-sm"><Plus className="w-4 h-4" /> Neue Vorlage erstellen</button>
+                     </div>
+                 </SubSection>
              </div>
          </SettingsSection>
          
-         {/* Integrations */}
-         <SettingsSection title="Integrationen & API" icon={Globe} isDark={isDark} description="Google Services & KI Verbindung">
+         {/* --- 3. INTEGRATIONEN & API --- */}
+         <SettingsSection 
+            title="Integrationen & API" 
+            icon={Globe} 
+            isDark={isDark} 
+            description="Google Services & KI Verbindung"
+            isOpen={activeSection === 'integrations'}
+            onToggle={() => toggleSection('integrations')}
+         >
              <div className="px-6">
-                 <SubSection title="Google Cloud Platform" isDark={isDark}>
+                 <SubSection 
+                    title="Google Cloud Platform" 
+                    isDark={isDark}
+                    isOpen={activeSubSection === 'int_gcp'}
+                    onToggle={() => toggleSubSection('int_gcp')}
+                >
                     <div className="mb-2 mt-2">
                         <label className="text-xs font-bold text-slate-500 mb-1 block">Client ID</label>
                         <div className="flex gap-2">
@@ -598,7 +730,12 @@ export const Settings: React.FC<SettingsProps> = ({
                     </div>
                  </SubSection>
 
-                 <SubSection title="Verbundene Dienste" isDark={isDark}>
+                 <SubSection 
+                    title="Verbundene Dienste" 
+                    isDark={isDark}
+                    isOpen={activeSubSection === 'int_services'}
+                    onToggle={() => toggleSubSection('int_services')}
+                >
                     <div className="grid grid-cols-2 gap-4 mt-2 mb-2">
                         <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-4 flex justify-between items-center">
                             <div className="flex items-center gap-3">
@@ -628,7 +765,12 @@ export const Settings: React.FC<SettingsProps> = ({
                     </div>
                  </SubSection>
 
-                 <SubSection title="Künstliche Intelligenz" isDark={isDark}>
+                 <SubSection 
+                    title="Künstliche Intelligenz" 
+                    isDark={isDark}
+                    isOpen={activeSubSection === 'int_ai'}
+                    onToggle={() => toggleSubSection('int_ai')}
+                >
                     <div className="mt-2 mb-2">
                         <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-1 flex items-center gap-2"><Sparkles className="w-4 h-4 text-amber-500" /> Google Gemini AI</h3>
                         <p className="text-xs text-slate-500 mb-2">Für tägliche Briefings und Smart Insights.</p>
@@ -645,7 +787,12 @@ export const Settings: React.FC<SettingsProps> = ({
                     </div>
                  </SubSection>
                  
-                 <SubSection title="API Zugriff" isDark={isDark}>
+                 <SubSection 
+                    title="API Zugriff" 
+                    isDark={isDark}
+                    isOpen={activeSubSection === 'int_api'}
+                    onToggle={() => toggleSubSection('int_api')}
+                >
                     <div className="mt-2 mb-2">
                         <p className="text-xs text-slate-500 mb-2">Für externe Zugriffe auf dieses CRM.</p>
                         <div className="flex gap-2">
@@ -660,67 +807,22 @@ export const Settings: React.FC<SettingsProps> = ({
              </div>
          </SettingsSection>
 
-         {/* Product Presets */}
-         <SettingsSection title="Produkt Presets" icon={Package} isDark={isDark} description="Vorlagen für Deals">
-             <div className="p-6">
-                 <div className="space-y-2 mb-4">
-                     {localPresets.map(preset => (
-                         <div key={preset.id} className="flex items-center justify-between p-3 border rounded-lg bg-white dark:bg-slate-800 dark:border-slate-700">
-                             {editingPresetId === preset.id ? (
-                                 <div className="flex gap-2 flex-1 items-center">
-                                     <input value={editPresetTitle} onChange={e=>setEditPresetTitle(e.target.value)} className="flex-1 border p-1 rounded text-sm dark:bg-slate-700 dark:text-white" />
-                                     <input value={editPresetValue} onChange={e=>setEditPresetValue(e.target.value)} type="number" className="w-24 border p-1 rounded text-sm dark:bg-slate-700 dark:text-white" />
-                                     <button onClick={handleSaveEditPreset} className="text-green-600"><Check className="w-4 h-4"/></button>
-                                     <button onClick={handleCancelEditPreset} className="text-red-500"><X className="w-4 h-4"/></button>
-                                 </div>
-                             ) : (
-                                 <>
-                                     <div className="flex gap-4">
-                                         <span className="font-medium text-sm text-slate-800 dark:text-slate-200">{preset.title}</span>
-                                         <span className="text-sm text-slate-500">{preset.value} €</span>
-                                     </div>
-                                     <div className="flex gap-2">
-                                         <button onClick={() => handleStartEditPreset(preset)} className="text-slate-400 hover:text-indigo-600"><Pencil className="w-4 h-4"/></button>
-                                         <button onClick={() => handleDeletePreset(preset.id)} className="text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4"/></button>
-                                     </div>
-                                 </>
-                             )}
-                         </div>
-                     ))}
-                 </div>
-                 <div className="flex gap-2">
-                     <input placeholder="Neues Produkt" value={newPresetTitle} onChange={e=>setNewPresetTitle(e.target.value)} className="flex-1 px-3 py-2 border rounded-lg text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white" />
-                     <input placeholder="Preis" type="number" value={newPresetValue} onChange={e=>setNewPresetValue(e.target.value)} className="w-24 px-3 py-2 border rounded-lg text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white" />
-                     <button onClick={() => { handleAddPreset(); onUpdatePresets(localPresets); }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-sm"><Plus className="w-4 h-4" /></button>
-                 </div>
-             </div>
-         </SettingsSection>
-
-         {/* Email Templates */}
-         <SettingsSection title="E-Mail Vorlagen" icon={Mail} isDark={isDark} description="Templates für den Schnellzugriff">
-             <div className="p-6">
-                 <div className="space-y-2 mb-4">
-                     {emailTemplates.map(template => (
-                         <div key={template.id} className="flex items-center justify-between p-3 border rounded-lg bg-white dark:bg-slate-800 dark:border-slate-700">
-                             <div>
-                                 <p className="font-medium text-sm text-slate-800 dark:text-slate-200">{template.title}</p>
-                                 <p className="text-xs text-slate-500">{template.subject}</p>
-                             </div>
-                             <div className="flex gap-2">
-                                 <button onClick={() => openTemplateModal(template)} className="text-slate-400 hover:text-indigo-600"><Pencil className="w-4 h-4"/></button>
-                                 <button onClick={() => onDeleteTemplate(template.id)} className="text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4"/></button>
-                             </div>
-                         </div>
-                     ))}
-                 </div>
-                 <button onClick={() => openTemplateModal()} className="w-full py-2 border border-dashed border-slate-300 rounded-lg text-slate-500 hover:bg-slate-50 flex items-center justify-center gap-2 text-sm"><Plus className="w-4 h-4" /> Neue Vorlage erstellen</button>
-             </div>
-         </SettingsSection>
-
-         {/* Data Management */}
-         <SettingsSection title="Datenverwaltung" icon={Database} isDark={isDark} description="Backup und Wiederherstellung">
+         {/* --- 4. DATENVERWALTUNG --- */}
+         <SettingsSection 
+            title="Datenverwaltung" 
+            icon={Database} 
+            isDark={isDark} 
+            description="Backup und Wiederherstellung"
+            isOpen={activeSection === 'data'}
+            onToggle={() => toggleSection('data')}
+        >
              <div className="px-6">
-                 <SubSection title="Backup & Restore" isDark={isDark} defaultOpen={true}>
+                 <SubSection 
+                    title="Backup & Restore" 
+                    isDark={isDark}
+                    isOpen={activeSubSection === 'data_backup'}
+                    onToggle={() => toggleSubSection('data_backup')}
+                >
                     <div className="grid grid-cols-2 gap-4 mt-2 mb-2">
                         <button onClick={handleExport} className="p-4 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 flex flex-col items-center gap-2 transition-colors">
                             <DownloadCloud className="w-8 h-8 text-indigo-600" />
@@ -736,7 +838,12 @@ export const Settings: React.FC<SettingsProps> = ({
                     </div>
                  </SubSection>
                  
-                 <SubSection title="Software Update" isDark={isDark}>
+                 <SubSection 
+                    title="Software Update" 
+                    isDark={isDark}
+                    isOpen={activeSubSection === 'data_update'}
+                    onToggle={() => toggleSubSection('data_update')}
+                >
                     <div className="mt-2 mb-2">
                         <div className="flex items-center gap-2 mb-2"><RefreshCcw className="w-4 h-4" /> <span className="text-sm font-bold">Update Server (Beta)</span></div>
                         <p className="text-xs text-slate-500 mb-3">Laden Sie Updates von einem lokalen Server oder einer URL.</p>
