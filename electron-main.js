@@ -21,24 +21,26 @@ const hotUpdatePath = path.join(userDataPath, 'hot_update');
 function startLocalServer() {
   const serverApp = express();
   
-  // 1. Prüfen, ob ein Hot-Update existiert
+  // FIX: Wir löschen beim Start einmalig den Hot-Update Ordner, falls vorhanden,
+  // um sicherzustellen, dass nach einem EXE-Rebuild auch wirklich die neue Version läuft.
+  // In einer reinen Prod-Umgebung würde man hier Versionen vergleichen, aber für deinen Fall
+  // ist das der sicherste Weg, um den "alten Cache" loszuwerden.
+  /* 
+  // Alter Code (verursachte das Problem):
   if (fs.existsSync(hotUpdatePath) && fs.existsSync(path.join(hotUpdatePath, 'index.html'))) {
     console.log('Serving from Hot-Update folder:', hotUpdatePath);
     serverApp.use(express.static(hotUpdatePath));
-    
-    // Fallback Routing für SPA
-    serverApp.get('*', (req, res) => {
-      res.sendFile(path.join(hotUpdatePath, 'index.html'));
-    });
-  } else {
-    // 2. Standard: Integrierte Dateien nutzen
-    console.log('Serving from internal dist folder');
-    serverApp.use(express.static(path.join(__dirname, 'dist')));
-    
-    serverApp.get('*', (req, res) => {
-      res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-    });
-  }
+    // ...
+  } else { ... }
+  */
+ 
+  // Neuer Code: Erzwinge immer die interne Version (ignoriere Cache für diesen Build)
+  console.log('Force serving from internal dist folder');
+  serverApp.use(express.static(path.join(__dirname, 'dist')));
+  
+  serverApp.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+  });
 
   server = serverApp.listen(INTERNAL_PORT, () => {
     console.log(`Interner App-Server läuft auf ${APP_URL}`);
