@@ -66,8 +66,9 @@ export const Finances: React.FC<FinancesProps> = ({
 
     // --- FINANCIAL CALCULATIONS ---
     const LIMIT = 22000;
-    const validInvoices = invoices.filter(inv => !inv.isCancelled);
-    const totalRevenue = validInvoices.reduce((sum, inv) => sum + inv.amount, 0);
+    // Fix: Calculate revenue based on ALL invoices to ensure Storno (+500 and -500) balances to 0.
+    // Filtering out isCancelled would leave only the negative Storno, resulting in negative revenue.
+    const totalRevenue = invoices.reduce((sum, inv) => sum + inv.amount, 0);
     const totalExpenses = expenses.reduce((sum, ex) => sum + ex.amount, 0);
     const profit = totalRevenue - totalExpenses;
     const taxReserve = Math.max(0, profit * 0.30); // 30% Steuerrücklage

@@ -1068,18 +1068,17 @@ Buchhaltung
         }
         
         // Simple Multipart Construction for Gmail API
-        const boundary = "foo_bar_baz";
+        const boundary = "foo_bar_baz_" + Date.now().toString(16);
         const utf8Subject = `=?utf-8?B?${btoa(unescape(encodeURIComponent(subject)))}?=`;
         
-        const headers = [
+        // CRLF is strictly required for MIME
+        const nl = "\r\n";
+
+        let messageParts = [
             `To: ${to}`,
             `Subject: ${utf8Subject}`,
             "MIME-Version: 1.0",
-            `Content-Type: multipart/mixed; boundary="${boundary}"`
-        ];
-
-        let messageParts = [
-            ...headers,
+            `Content-Type: multipart/mixed; boundary="${boundary}"`,
             "",
             `--${boundary}`,
             "Content-Type: text/plain; charset=utf-8",
@@ -1093,24 +1092,22 @@ Buchhaltung
         if (attachments && attachments.length > 0) {
             for (const att of attachments) {
                 // Remove data URL prefix if present (data:image/png;base64,...)
-                const base64Data = att.data.split(',')[1] || att.data;
+                // Only use the raw base64 data
+                const base64Data = att.data.includes(',') ? att.data.split(',')[1] : att.data;
                 
-                messageParts = [
-                    ...messageParts,
-                    `--${boundary}`,
-                    `Content-Type: ${att.type}`,
-                    "Content-Transfer-Encoding: base64",
-                    `Content-Disposition: attachment; filename="${att.name}"`,
-                    "",
-                    base64Data,
-                    ""
-                ];
+                messageParts.push(`--${boundary}`);
+                messageParts.push(`Content-Type: ${att.type}`);
+                messageParts.push("Content-Transfer-Encoding: base64");
+                messageParts.push(`Content-Disposition: attachment; filename="${att.name}"`);
+                messageParts.push("");
+                messageParts.push(base64Data);
+                messageParts.push("");
             }
         }
 
         messageParts.push(`--${boundary}--`);
 
-        const message = messageParts.join('\n');
+        const message = messageParts.join(nl);
         
         // Base64URL encode the whole message
         const encodedMessage = btoa(unescape(encodeURIComponent(message))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -1315,12 +1312,15 @@ Buchhaltung
         if (window.require) {
             const { ipcRenderer } = window.require('electron');
             const buffer = await ipcRenderer.invoke('generate-pdf', htmlContent);
-            // Convert Buffer to Base64 String
-            const base64 = btoa(
-                new Uint8Array(buffer)
-                    .reduce((data, byte) => data + String.fromCharCode(byte), '')
-            );
-            return base64;
+            
+            // Efficient Buffer to Base64 in Browser/Electron Environment
+            const bytes = new Uint8Array(buffer);
+            let binary = '';
+            const len = bytes.byteLength;
+            for (let i = 0; i < len; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return btoa(binary);
         }
         throw new Error("PDF Generierung ist nur in der Desktop-App verfügbar.");
     }

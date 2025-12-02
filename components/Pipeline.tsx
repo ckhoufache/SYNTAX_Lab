@@ -153,7 +153,7 @@ export const Pipeline: React.FC<PipelineProps> = ({
         };
         onAddInvoice(newInvoice);
 
-        // 2. Auto Welcome Email (UPDATED to use new Config Structure)
+        // 2. Auto Welcome Email (UPDATED)
         if (invoiceConfig && invoiceConfig.emailSettings?.welcome?.enabled && contact && contact.email) {
              const welcomeConfig = invoiceConfig.emailSettings.welcome;
              
@@ -180,11 +180,12 @@ export const Pipeline: React.FC<PipelineProps> = ({
                          name: `Rechnung_${newInvoice.invoiceNumber}.pdf`,
                          data: pdfBase64,
                          type: 'application/pdf',
-                         size: 0
+                         size: 0 // Size not strictly required for sending
                      });
                  }
 
                  // --- PLACEHOLDER REPLACEMENT FOR EMAIL BODY ---
+                 // Using simple split/join to avoid Regex special character issues with { }
                  const replacements: Record<string, string> = {
                     '{name}': contact.name || '',
                     '{firstName}': contact.name.split(' ')[0] || '',
@@ -199,11 +200,11 @@ export const Pipeline: React.FC<PipelineProps> = ({
                  let body = welcomeConfig.body;
                  let subject = welcomeConfig.subject;
 
-                 for (const [key, value] of Object.entries(replacements)) {
-                     const regex = new RegExp(key, 'g');
-                     body = body.replace(regex, value);
-                     subject = subject.replace(regex, value);
-                 }
+                 Object.entries(replacements).forEach(([key, value]) => {
+                     // Replace all occurrences safely without Regex
+                     body = body.split(key).join(value);
+                     subject = subject.split(key).join(value);
+                 });
                  
                  // Send non-blocking with attachments
                  service.sendMail(contact.email, subject, body, attachments).then(success => {
@@ -216,6 +217,8 @@ export const Pipeline: React.FC<PipelineProps> = ({
                             date: new Date().toISOString().split('T')[0],
                             timestamp: new Date().toISOString()
                         });
+                     } else {
+                         console.error("Failed to send automatic email");
                      }
                  });
              }
