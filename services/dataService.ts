@@ -10,6 +10,116 @@ declare global {
     }
 }
 
+// --- CONSTANTS: DEFAULT TEMPLATES ---
+
+const DEFAULT_PDF_TEMPLATE = `<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; -webkit-print-color-adjust: exact; }
+    </style>
+</head>
+<body class="bg-white text-slate-800 p-[10mm] max-w-[210mm] mx-auto">
+    <!-- HEADER -->
+    <div class="flex justify-between items-start mb-16">
+        <div>
+            <!-- LOGO PLACEHOLDER -->
+            <div class="mb-4">
+                {logoSection}
+            </div>
+            <p class="text-xs text-slate-500 font-medium">{companyName} • {addressLine1} • {addressLine2}</p>
+        </div>
+        <div class="text-right text-sm text-slate-600">
+            <h1 class="text-xl font-bold text-slate-900 mb-2">{titlePrefix}</h1>
+            <p><span class="w-24 inline-block text-slate-400">Rechnungs-Nr:</span> <span class="font-mono font-medium">{invoiceNumber}</span></p>
+            <p><span class="w-24 inline-block text-slate-400">Datum:</span> {date}</p>
+            <p><span class="w-24 inline-block text-slate-400">Kunden-Nr:</span> {customerId}</p>
+        </div>
+    </div>
+
+    <!-- RECIPIENT -->
+    <div class="mb-16 text-sm leading-relaxed">
+        <p class="font-bold text-lg text-slate-900">{contactName}</p>
+        <p class="text-slate-600">Musterstraße 1</p>
+        <p class="text-slate-600">12345 Musterstadt</p>
+    </div>
+
+    <!-- BODY -->
+    <div class="mb-8">
+        <h2 class="text-lg font-bold mb-4">{titlePrefix} {invoiceNumber}</h2>
+        <p class="text-sm text-slate-600 mb-6">
+            Sehr geehrte Damen und Herren,<br><br>
+            vielen Dank für Ihren Auftrag. Wir erlauben uns, folgende Leistungen in Rechnung zu stellen:
+        </p>
+    </div>
+
+    <!-- TABLE -->
+    <table class="w-full text-left text-sm mb-12 border-collapse">
+        <thead>
+            <tr class="border-b-2 border-slate-900 text-slate-500">
+                <th class="py-3 font-semibold">Beschreibung</th>
+                <th class="py-3 text-right font-semibold">Menge</th>
+                <th class="py-3 text-right font-semibold">Einzelpreis</th>
+                <th class="py-3 text-right font-semibold">Gesamt</th>
+            </tr>
+        </thead>
+        <tbody class="border-b border-slate-200">
+            <tr>
+                <td class="py-4 font-medium text-slate-800">{description}</td>
+                <td class="py-4 text-right text-slate-600">1,00</td>
+                <td class="py-4 text-right text-slate-600">{netAmount}</td>
+                <td class="py-4 text-right text-slate-800 font-medium">{netAmount}</td>
+            </tr>
+        </tbody>
+        <tfoot class="text-slate-700">
+            <tr>
+                <td colspan="3" class="py-3 text-right">Nettobetrag</td>
+                <td class="py-3 text-right font-medium">{netAmount}</td>
+            </tr>
+            <tr>
+                <td colspan="3" class="py-3 text-right">{taxLabel}</td>
+                <td class="py-3 text-right font-medium">{taxAmount}</td>
+            </tr>
+            <tr class="text-lg font-bold text-slate-900">
+                <td colspan="3" class="py-4 text-right">Gesamtbetrag</td>
+                <td class="py-4 text-right">{grossAmount}</td>
+            </tr>
+        </tfoot>
+    </table>
+
+    <!-- TERMS -->
+    <div class="text-sm text-slate-600 mb-12 bg-slate-50 p-6 rounded-lg border border-slate-100">
+        <p class="font-semibold mb-2">Zahlungsbedingungen:</p>
+        <p>Bitte überweisen Sie den Betrag innerhalb von 14 Tagen ohne Abzug auf das unten genannte Konto.</p>
+        <p class="mt-2 text-xs text-slate-500 italic">{taxNote}</p>
+    </div>
+
+    <!-- FOOTER -->
+    <div class="fixed bottom-[10mm] left-[10mm] right-[10mm] text-[10px] text-slate-500 border-t border-slate-200 pt-6 flex justify-between">
+        <div>
+            <p class="font-bold text-slate-700">{companyName}</p>
+            <p>{addressLine1}</p>
+            <p>{addressLine2}</p>
+            <p>{email}</p>
+        </div>
+        <div>
+            <p class="font-bold text-slate-700">Bankverbindung</p>
+            <p>{bankName}</p>
+            <p>IBAN: {iban}</p>
+            <p>BIC: {bic}</p>
+        </div>
+        <div>
+            <p class="font-bold text-slate-700">Rechtliches</p>
+            <p>St-Nr: {taxId}</p>
+            <p>{footerText}</p>
+        </div>
+    </div>
+</body>
+</html>`;
+
 // --- Interfaces ---
 export interface IDataService {
     // Initialization
@@ -159,42 +269,91 @@ class LocalDataService implements IDataService {
             { id: 'beta', title: 'Beta Version', value: 500 },
             { id: 'release', title: 'Release Version', value: 1500 }
         ]);
+        
+        // Initialize Default Config with Professional Templates
         this.cache.invoiceConfig = this.getFromStorage<InvoiceConfig>('invoiceConfig', {
-            companyName: 'Meine Firma',
-            addressLine1: 'Musterstraße 123',
-            addressLine2: '12345 Musterstadt',
+            companyName: 'Meine Firma GmbH',
+            addressLine1: 'Hauptstraße 1',
+            addressLine2: '10115 Berlin',
             taxId: '123/456/7890',
-            bankName: 'Musterbank',
-            iban: 'DE12 3456 7890 1234 5678 90',
-            bic: 'MUSTERBIC',
-            email: 'info@meinefirma.de',
+            bankName: 'Berliner Volksbank',
+            iban: 'DE12 1001 0010 1234 5678 90',
+            bic: 'GENODEF1BRL',
+            email: 'buchhaltung@meinefirma.de',
             website: 'www.meinefirma.de',
-            footerText: 'Vielen Dank für Ihren Auftrag.',
+            footerText: 'Geschäftsführer: Max Mustermann • HRB 12345 Amtsgericht Charlottenburg',
             taxRule: 'small_business',
+            pdfTemplate: DEFAULT_PDF_TEMPLATE, // Initialize with new template
             emailSettings: {
                 welcome: {
-                    subject: 'Willkommen bei uns!',
-                    body: 'Hallo {name},\n\nschön, dass du an Bord bist. Anbei findest du wichtige Unterlagen.\n\nViele Grüße,\nDas Team',
+                    subject: 'Willkommen bei {myCompany} – Ihr Onboarding',
+                    body: `Hallo {name},
+
+herzlich willkommen! Wir freuen uns sehr, Sie als neuen Kunden begrüßen zu dürfen.
+
+In den kommenden Tagen werden wir uns bezüglich der nächsten Schritte bei Ihnen melden. Falls Sie vorab Fragen haben, stehen wir Ihnen jederzeit gerne zur Verfügung.
+
+Im Anhang finden Sie bereits wichtige Informationen zu unserer Zusammenarbeit.
+
+Beste Grüße,
+Ihr Team von {myCompany}`,
                     attachments: [],
                     enabled: false
                 },
                 invoice: {
-                    subject: 'Ihre Rechnung {nr}',
-                    body: 'Hallo {name},\n\nanbei erhalten Sie Ihre Rechnung zur Prüfung und Begleichung.\n\nMit freundlichen Grüßen',
+                    subject: 'Rechnung {nr} von {myCompany}',
+                    body: `Sehr geehrte Damen und Herren,
+hallo {name},
+
+anbei erhalten Sie unsere Rechnung Nr. {nr} vom {date} über unsere erbrachten Leistungen.
+
+Wir bitten um Ausgleich des Rechnungsbetrages innerhalb der Zahlungsfrist.
+
+Bei Rückfragen stehen wir Ihnen gerne zur Verfügung.
+
+Mit freundlichen Grüßen,
+Max Mustermann
+{myCompany}`,
                     attachments: []
                 },
                 offer: {
-                    subject: 'Ihr Angebot',
-                    body: 'Hallo {name},\n\nwie besprochen senden wir Ihnen hiermit unser Angebot.\n\nBeste Grüße',
+                    subject: 'Ihr Angebot von {myCompany}',
+                    body: `Hallo {name},
+
+vielen Dank für das angenehme Gespräch und Ihr Interesse an unseren Leistungen.
+
+Wie besprochen, erhalten Sie anbei unser Angebot, das genau auf Ihre Anforderungen zugeschnitten ist.
+
+Wir würden uns freuen, dieses Projekt gemeinsam mit Ihnen umzusetzen. Lassen Sie uns wissen, wenn Sie Fragen dazu haben.
+
+Viele Grüße,
+Max Mustermann
+{myCompany}`,
                     attachments: []
                 },
                 reminder: {
                     subject: 'Zahlungserinnerung: Rechnung {nr}',
-                    body: 'Hallo {name},\n\nleider konnten wir noch keinen Zahlungseingang feststellen.\n\nBitte prüfen Sie dies.',
+                    body: `Sehr geehrte Damen und Herren,
+
+leider konnten wir bis heute keinen Zahlungseingang für die Rechnung {nr} feststellen.
+
+Sicherlich haben Sie dies in der Hektik des Alltags übersehen. Wir bitten Sie daher höflich, den offenen Betrag in den nächsten Tagen zu begleichen.
+
+Sollte sich Ihre Zahlung mit diesem Schreiben überschnitten haben, betrachten Sie diese Erinnerung bitte als gegenstandslos.
+
+Mit freundlichen Grüßen,
+Buchhaltung
+{myCompany}`,
                     attachments: []
                 }
             }
         });
+        
+        // Ensure pdfTemplate exists if loaded from older storage
+        if (!this.cache.invoiceConfig.pdfTemplate) {
+            this.cache.invoiceConfig.pdfTemplate = DEFAULT_PDF_TEMPLATE;
+            this.saveInvoiceConfig(this.cache.invoiceConfig);
+        }
 
         return Promise.resolve();
     }

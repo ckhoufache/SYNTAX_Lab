@@ -65,8 +65,6 @@ export const Finances: React.FC<FinancesProps> = ({
 
     // --- FINANCIAL CALCULATIONS ---
     const LIMIT = 22000;
-    // Exclude cancelled invoices from Revenue calculation
-    // Include credit notes (negative amounts) to balance out
     const validInvoices = invoices.filter(inv => !inv.isCancelled);
     const totalRevenue = validInvoices.reduce((sum, inv) => sum + inv.amount, 0);
     const totalExpenses = expenses.reduce((sum, ex) => sum + ex.amount, 0);
@@ -86,7 +84,6 @@ export const Finances: React.FC<FinancesProps> = ({
         { name: 'Ausgaben', value: totalExpenses, color: '#ef4444' }, // red-500
     ];
 
-    // Filter leere Werte raus, damit das Diagramm nicht komisch aussieht wenn alles 0 ist
     const activePieData = pieData.filter(d => d.value > 0);
 
     // --- CHART INTERACTION ---
@@ -112,8 +109,8 @@ export const Finances: React.FC<FinancesProps> = ({
     };
 
     const handleOpenEditInvoice = (invoice: Invoice) => {
-        if (invoice.isCancelled) return; // Cannot edit cancelled
-        if (invoice.amount < 0) return; // Cannot edit Storno (simplify)
+        if (invoice.isCancelled) return; 
+        if (invoice.amount < 0) return; 
         setEditingInvoiceId(invoice.id);
         setInvoiceForm({
             invoiceNumber: invoice.invoiceNumber, date: invoice.date, contactId: invoice.contactId, amount: invoice.amount.toString(),
@@ -167,7 +164,7 @@ export const Finances: React.FC<FinancesProps> = ({
         const file = e.target.files?.[0];
         if (!file) return;
 
-        if (file.size > 2 * 1024 * 1024) { // Limit 2MB
+        if (file.size > 2 * 1024 * 1024) { 
             alert("Der Beleg darf maximal 2MB groß sein (Browser-Limit).");
             return;
         }
@@ -207,67 +204,77 @@ export const Finances: React.FC<FinancesProps> = ({
 
     const viewAttachment = (ex: Expense) => {
         if (!ex.attachment) return;
-        // Open Base64 in new tab
         const win = window.open();
         if (win) {
             win.document.write(`<iframe src="${ex.attachment}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
         }
     };
 
+    // --- TEMPLATE ENGINE ---
+    const compileInvoiceTemplate = (invoice: Invoice, config: InvoiceConfig) => {
+        if (!config.pdfTemplate) return "<h1>Fehler: Keine Vorlage gefunden</h1>";
+
+        const isStorno = invoice.amount < 0;
+        const isStandardTax = config.taxRule === 'standard';
+        
+        // Calculations
+        const netAmount = invoice.amount;
+        const taxRate = isStandardTax ? 0.19 : 0;
+        const taxAmount = netAmount * taxRate;
+        const grossAmount = netAmount + taxAmount;
+
+        let template = config.pdfTemplate;
+
+        const replacements: Record<string, string> = {
+            '{companyName}': config.companyName || '',
+            '{addressLine1}': config.addressLine1 || '',
+            '{addressLine2}': config.addressLine2 || '',
+            '{email}': config.email || '',
+            '{website}': config.website || '',
+            '{taxId}': config.taxId || '',
+            '{bankName}': config.bankName || '',
+            '{iban}': config.iban || '',
+            '{bic}': config.bic || '',
+            '{footerText}': config.footerText || '',
+            
+            '{invoiceNumber}': invoice.invoiceNumber,
+            '{date}': new Date(invoice.date).toLocaleDateString('de-DE'),
+            '{customerId}': invoice.contactId.substring(0,6).toUpperCase(), // Mock Customer ID
+            '{contactName}': invoice.contactName,
+            '{titlePrefix}': isStorno ? 'Gutschrift' : 'Rechnung',
+            '{description}': invoice.description || 'Dienstleistung',
+            
+            '{netAmount}': netAmount.toLocaleString('de-DE', {minimumFractionDigits: 2}) + ' €',
+            '{taxAmount}': taxAmount.toLocaleString('de-DE', {minimumFractionDigits: 2}) + ' €',
+            '{grossAmount}': grossAmount.toLocaleString('de-DE', {minimumFractionDigits: 2}) + ' €',
+            
+            '{taxLabel}': isStandardTax ? 'Umsatzsteuer 19%' : 'Umsatzsteuer 0% (Kleinunternehmer)',
+            '{taxNote}': !isStandardTax ? 'Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.' : '',
+            
+            // Logo Logic: If logo exists, create img tag, else empty
+            '{logoSection}': config.logoBase64 ? `<img src="${config.logoBase64}" style="max-height: 80px; width: auto;" alt="Logo"/>` : `<h1 style="font-size: 24px; font-weight: bold;">${config.companyName}</h1>`
+        };
+
+        // Replace all keys
+        for (const [key, value] of Object.entries(replacements)) {
+            template = template.replace(new RegExp(key, 'g'), value);
+        }
+
+        return template;
+    };
+
     // --- PRINT ---
     const handleDirectDownload = (e: React.MouseEvent, invoice: Invoice) => {
         e.stopPropagation();
         setPrintInvoice(invoice);
-        // Wait for state update then trigger print logic
-        setTimeout(() => executePrint(true), 100);
-    };
-
-    const executePrint = (autoPrint = false) => {
-        // We use the hidden preview logic but just for this action
-        if (!printInvoice && !autoPrint) return; 
-        
-        // Temporarily render content hidden to grab HTML
-        setPrintInvoice(prev => prev || printInvoice); 
         setIsPrintModalOpen(true);
     };
 
-    // Use effect to auto print once modal opens if triggered by download button
-    React.useEffect(() => {
-        if (isPrintModalOpen && printInvoice) {
-            // Optional: Auto trigger print dialog if desired flow, 
-            // but opening the modal with the big button is often better UX.
-            // keeping it as modal preview to ensure user sees what they download.
-        }
-    }, [isPrintModalOpen, printInvoice]);
-
-
     const triggerBrowserPrint = () => {
-        const content = document.getElementById('printable-invoice');
-        if (!content) return;
-        
-        const pri = window.open('', '', 'height=800,width=800');
-        if (pri) {
-            pri.document.write('<html><head><title>Rechnung</title>');
-            pri.document.write('<script src="https://cdn.tailwindcss.com"></script>'); 
-            pri.document.write('</head><body >');
-            pri.document.write(content.innerHTML);
-            pri.document.write('</body></html>');
-            pri.document.close();
-            pri.focus();
-            setTimeout(() => { pri.print(); pri.close(); }, 500); 
+        const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement;
+        if (iframe && iframe.contentWindow) {
+            iframe.contentWindow.print();
         }
-    };
-
-    // --- CALCULATE TAXES FOR PRINTING ---
-    const getInvoiceCalculations = (inv: Invoice) => {
-        const isStandardTax = invoiceConfig.taxRule === 'standard';
-        // Annahme: Der erfasste Betrag ist Netto
-        const netAmount = inv.amount;
-        const taxRate = isStandardTax ? 0.19 : 0;
-        const taxAmount = netAmount * taxRate;
-        const grossAmount = netAmount + taxAmount;
-        
-        return { netAmount, taxAmount, grossAmount, isStandardTax };
     };
 
     // --- RENDER HELPERS ---
@@ -616,7 +623,7 @@ export const Finances: React.FC<FinancesProps> = ({
                 </div>
             )}
 
-            {/* PRINT MODAL (A4 PREVIEW) */}
+            {/* PRINT MODAL (Dynamic Preview) */}
             {isPrintModalOpen && printInvoice && (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
                     <div className="bg-slate-200 w-full h-full max-w-4xl rounded-xl flex flex-col overflow-hidden">
@@ -629,123 +636,15 @@ export const Finances: React.FC<FinancesProps> = ({
                                 <button onClick={()=>setIsPrintModalOpen(false)} className="bg-slate-100 text-slate-600 px-4 py-2 rounded text-sm font-medium hover:bg-slate-200">Schließen</button>
                             </div>
                         </div>
-                        <div className="flex-1 overflow-y-auto p-8 flex justify-center bg-slate-500/10">
-                            {/* A4 PAPER SIMULATION */}
-                            <div id="printable-invoice" className="bg-white shadow-2xl p-[10mm] w-[210mm] min-h-[297mm] text-slate-800 relative">
-                                {(() => {
-                                    const calc = getInvoiceCalculations(printInvoice);
-                                    const isStorno = printInvoice.amount < 0;
-                                    const titlePrefix = isStorno ? "Gutschrift / Stornorechnung" : "Rechnung";
-
-                                    return (
-                                        <>
-                                            {/* HEADER */}
-                                            <div className="flex justify-between items-start mb-12">
-                                                <div>
-                                                    {invoiceConfig.logoBase64 ? (
-                                                        <img src={invoiceConfig.logoBase64} alt="Logo" className="max-h-32 w-auto object-contain mb-4 -mt-6" />
-                                                    ) : (
-                                                        <h1 className="text-3xl font-bold text-slate-800 mb-2">{invoiceConfig.companyName}</h1>
-                                                    )}
-                                                    <p className="text-xs text-slate-500">
-                                                        {invoiceConfig.addressLine1} • {invoiceConfig.addressLine2}
-                                                    </p>
-                                                </div>
-                                                <div className="text-right text-sm text-slate-600">
-                                                    <p>Datum: {new Date(printInvoice.date).toLocaleDateString('de-DE')}</p>
-                                                    <p>Nr.: {printInvoice.invoiceNumber}</p>
-                                                    {printInvoice.sentDate && !isStorno && <p>Leistungsdatum: {new Date(printInvoice.sentDate).toLocaleDateString('de-DE')}</p>}
-                                                    {printInvoice.relatedInvoiceId && <p className="text-xs mt-1">Ref: {invoices.find(i => i.id === printInvoice.relatedInvoiceId)?.invoiceNumber}</p>}
-                                                </div>
-                                            </div>
-
-                                            {/* RECIPIENT */}
-                                            <div className="mb-16 text-sm">
-                                                <p className="font-bold text-slate-900">{printInvoice.contactName}</p>
-                                                {/* Mock address for contact as we don't have it in schema yet */}
-                                                <p className="text-slate-600">Musterstraße 1</p>
-                                                <p className="text-slate-600">12345 Musterstadt</p>
-                                            </div>
-
-                                            {/* TITLE */}
-                                            <h2 className="text-xl font-bold mb-6">{titlePrefix} {printInvoice.invoiceNumber}</h2>
-                                            <p className="text-sm text-slate-600 mb-8">
-                                                Sehr geehrte Damen und Herren,<br/>
-                                                {isStorno 
-                                                    ? 'hiermit korrigieren wir die ursprüngliche Rechnung wie folgt:' 
-                                                    : 'vielen Dank für Ihren Auftrag. Wir stellen Ihnen folgende Leistungen in Rechnung:'
-                                                }
-                                            </p>
-
-                                            {/* TABLE */}
-                                            <table className="w-full text-left text-sm mb-8">
-                                                <thead>
-                                                    <tr className="border-b-2 border-slate-800">
-                                                        <th className="py-2">Beschreibung</th>
-                                                        <th className="py-2 text-right">Menge</th>
-                                                        <th className="py-2 text-right">Einzelpreis</th>
-                                                        <th className="py-2 text-right">Gesamt</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="border-b border-slate-200">
-                                                    <tr>
-                                                        <td className="py-4">{printInvoice.description || "Dienstleistung / Produkt laut Auftrag"}</td>
-                                                        <td className="py-4 text-right">1,00</td>
-                                                        <td className="py-4 text-right">{calc.netAmount.toLocaleString('de-DE', {minimumFractionDigits: 2})} €</td>
-                                                        <td className="py-4 text-right">{calc.netAmount.toLocaleString('de-DE', {minimumFractionDigits: 2})} €</td>
-                                                    </tr>
-                                                </tbody>
-                                                <tfoot>
-                                                    <tr>
-                                                        <td colSpan={3} className="py-2 text-right font-medium">Nettobetrag</td>
-                                                        <td className="py-2 text-right">{calc.netAmount.toLocaleString('de-DE', {minimumFractionDigits: 2})} €</td>
-                                                    </tr>
-                                                    <tr>
-                                                        <td colSpan={3} className="py-2 text-right font-medium">
-                                                            {calc.isStandardTax ? 'Umsatzsteuer 19%' : 'Umsatzsteuer 0% (Kleinunternehmer)'}
-                                                        </td>
-                                                        <td className="py-2 text-right">{calc.taxAmount.toLocaleString('de-DE', {minimumFractionDigits: 2})} €</td>
-                                                    </tr>
-                                                    <tr className="text-lg font-bold">
-                                                        <td colSpan={3} className="py-4 text-right">Gesamtbetrag</td>
-                                                        <td className="py-4 text-right">{calc.grossAmount.toLocaleString('de-DE', {minimumFractionDigits: 2})} €</td>
-                                                    </tr>
-                                                </tfoot>
-                                            </table>
-
-                                            <p className="text-sm text-slate-600 mb-8">
-                                                {isStorno 
-                                                    ? 'Der Betrag wird Ihrem Konto gutgeschrieben bzw. mit offenen Forderungen verrechnet.' 
-                                                    : 'Bitte überweisen Sie den Betrag innerhalb von 14 Tagen auf das unten genannte Konto.'
-                                                }
-                                                <br/>
-                                                {!calc.isStandardTax && 'Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.'}
-                                            </p>
-
-                                            {/* FOOTER */}
-                                            <div className="absolute bottom-[15mm] left-[10mm] right-[10mm] text-[10px] text-slate-500 border-t border-slate-200 pt-4 flex justify-between">
-                                                <div>
-                                                    <p className="font-bold">{invoiceConfig.companyName}</p>
-                                                    <p>{invoiceConfig.addressLine1}</p>
-                                                    <p>{invoiceConfig.addressLine2}</p>
-                                                    <p>{invoiceConfig.email}</p>
-                                                </div>
-                                                <div>
-                                                    <p className="font-bold">Bankverbindung</p>
-                                                    <p>{invoiceConfig.bankName}</p>
-                                                    <p>IBAN: {invoiceConfig.iban}</p>
-                                                    <p>BIC: {invoiceConfig.bic}</p>
-                                                </div>
-                                                <div>
-                                                    <p className="font-bold">Steuernummer</p>
-                                                    <p>{invoiceConfig.taxId}</p>
-                                                    <p>{invoiceConfig.footerText}</p>
-                                                </div>
-                                            </div>
-                                        </>
-                                    );
-                                })()}
-                            </div>
+                        <div className="flex-1 overflow-hidden relative bg-slate-500/10 flex justify-center p-8">
+                             {/* The actual preview logic happens here by compiling the template */}
+                             <iframe 
+                                id="preview-iframe"
+                                title="Invoice Preview"
+                                srcDoc={compileInvoiceTemplate(printInvoice, invoiceConfig)}
+                                className="w-[210mm] h-[297mm] shadow-2xl bg-white scale-100 origin-top"
+                                style={{transform: 'scale(1)', transformOrigin: 'top center'}} 
+                             />
                         </div>
                     </div>
                 </div>

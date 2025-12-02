@@ -161,6 +161,7 @@ export interface InvoiceConfig {
   footerText?: string;
   taxRule?: 'small_business' | 'standard'; // NEU: Steuermodus
   emailSettings?: EmailSettings; // NEU: Strukturiertes E-Mail Setting
+  pdfTemplate?: string; // NEU: HTML Template für PDF Generierung
 }
 
 export interface EmailTemplate {
