@@ -569,7 +569,7 @@ export const Finances: React.FC<FinancesProps> = ({
                                 <div className="flex justify-between items-start mb-12">
                                     <div>
                                         {invoiceConfig.logoBase64 ? (
-                                            <img src={invoiceConfig.logoBase64} alt="Logo" className="max-h-32 w-auto object-contain mb-4" />
+                                            <img src={invoiceConfig.logoBase64} alt="Logo" className="max-h-32 w-auto object-contain mb-4 -mt-6" />
                                         ) : (
                                             <h1 className="text-3xl font-bold text-slate-800 mb-2">{invoiceConfig.companyName}</h1>
                                         )}

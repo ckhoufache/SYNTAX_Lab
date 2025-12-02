@@ -18,6 +18,7 @@ interface ContactsProps {
   onClearFocus: () => void;
   emailTemplates?: EmailTemplate[];
   onImportCSV: (csvText: string) => void;
+  onBulkDeleteContacts: (ids: string[]) => void;
 }
 
 type SortKey = keyof Contact;
@@ -35,51 +36,42 @@ export const Contacts: React.FC<ContactsProps> = ({
   focusedId,
   onClearFocus,
   emailTemplates,
-  onImportCSV
+  onImportCSV,
+  onBulkDeleteContacts
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingContactId, setEditingContactId] = useState<string | null>(null);
   
-  // State für Inline-Note Editing (in der Tabelle)
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [tempNote, setTempNote] = useState('');
   
-  // State für Dropdown Menü
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
 
-  // State für Filter Menü
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const filterRef = useRef<HTMLDivElement>(null);
   const [filters, setFilters] = useState({
       company: '',
       role: '',
-      timeframe: 'all' // 'all', 'week', 'month', 'older'
+      timeframe: 'all' 
   });
 
-  // State für E-Mail Modal
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
   const [emailData, setEmailData] = useState({ to: '', subject: '', body: '', name: '', contactId: '' });
   const [sendingEmail, setSendingEmail] = useState(false);
 
-  // State für Timeline (Neue Aktivität)
   const [newActivityType, setNewActivityType] = useState<ActivityType>('note');
   const [newActivityContent, setNewActivityContent] = useState('');
   
-  // File Input Ref für CSV Import
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // --- NEU: Sortier State ---
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' } | null>(null);
 
-  // --- NEU: Selection State ---
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  // Extract unique values for filter dropdowns
   const availableCompanies = useMemo(() => Array.from(new Set(contacts.map(c => c.company))).sort(), [contacts]);
   const availableRoles = useMemo(() => Array.from(new Set(contacts.map(c => c.role))).sort(), [contacts]);
 
-  // Form State
   const [formData, setFormData] = useState({
     name: '',
     role: '',
@@ -87,23 +79,27 @@ export const Contacts: React.FC<ContactsProps> = ({
     companyUrl: '',
     email: '',
     linkedin: '',
-    notes: '' // Stammdaten-Notiz (nicht Timeline)
+    notes: '' 
   });
 
-  // OPTIMIZED FILTER & SORT LOGIC
+  // HELPER: Explicitly close and reset form to avoid state ghosting
+  const handleCloseModal = () => {
+      setIsModalOpen(false);
+      setEditingContactId(null);
+      // Explicitly wipe state
+      setFormData({ name: '', role: '', company: '', companyUrl: '', email: '', linkedin: '', notes: '' });
+      setNewActivityContent('');
+  };
+
   const processedContacts = useMemo(() => {
-      // 1. Filtern
       let result = contacts.filter(c => {
-        // 0. FOCUSED ID (Search Result)
         if (focusedId) {
             return c.id === focusedId;
         }
 
-        // 1. Search Term
         const matchesSearch = c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                               c.company.toLowerCase().includes(searchTerm.toLowerCase());
         
-        // 2. Dashboard Filter
         let matchesInitialFilter = true;
         if (initialFilter === 'recent') {
            const lastDate = new Date(c.lastContact);
@@ -112,7 +108,6 @@ export const Contacts: React.FC<ContactsProps> = ({
            matchesInitialFilter = lastDate >= sevenDaysAgo;
         }
 
-        // 3. Manual Filters
         let matchesCompany = true;
         if (filters.company) matchesCompany = c.company === filters.company;
 
@@ -134,7 +129,6 @@ export const Contacts: React.FC<ContactsProps> = ({
         return matchesSearch && matchesInitialFilter && matchesCompany && matchesRole && matchesTimeframe;
       });
 
-      // 2. Sortieren
       if (sortConfig) {
           result.sort((a, b) => {
               const valA = (a[sortConfig.key] || '').toString().toLowerCase();
@@ -149,12 +143,10 @@ export const Contacts: React.FC<ContactsProps> = ({
       return result;
   }, [contacts, focusedId, searchTerm, initialFilter, filters, sortConfig]);
 
-  // Handle Selection Reset when filter changes
   useEffect(() => {
       setSelectedIds(new Set());
   }, [searchTerm, initialFilter, filters]);
 
-  // Close menus when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (activeMenuId && !(event.target as Element).closest('.row-menu-trigger')) {
@@ -168,7 +160,6 @@ export const Contacts: React.FC<ContactsProps> = ({
     return () => document.removeEventListener('click', handleClickOutside);
   }, [activeMenuId, isFilterOpen]);
 
-  // --- Sorting Handler ---
   const handleSort = (key: SortKey) => {
       let direction: 'asc' | 'desc' = 'asc';
       if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
@@ -182,10 +173,9 @@ export const Contacts: React.FC<ContactsProps> = ({
       return sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3 text-indigo-600 ml-1" /> : <ArrowDown className="w-3 h-3 text-indigo-600 ml-1" />;
   };
 
-  // --- Selection Handlers ---
   const handleSelectAll = () => {
       if (selectedIds.size === processedContacts.length && processedContacts.length > 0) {
-          setSelectedIds(new Set()); // Deselect all
+          setSelectedIds(new Set()); 
       } else {
           const allIds = new Set(processedContacts.map(c => c.id));
           setSelectedIds(allIds);
@@ -201,7 +191,8 @@ export const Contacts: React.FC<ContactsProps> = ({
 
   const handleBulkDelete = () => {
       if (confirm(`Möchten Sie wirklich ${selectedIds.size} Kontakte löschen?`)) {
-          selectedIds.forEach(id => onDeleteContact(id));
+          // Use new prop for batch deletion
+          onBulkDeleteContacts(Array.from(selectedIds));
           setSelectedIds(new Set());
       }
   };
@@ -240,7 +231,7 @@ export const Contacts: React.FC<ContactsProps> = ({
       linkedin: contact.linkedin || '',
       notes: contact.notes || ''
     });
-    setNewActivityContent(''); // Reset Timeline Input
+    setNewActivityContent(''); 
     setIsModalOpen(true);
     setActiveMenuId(null);
   };
@@ -254,7 +245,6 @@ export const Contacts: React.FC<ContactsProps> = ({
     e.preventDefault();
     
     if (editingContactId) {
-      // Update existing
       const originalContact = contacts.find(c => c.id === editingContactId);
       if (originalContact) {
         const updatedContact: Contact = {
@@ -270,7 +260,6 @@ export const Contacts: React.FC<ContactsProps> = ({
         onUpdateContact(updatedContact);
       }
     } else {
-      // Create new
       const newContact: Contact = {
         id: Math.random().toString(36).substr(2, 9),
         name: formData.name,
@@ -281,16 +270,13 @@ export const Contacts: React.FC<ContactsProps> = ({
         linkedin: formData.linkedin,
         notes: formData.notes,
         avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name)}&background=random`,
-        lastContact: new Date().toISOString().split('T')[0] // Setzt Datum auf Heute für Filter
+        lastContact: new Date().toISOString().split('T')[0] 
       };
       onAddContact(newContact);
     }
-    setIsModalOpen(false);
-    setFormData({ name: '', role: '', company: '', companyUrl: '', email: '', linkedin: '', notes: '' });
-    setEditingContactId(null);
+    handleCloseModal();
   };
 
-  // --- TIMELINE LOGIC ---
   const handleAddManualActivity = () => {
       if (!editingContactId || !newActivityContent.trim()) return;
 
@@ -329,12 +315,11 @@ export const Contacts: React.FC<ContactsProps> = ({
           case 'meeting': return 'bg-purple-500';
           case 'system_deal': return 'bg-amber-500';
           case 'system_invoice': return 'bg-green-500';
-          default: return 'bg-indigo-500'; // Note
+          default: return 'bg-indigo-500'; 
       }
   };
 
 
-  // --- EMAIL LOGIC ---
   const handleEmailClick = (contact: Contact) => {
       setEmailData({
           to: contact.email,
@@ -374,11 +359,10 @@ export const Contacts: React.FC<ContactsProps> = ({
               setIsEmailModalOpen(false);
           }
       } else {
-          // Fallback to default mailto:
           const mailtoLink = `mailto:${emailData.to}?subject=${encodeURIComponent(emailData.subject)}&body=${encodeURIComponent(emailData.body)}`;
           window.location.href = mailtoLink;
           setIsEmailModalOpen(false);
-          success = true; // Assume success for fallback
+          success = true; 
       }
 
       if (success && emailData.contactId) {
@@ -393,12 +377,11 @@ export const Contacts: React.FC<ContactsProps> = ({
       }
   };
 
-  // Inline Note Table Logic
   const startEditingNote = (contact: Contact) => { setEditingNoteId(contact.id); setTempNote(contact.notes || ''); };
   const saveNote = (contact: Contact) => { if (tempNote !== contact.notes) onUpdateContact({ ...contact, notes: tempNote }); setEditingNoteId(null); };
   const handleNoteKeyDown = (e: React.KeyboardEvent, contact: Contact) => { 
       if (e.key === 'Enter') {
-          e.stopPropagation(); // Stop enter from doing anything else if needed
+          e.stopPropagation(); 
           saveNote(contact); 
       }
   };
@@ -598,7 +581,7 @@ export const Contacts: React.FC<ContactsProps> = ({
                     <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                         {editingContactId ? <><Briefcase className="w-5 h-5 text-indigo-600"/> Kontaktakte: {formData.name}</> : 'Neuen Kontakt erstellen'}
                     </h2>
-                    <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors"><X className="w-5 h-5" /></button>
+                    <button onClick={handleCloseModal} className="text-slate-400 hover:text-slate-600 transition-colors"><X className="w-5 h-5" /></button>
                 </div>
                 
                 <div className={`flex-1 overflow-hidden ${editingContactId ? 'grid grid-cols-5' : ''}`}>
@@ -690,7 +673,7 @@ export const Contacts: React.FC<ContactsProps> = ({
                 </div>
 
                 <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3 shrink-0">
-                    <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">Abbrechen</button>
+                    <button type="button" onClick={handleCloseModal} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">Abbrechen</button>
                     <button type="submit" form="contactForm" className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-md shadow-indigo-200 transition-colors">
                         {editingContactId ? 'Speichern' : 'Kontakt erstellen'}
                     </button>

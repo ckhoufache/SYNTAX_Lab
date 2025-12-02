@@ -163,7 +163,6 @@ const App: React.FC = () => {
   const handleLogout = async () => {
       await dataService.logout();
       setIsLoggedIn(false);
-      // No alert needed, the UI switch is feedback enough
   };
 
   const handleUpdateConfig = (newConfig: BackendConfig) => {
@@ -193,7 +192,6 @@ const App: React.FC = () => {
   };
 
   const handleDeleteActivity = async (id: string) => {
-      // Direct delete without global confirm dialog for better UX in timeline
       if (confirm("Möchten Sie diesen Eintrag wirklich aus der Historie entfernen?")) {
           await dataService.deleteActivity(id);
           setActivities(prev => prev.filter(a => a.id !== id));
@@ -236,6 +234,35 @@ const App: React.FC = () => {
 
   const onRequestDeleteContact = (contactId: string) => { setDeleteIntent({ type: 'contact', id: contactId }); };
 
+  // --- NEU: Bulk Delete Function for Contacts ---
+  const handleBulkDeleteContacts = async (ids: string[]) => {
+      setIsLoading(true);
+      try {
+          // 1. Delete Contacts
+          for (const id of ids) {
+              await dataService.deleteContact(id);
+          }
+          setContacts(prev => prev.filter(c => !ids.includes(c.id)));
+
+          // 2. Cleanup related data (Deals, Tasks) for ALL deleted contacts
+          const remainingDeals = deals.filter(d => !ids.includes(d.contactId));
+          const dealsToDelete = deals.filter(d => ids.includes(d.contactId));
+          for (const d of dealsToDelete) await dataService.deleteDeal(d.id);
+          setDeals(remainingDeals);
+
+          const remainingTasks = tasks.filter(t => !ids.includes(t.relatedEntityId || ''));
+          const tasksToDelete = tasks.filter(t => ids.includes(t.relatedEntityId || ''));
+          for (const t of tasksToDelete) await dataService.deleteTask(t.id);
+          setTasks(remainingTasks);
+
+      } catch (e) {
+          console.error("Bulk delete failed", e);
+          alert("Fehler beim Löschen mehrerer Kontakte.");
+      } finally {
+          setIsLoading(false);
+      }
+  };
+
   const handleAddDeal = async (newDeal: Deal) => {
     const dealWithDate = { ...newDeal, stageEnteredDate: new Date().toISOString().split('T')[0] };
     const saved = await dataService.saveDeal(dealWithDate);
@@ -243,7 +270,6 @@ const App: React.FC = () => {
   };
 
   const handleUpdateDeal = async (updatedDeal: Deal) => {
-    // Check for Status Change to WON for Logging
     const oldDeal = deals.find(d => d.id === updatedDeal.id);
     if (oldDeal && oldDeal.stage !== DealStage.WON && updatedDeal.stage === DealStage.WON) {
         handleAddActivity({
@@ -297,7 +323,6 @@ const App: React.FC = () => {
       const saved = await dataService.saveInvoice(newInvoice);
       setInvoices(prev => [saved, ...prev]);
       
-      // Log Activity
       handleAddActivity({
           id: Math.random().toString(36).substr(2, 9),
           contactId: newInvoice.contactId,
@@ -325,7 +350,6 @@ const App: React.FC = () => {
   };
   const onRequestDeleteExpense = (id: string) => { setDeleteIntent({ type: 'expense', id }); };
 
-  // --- TEMPLATES ---
   const handleAddTemplate = async (template: EmailTemplate) => {
       const saved = await dataService.saveEmailTemplate(template);
       setEmailTemplates(prev => [saved, ...prev]);
@@ -336,7 +360,6 @@ const App: React.FC = () => {
   };
   const onRequestDeleteTemplate = (id: string) => { setDeleteIntent({ type: 'template', id }); };
 
-  // --- CSV IMPORT LOGIC ---
   const parseCSV = (str: string) => {
     const arr: string[][] = [];
     let quote = false;
@@ -462,7 +485,6 @@ const App: React.FC = () => {
         if (deleteIntent.type === 'contact') {
           await dataService.deleteContact(deleteIntent.id);
           setContacts(prev => prev.filter(c => c.id !== deleteIntent.id));
-          // Clean up related data
           const dealsToDelete = deals.filter(d => d.contactId === deleteIntent.id);
           for (const d of dealsToDelete) await dataService.deleteDeal(d.id);
           setDeals(prev => prev.filter(d => d.contactId !== deleteIntent.id));
@@ -504,8 +526,6 @@ const App: React.FC = () => {
   };
   const handleNavigateToFinances = () => { setCurrentView('finances'); };
 
-  // --- RENDERING ---
-  
   if (isLoading || !userProfile || !invoiceConfig) {
       return (
           <div className={`flex h-screen w-full items-center justify-center ${theme === 'dark' ? 'bg-slate-950' : 'bg-slate-50'}`}>
@@ -517,7 +537,6 @@ const App: React.FC = () => {
       );
   }
 
-  // --- LOGIN CHECK ---
   if (!isLoggedIn) {
       return (
           <LoginScreen 
@@ -565,6 +584,7 @@ const App: React.FC = () => {
             onClearFocus={() => setFocusedContactId(null)}
             emailTemplates={emailTemplates}
             onImportCSV={handleImportContactsCSV}
+            onBulkDeleteContacts={handleBulkDeleteContacts} // NEW PROP
           />
         );
       case 'pipeline':

@@ -402,15 +402,11 @@ export const Settings: React.FC<SettingsProps> = ({
           return;
       }
       
-      // Speichere URL für später
       localStorage.setItem('update_url', updateUrl);
-      
       setIsUpdating(true);
       setUpdateStatus('Prüfe URL...');
 
       try {
-          // 1. Fetch index.html to verify and parse
-          // Ensure URL ends with / if it's a folder, or handle exact index.html link
           let baseUrl = updateUrl.replace(/\/index\.html$/, '').replace(/\/$/, '');
           const indexUrl = `${baseUrl}/index.html`;
 
@@ -420,20 +416,12 @@ export const Settings: React.FC<SettingsProps> = ({
 
           setUpdateStatus('Analysiere Version...');
           
-          // 2. Extract asset filenames (stupid regex parsing, effective for Vite builds)
-          // Look for src="/assets/..." or href="/assets/..."
-          // Note: In Vite build, it's usually ./assets/ or /assets/
           const assetRegex = /["'](?:\.?\/)?assets\/([^"']+)["']/g;
           const matches = [...indexHtml.matchAll(assetRegex)];
-          const assets = matches.map(m => m[1]); // filenames only
-          
+          const assets = matches.map(m => m[1]);
           const uniqueAssets = [...new Set(assets)];
-          console.log("Found assets:", uniqueAssets);
-
-          // 3. Download all assets
-          const files = [];
           
-          // Add index.html
+          const files = [];
           files.push({ name: 'index.html', content: indexHtml, type: 'root' });
 
           setUpdateStatus(`Lade ${uniqueAssets.length} Assets...`);
@@ -483,45 +471,49 @@ export const Settings: React.FC<SettingsProps> = ({
       </header>
       
       <main className="p-8 space-y-6 pb-20 max-w-5xl mx-auto w-full">
+         
          {/* Profile Section */}
-         <SettingsSection title="Profil & Darstellung" icon={User} isDark={isDark} description="Persönliche Daten und Design">
-             <div className="p-6 space-y-6">
-                 <div className="flex items-center gap-6">
-                     <img src={formData.avatar} alt="Avatar" className="w-20 h-20 rounded-full object-cover ring-4 ring-slate-50 dark:ring-slate-800" />
-                     <div className="space-y-2 flex-1">
-                         <div className="grid grid-cols-2 gap-4">
-                             <div>
-                                 <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Vorname</label>
-                                 <input name="firstName" value={formData.firstName} onChange={handleChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" />
-                             </div>
-                             <div>
-                                 <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Nachname</label>
-                                 <input name="lastName" value={formData.lastName} onChange={handleChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" />
-                             </div>
+         <SettingsSection title="Profil & Darstellung" icon={User} isDark={isDark} description="Persönliche Daten und Design" defaultOpen={true}>
+             <div className="px-6">
+                <SubSection title="Stammdaten" isDark={isDark} defaultOpen={true}>
+                    <div className="flex items-center gap-6 mb-6">
+                        <img src={formData.avatar} alt="Avatar" className="w-16 h-16 rounded-full object-cover ring-4 ring-slate-50 dark:ring-slate-800" />
+                        <div className="space-y-2 flex-1">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Vorname</label>
+                                    <input name="firstName" value={formData.firstName} onChange={handleChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Nachname</label>
+                                    <input name="lastName" value={formData.lastName} onChange={handleChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">E-Mail</label>
+                                <input name="email" value={formData.email} onChange={handleChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" />
+                            </div>
+                        </div>
+                    </div>
+                    <div className="flex justify-end mb-4">
+                        <button onClick={() => { onUpdateProfile(formData); setShowSaved(true); setTimeout(() => setShowSaved(false), 2000); }} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-2">
+                            {showSaved ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />} Speichern
+                        </button>
+                    </div>
+                </SubSection>
+                
+                <SubSection title="Design & Theme" isDark={isDark}>
+                    <div className="py-2">
+                         <div className="flex gap-4">
+                             <button onClick={() => onUpdateTheme('light')} className={`flex-1 py-3 border rounded-xl flex items-center justify-center gap-2 ${currentTheme === 'light' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 hover:bg-slate-50 text-slate-600'}`}>
+                                 <div className="w-4 h-4 rounded-full bg-white border border-slate-300"></div> Hell
+                             </button>
+                             <button onClick={() => onUpdateTheme('dark')} className={`flex-1 py-3 border rounded-xl flex items-center justify-center gap-2 ${currentTheme === 'dark' ? 'border-indigo-600 bg-slate-800 text-white' : 'border-slate-200 hover:bg-slate-50 text-slate-600'}`}>
+                                 <div className="w-4 h-4 rounded-full bg-slate-900 border border-slate-700"></div> Dunkel
+                             </button>
                          </div>
-                         <div>
-                             <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">E-Mail</label>
-                             <input name="email" value={formData.email} onChange={handleChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" />
-                         </div>
-                     </div>
-                 </div>
-                 <div className="flex justify-end">
-                     <button onClick={() => { onUpdateProfile(formData); setShowSaved(true); setTimeout(() => setShowSaved(false), 2000); }} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-2">
-                         {showSaved ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />} Speichern
-                     </button>
-                 </div>
-
-                 <div className="border-t border-slate-100 dark:border-slate-800 pt-6">
-                     <label className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-3 block flex items-center gap-2"><Palette className="w-4 h-4"/> Design Modus</label>
-                     <div className="flex gap-4">
-                         <button onClick={() => onUpdateTheme('light')} className={`flex-1 py-3 border rounded-xl flex items-center justify-center gap-2 ${currentTheme === 'light' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 hover:bg-slate-50 text-slate-600'}`}>
-                             Hell
-                         </button>
-                         <button onClick={() => onUpdateTheme('dark')} className={`flex-1 py-3 border rounded-xl flex items-center justify-center gap-2 ${currentTheme === 'dark' ? 'border-indigo-600 bg-slate-800 text-white' : 'border-slate-200 hover:bg-slate-50 text-slate-600'}`}>
-                             Dunkel
-                         </button>
-                     </div>
-                 </div>
+                    </div>
+                </SubSection>
              </div>
          </SettingsSection>
 
@@ -551,22 +543,25 @@ export const Settings: React.FC<SettingsProps> = ({
          
          {/* Integrations */}
          <SettingsSection title="Integrationen & API" icon={Globe} isDark={isDark} description="Google Services & KI Verbindung">
-             <div className="p-6 space-y-6">
-                 {/* Google Config */}
-                 <div>
-                    <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-2">Google Cloud Platform</h3>
-                    <div className="flex gap-2 mb-2">
-                        <input 
-                            type="text" 
-                            placeholder="Client ID eingeben" 
-                            value={backendForm.googleClientId || ''}
-                            onChange={(e) => setBackendForm({...backendForm, googleClientId: e.target.value})}
-                            className="flex-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white"
-                        />
-                        <button onClick={() => { onUpdateBackendConfig(backendForm); alert('Client ID gespeichert'); }} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium">Speichern</button>
+             <div className="px-6">
+                 <SubSection title="Google Cloud Platform" isDark={isDark}>
+                    <div className="mb-2 mt-2">
+                        <label className="text-xs font-bold text-slate-500 mb-1 block">Client ID</label>
+                        <div className="flex gap-2">
+                            <input 
+                                type="text" 
+                                placeholder="Client ID eingeben" 
+                                value={backendForm.googleClientId || ''}
+                                onChange={(e) => setBackendForm({...backendForm, googleClientId: e.target.value})}
+                                className="flex-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                            />
+                            <button onClick={() => { onUpdateBackendConfig(backendForm); alert('Client ID gespeichert'); }} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium">Speichern</button>
+                        </div>
                     </div>
-                    
-                    <div className="grid grid-cols-2 gap-4 mt-4">
+                 </SubSection>
+
+                 <SubSection title="Verbundene Dienste" isDark={isDark}>
+                    <div className="grid grid-cols-2 gap-4 mt-2 mb-2">
                         <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-4 flex justify-between items-center">
                             <div className="flex items-center gap-3">
                                 <Calendar className={`w-5 h-5 ${isCalendarConnected ? 'text-green-500' : 'text-slate-400'}`} />
@@ -593,34 +588,37 @@ export const Settings: React.FC<SettingsProps> = ({
                             </button>
                         </div>
                     </div>
-                 </div>
+                 </SubSection>
 
-                 <div className="border-t border-slate-100 dark:border-slate-800 pt-6">
-                    <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-2 flex items-center gap-2"><Sparkles className="w-4 h-4 text-amber-500" /> Google Gemini AI</h3>
-                    <p className="text-xs text-slate-500 mb-2">Für tägliche Briefings und Smart Insights.</p>
-                    <div className="flex gap-2">
-                        <input 
-                            type="password" 
-                            placeholder="API Key (startet mit AIza...)" 
-                            value={geminiKey}
-                            onChange={(e) => setGeminiKey(e.target.value)}
-                            className="flex-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white"
-                        />
-                        <button onClick={() => { localStorage.setItem('gemini_api_key', geminiKey); alert('API Key gespeichert'); }} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium">Speichern</button>
+                 <SubSection title="Künstliche Intelligenz" isDark={isDark}>
+                    <div className="mt-2 mb-2">
+                        <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-1 flex items-center gap-2"><Sparkles className="w-4 h-4 text-amber-500" /> Google Gemini AI</h3>
+                        <p className="text-xs text-slate-500 mb-2">Für tägliche Briefings und Smart Insights.</p>
+                        <div className="flex gap-2">
+                            <input 
+                                type="password" 
+                                placeholder="API Key (startet mit AIza...)" 
+                                value={geminiKey}
+                                onChange={(e) => setGeminiKey(e.target.value)}
+                                className="flex-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                            />
+                            <button onClick={() => { localStorage.setItem('gemini_api_key', geminiKey); alert('API Key gespeichert'); }} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium">Speichern</button>
+                        </div>
                     </div>
-                 </div>
+                 </SubSection>
                  
-                 <div className="border-t border-slate-100 dark:border-slate-800 pt-6">
-                    <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-2 flex items-center gap-2"><Key className="w-4 h-4" /> App API Key</h3>
-                    <p className="text-xs text-slate-500 mb-2">Für externe Zugriffe auf dieses CRM.</p>
-                    <div className="flex gap-2">
-                         <div className="flex-1 px-3 py-2 bg-slate-100 dark:bg-slate-800 rounded-lg text-sm font-mono text-slate-600 dark:text-slate-300 truncate">
-                             {backendForm.apiKey || 'Kein Key generiert'}
-                         </div>
-                         <button onClick={copyApiKey} disabled={!backendForm.apiKey} className="p-2 text-slate-500 hover:text-indigo-600"><Copy className="w-4 h-4"/></button>
-                         <button onClick={() => { generateApiKey(); onUpdateBackendConfig({...backendForm, apiKey: backendForm.apiKey}); }} className="p-2 text-slate-500 hover:text-indigo-600"><RefreshCw className="w-4 h-4"/></button>
+                 <SubSection title="API Zugriff" isDark={isDark}>
+                    <div className="mt-2 mb-2">
+                        <p className="text-xs text-slate-500 mb-2">Für externe Zugriffe auf dieses CRM.</p>
+                        <div className="flex gap-2">
+                             <div className="flex-1 px-3 py-2 bg-slate-100 dark:bg-slate-800 rounded-lg text-sm font-mono text-slate-600 dark:text-slate-300 truncate">
+                                 {backendForm.apiKey || 'Kein Key generiert'}
+                             </div>
+                             <button onClick={copyApiKey} disabled={!backendForm.apiKey} className="p-2 text-slate-500 hover:text-indigo-600"><Copy className="w-4 h-4"/></button>
+                             <button onClick={() => { generateApiKey(); onUpdateBackendConfig({...backendForm, apiKey: backendForm.apiKey}); }} className="p-2 text-slate-500 hover:text-indigo-600"><RefreshCw className="w-4 h-4"/></button>
+                        </div>
                     </div>
-                 </div>
+                 </SubSection>
              </div>
          </SettingsSection>
 
@@ -683,41 +681,45 @@ export const Settings: React.FC<SettingsProps> = ({
 
          {/* Data Management */}
          <SettingsSection title="Datenverwaltung" icon={Database} isDark={isDark} description="Backup und Wiederherstellung">
-             <div className="p-6">
-                 <div className="grid grid-cols-2 gap-4">
-                     <button onClick={handleExport} className="p-4 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 flex flex-col items-center gap-2 transition-colors">
-                         <DownloadCloud className="w-8 h-8 text-indigo-600" />
-                         <span className="font-bold text-sm text-slate-700 dark:text-slate-300">Daten exportieren</span>
-                         <span className="text-xs text-slate-500 text-center">Erstellt eine JSON Backup Datei</span>
-                     </button>
-                     <button onClick={handleImportClick} className="p-4 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 flex flex-col items-center gap-2 transition-colors">
-                         <Upload className="w-8 h-8 text-amber-600" />
-                         <span className="font-bold text-sm text-slate-700 dark:text-slate-300">Daten importieren</span>
-                         <span className="text-xs text-slate-500 text-center">Stellt Daten aus Backup wieder her</span>
-                     </button>
-                     <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept=".json" />
-                 </div>
+             <div className="px-6">
+                 <SubSection title="Backup & Restore" isDark={isDark} defaultOpen={true}>
+                    <div className="grid grid-cols-2 gap-4 mt-2 mb-2">
+                        <button onClick={handleExport} className="p-4 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 flex flex-col items-center gap-2 transition-colors">
+                            <DownloadCloud className="w-8 h-8 text-indigo-600" />
+                            <span className="font-bold text-sm text-slate-700 dark:text-slate-300">Daten exportieren</span>
+                            <span className="text-xs text-slate-500 text-center">Erstellt eine JSON Backup Datei</span>
+                        </button>
+                        <button onClick={handleImportClick} className="p-4 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 flex flex-col items-center gap-2 transition-colors">
+                            <Upload className="w-8 h-8 text-amber-600" />
+                            <span className="font-bold text-sm text-slate-700 dark:text-slate-300">Daten importieren</span>
+                            <span className="text-xs text-slate-500 text-center">Stellt Daten aus Backup wieder her</span>
+                        </button>
+                        <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept=".json" />
+                    </div>
+                 </SubSection>
                  
-                 <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800">
-                     <h4 className="font-bold text-sm text-slate-800 dark:text-white mb-2 flex items-center gap-2"><RefreshCcw className="w-4 h-4" /> Software Update (Beta)</h4>
-                     <p className="text-xs text-slate-500 mb-3">Laden Sie Updates von einem lokalen Server oder einer URL.</p>
-                     <div className="flex gap-2">
-                         <input 
-                             placeholder="http://localhost:8080 oder URL" 
-                             value={updateUrl} 
-                             onChange={(e) => setUpdateUrl(e.target.value)} 
-                             className="flex-1 px-3 py-2 border rounded-lg text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white"
-                         />
-                         <button 
-                            onClick={handleCheckUpdate} 
-                            disabled={isUpdating}
-                            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
-                         >
-                             {isUpdating ? <Loader2 className="w-4 h-4 animate-spin"/> : 'Update laden'}
-                         </button>
-                     </div>
-                     {updateStatus && <p className="text-xs text-indigo-600 mt-2 font-mono">{updateStatus}</p>}
-                 </div>
+                 <SubSection title="Software Update" isDark={isDark}>
+                    <div className="mt-2 mb-2">
+                        <div className="flex items-center gap-2 mb-2"><RefreshCcw className="w-4 h-4" /> <span className="text-sm font-bold">Update Server (Beta)</span></div>
+                        <p className="text-xs text-slate-500 mb-3">Laden Sie Updates von einem lokalen Server oder einer URL.</p>
+                        <div className="flex gap-2">
+                            <input 
+                                placeholder="http://localhost:8080 oder URL" 
+                                value={updateUrl} 
+                                onChange={(e) => setUpdateUrl(e.target.value)} 
+                                className="flex-1 px-3 py-2 border rounded-lg text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                            />
+                            <button 
+                                onClick={handleCheckUpdate} 
+                                disabled={isUpdating}
+                                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
+                            >
+                                {isUpdating ? <Loader2 className="w-4 h-4 animate-spin"/> : 'Update laden'}
+                            </button>
+                        </div>
+                        {updateStatus && <p className="text-xs text-indigo-600 mt-2 font-mono">{updateStatus}</p>}
+                    </div>
+                 </SubSection>
              </div>
          </SettingsSection>
       </main>
