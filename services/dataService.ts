@@ -43,6 +43,7 @@ export interface IDataService {
     saveInvoice(invoice: Invoice): Promise<Invoice>;
     updateInvoice(invoice: Invoice): Promise<Invoice>;
     deleteInvoice(id: string): Promise<void>;
+    cancelInvoice(id: string): Promise<{ creditNote: Invoice, updatedOriginal: Invoice, activity: Activity }>; // GoBD Storno
 
     // Expenses
     getExpenses(): Promise<Expense[]>;
@@ -169,7 +170,11 @@ class LocalDataService implements IDataService {
             email: 'info@meinefirma.de',
             website: 'www.meinefirma.de',
             footerText: 'Vielen Dank für Ihren Auftrag.',
-            taxRule: 'small_business' // DEFAULT Migration
+            taxRule: 'small_business',
+            emailSettings: {
+                invoiceAttachPdf: true,
+                welcomeSendAutomatically: false
+            }
         });
 
         return Promise.resolve();
@@ -306,6 +311,59 @@ class LocalDataService implements IDataService {
         const list = this.cache.invoices || [];
         const newList = list.filter(i => i.id !== id);
         this.set('invoices', 'invoices', newList);
+    }
+    
+    // GoBD Storno implementation
+    async cancelInvoice(id: string): Promise<{ creditNote: Invoice, updatedOriginal: Invoice, activity: Activity }> {
+        const invoices = await this.getInvoices();
+        const original = invoices.find(i => i.id === id);
+        if (!original) throw new Error("Rechnung nicht gefunden");
+        if (original.isCancelled) throw new Error("Bereits storniert");
+        
+        // Find highest invoice number for next free ID
+        let maxNum = 100;
+        invoices.forEach(i => {
+             const parts = i.invoiceNumber.split('-');
+             if (parts.length > 1) {
+                 const n = parseInt(parts[1]);
+                 if (!isNaN(n) && n > maxNum) maxNum = n;
+             }
+        });
+        const nextNum = `2025-${maxNum + 1}`;
+
+        // Create Credit Note
+        const creditNote: Invoice = {
+            id: Math.random().toString(36).substr(2, 9),
+            invoiceNumber: nextNum,
+            description: `Storno zu Rechnung ${original.invoiceNumber}`,
+            date: new Date().toISOString().split('T')[0],
+            contactId: original.contactId,
+            contactName: original.contactName,
+            amount: -Math.abs(original.amount), // Ensure negative
+            isPaid: true, // Mark as paid/settled immediately
+            paidDate: new Date().toISOString().split('T')[0],
+            relatedInvoiceId: original.id
+        };
+
+        const updatedOriginal = { ...original, isCancelled: true, relatedInvoiceId: creditNote.id };
+        
+        // Save both
+        await this.saveInvoice(creditNote);
+        await this.updateInvoice(updatedOriginal);
+        
+        // Log Activity
+        const activity: Activity = {
+            id: Math.random().toString(36).substr(2, 9),
+            contactId: original.contactId,
+            type: 'system_invoice',
+            content: `Rechnung ${original.invoiceNumber} storniert durch Stornorechnung ${creditNote.invoiceNumber}`,
+            date: new Date().toISOString().split('T')[0],
+            timestamp: new Date().toISOString(),
+            relatedId: creditNote.id
+        };
+        await this.saveActivity(activity);
+
+        return { creditNote, updatedOriginal, activity };
     }
 
     // --- EXPENSES ---
@@ -746,6 +804,7 @@ class APIDataService implements IDataService {
     saveInvoice = async (i: Invoice) => i;
     updateInvoice = async (i: Invoice) => i;
     deleteInvoice = async () => {};
+    cancelInvoice = async (id: string) => ({ creditNote: {} as Invoice, updatedOriginal: {} as Invoice, activity: {} as Activity });
     getExpenses = async () => [];
     saveExpense = async (e: Expense) => e;
     updateExpense = async (e: Expense) => e;

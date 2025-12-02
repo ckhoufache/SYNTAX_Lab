@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { Plus, X, Trash2, CheckCircle2, AlertTriangle, Info, Calendar, Download, Upload, Filter, PieChart as PieChartIcon, Clock, TrendingUp, TrendingDown, PiggyBank, Printer, Paperclip, Pencil, RefreshCw, User } from 'lucide-react';
+import { Plus, X, Trash2, CheckCircle2, AlertTriangle, Info, Calendar, Download, Upload, Filter, PieChart as PieChartIcon, Clock, TrendingUp, TrendingDown, PiggyBank, Printer, Paperclip, Pencil, RefreshCw, User, Ban } from 'lucide-react';
 import { Invoice, Contact, Expense, InvoiceConfig, Activity } from '../types';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
@@ -52,7 +52,7 @@ export const Finances: React.FC<FinancesProps> = ({
     const expenseFileRef = useRef<HTMLInputElement>(null);
     
     // Filter State
-    const [filter, setFilter] = useState<'all' | 'paid' | 'open'>('all');
+    const [filter, setFilter] = useState<'all' | 'paid' | 'open' | 'cancelled'>('all');
 
     // Forms
     const [invoiceForm, setInvoiceForm] = useState<{
@@ -65,7 +65,10 @@ export const Finances: React.FC<FinancesProps> = ({
 
     // --- FINANCIAL CALCULATIONS ---
     const LIMIT = 22000;
-    const totalRevenue = invoices.reduce((sum, inv) => sum + inv.amount, 0);
+    // Exclude cancelled invoices from Revenue calculation
+    // Include credit notes (negative amounts) to balance out
+    const validInvoices = invoices.filter(inv => !inv.isCancelled);
+    const totalRevenue = validInvoices.reduce((sum, inv) => sum + inv.amount, 0);
     const totalExpenses = expenses.reduce((sum, ex) => sum + ex.amount, 0);
     const profit = totalRevenue - totalExpenses;
     const taxReserve = Math.max(0, profit * 0.30); // 30% Steuerrücklage
@@ -79,7 +82,7 @@ export const Finances: React.FC<FinancesProps> = ({
 
     // --- PIE CHART DATA ---
     const pieData = [
-        { name: 'Einnahmen', value: totalRevenue, color: '#10b981' }, // emerald-500
+        { name: 'Einnahmen', value: Math.max(0, totalRevenue), color: '#10b981' }, // emerald-500
         { name: 'Ausgaben', value: totalExpenses, color: '#ef4444' }, // red-500
     ];
 
@@ -109,6 +112,8 @@ export const Finances: React.FC<FinancesProps> = ({
     };
 
     const handleOpenEditInvoice = (invoice: Invoice) => {
+        if (invoice.isCancelled) return; // Cannot edit cancelled
+        if (invoice.amount < 0) return; // Cannot edit Storno (simplify)
         setEditingInvoiceId(invoice.id);
         setInvoiceForm({
             invoiceNumber: invoice.invoiceNumber, date: invoice.date, contactId: invoice.contactId, amount: invoice.amount.toString(),
@@ -141,6 +146,7 @@ export const Finances: React.FC<FinancesProps> = ({
 
     const togglePaidStatus = (e: React.MouseEvent, invoice: Invoice) => {
         e.stopPropagation();
+        if (invoice.isCancelled) return;
         onUpdateInvoice({ ...invoice, isPaid: !invoice.isPaid, paidDate: !invoice.isPaid ? new Date().toISOString().split('T')[0] : undefined });
     };
 
@@ -266,8 +272,9 @@ export const Finances: React.FC<FinancesProps> = ({
 
     // --- RENDER HELPERS ---
     const filteredInvoices = invoices.filter(inv => {
-        if (filter === 'paid') return inv.isPaid;
-        if (filter === 'open') return !inv.isPaid;
+        if (filter === 'paid') return inv.isPaid && !inv.isCancelled;
+        if (filter === 'open') return !inv.isPaid && !inv.isCancelled;
+        if (filter === 'cancelled') return inv.isCancelled;
         return true;
     });
 
@@ -405,6 +412,7 @@ export const Finances: React.FC<FinancesProps> = ({
                                 <button onClick={() => setFilter('all')} className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${filter === 'all' ? 'bg-slate-800 text-white' : 'bg-white border text-slate-600'}`}>Alle</button>
                                 <button onClick={() => setFilter('paid')} className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${filter === 'paid' ? 'bg-green-600 text-white' : 'bg-white border text-slate-600'}`}>Bezahlt</button>
                                 <button onClick={() => setFilter('open')} className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${filter === 'open' ? 'bg-amber-500 text-white' : 'bg-white border text-slate-600'}`}>Offen</button>
+                                <button onClick={() => setFilter('cancelled')} className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${filter === 'cancelled' ? 'bg-slate-200 text-slate-600' : 'bg-white border text-slate-600'}`}>Storniert</button>
                             </div>
                             <button onClick={handleOpenCreateInvoice} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 shadow-sm">
                                 <Plus className="w-4 h-4" /> Rechnung erstellen
@@ -424,37 +432,57 @@ export const Finances: React.FC<FinancesProps> = ({
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
-                                    {filteredInvoices.map(inv => (
+                                    {filteredInvoices.map(inv => {
+                                        const isCancelled = inv.isCancelled;
+                                        const isStorno = inv.amount < 0;
+                                        
+                                        return (
                                         <tr 
                                             key={inv.id} 
-                                            className="hover:bg-slate-50 group cursor-pointer"
+                                            className={`hover:bg-slate-50 group cursor-pointer ${isCancelled ? 'bg-slate-50/50' : ''}`}
                                             onClick={() => {
                                                 setPrintInvoice(inv);
                                                 setIsPrintModalOpen(true);
                                             }}
                                         >
-                                            <td className="px-6 py-4 text-sm font-medium text-slate-900">{inv.invoiceNumber}</td>
-                                            <td className="px-6 py-4 text-sm text-slate-700">{inv.date}</td>
-                                            <td className="px-6 py-4 text-sm text-slate-700">
+                                            <td className={`px-6 py-4 text-sm font-medium text-slate-900 ${isCancelled ? 'line-through text-slate-400' : ''}`}>{inv.invoiceNumber}</td>
+                                            <td className={`px-6 py-4 text-sm text-slate-700 ${isCancelled ? 'text-slate-400' : ''}`}>{inv.date}</td>
+                                            <td className={`px-6 py-4 text-sm text-slate-700 ${isCancelled ? 'text-slate-400' : ''}`}>
                                                 <div className="font-medium">{inv.contactName}</div>
                                                 <div className="text-xs text-slate-500">{inv.description || "Keine Beschreibung"}</div>
                                             </td>
-                                            <td className="px-6 py-4 text-sm font-bold text-slate-800">{inv.amount.toLocaleString('de-DE')} €</td>
+                                            <td className={`px-6 py-4 text-sm font-bold ${isStorno ? 'text-slate-800' : isCancelled ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
+                                                {inv.amount.toLocaleString('de-DE')} €
+                                            </td>
                                             <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
-                                                <button onClick={(e) => togglePaidStatus(e, inv)} className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border ${inv.isPaid ? 'bg-green-50 text-green-700 border-green-200' : 'bg-white text-slate-500 border-slate-200'}`}>
-                                                    {inv.isPaid ? <CheckCircle2 className="w-3.5 h-3.5" /> : <div className="w-3.5 h-3.5 rounded-full border border-slate-300"></div>}
-                                                    {inv.isPaid ? 'Bezahlt' : 'Offen'}
-                                                </button>
+                                                {isCancelled ? (
+                                                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500 border border-slate-200">
+                                                        <Ban className="w-3.5 h-3.5" /> Storniert
+                                                    </span>
+                                                ) : isStorno ? (
+                                                     <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                                        <CheckCircle2 className="w-3.5 h-3.5" /> Gutschrift
+                                                    </span>
+                                                ) : (
+                                                    <button onClick={(e) => togglePaidStatus(e, inv)} className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border ${inv.isPaid ? 'bg-green-50 text-green-700 border-green-200' : 'bg-white text-slate-500 border-slate-200'}`}>
+                                                        {inv.isPaid ? <CheckCircle2 className="w-3.5 h-3.5" /> : <div className="w-3.5 h-3.5 rounded-full border border-slate-300"></div>}
+                                                        {inv.isPaid ? 'Bezahlt' : 'Offen'}
+                                                    </button>
+                                                )}
                                             </td>
                                             <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                                                 <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                                     <button onClick={(e) => handleDirectDownload(e, inv)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded" title="Als PDF speichern"><Download className="w-4 h-4"/></button>
-                                                    <button onClick={() => handleOpenEditInvoice(inv)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded" title="Bearbeiten"><Pencil className="w-4 h-4"/></button>
-                                                    <button onClick={() => onDeleteInvoice(inv.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded" title="Löschen"><Trash2 className="w-4 h-4"/></button>
+                                                    {!isCancelled && !isStorno && (
+                                                        <>
+                                                            <button onClick={() => handleOpenEditInvoice(inv)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded" title="Bearbeiten"><Pencil className="w-4 h-4"/></button>
+                                                            <button onClick={() => onDeleteInvoice(inv.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded" title="Stornieren"><Trash2 className="w-4 h-4"/></button>
+                                                        </>
+                                                    )}
                                                 </div>
                                             </td>
                                         </tr>
-                                    ))}
+                                    )})}
                                 </tbody>
                             </table>
                         </div>
@@ -606,6 +634,9 @@ export const Finances: React.FC<FinancesProps> = ({
                             <div id="printable-invoice" className="bg-white shadow-2xl p-[10mm] w-[210mm] min-h-[297mm] text-slate-800 relative">
                                 {(() => {
                                     const calc = getInvoiceCalculations(printInvoice);
+                                    const isStorno = printInvoice.amount < 0;
+                                    const titlePrefix = isStorno ? "Gutschrift / Stornorechnung" : "Rechnung";
+
                                     return (
                                         <>
                                             {/* HEADER */}
@@ -622,8 +653,9 @@ export const Finances: React.FC<FinancesProps> = ({
                                                 </div>
                                                 <div className="text-right text-sm text-slate-600">
                                                     <p>Datum: {new Date(printInvoice.date).toLocaleDateString('de-DE')}</p>
-                                                    <p>Rechnung Nr.: {printInvoice.invoiceNumber}</p>
-                                                    {printInvoice.sentDate && <p>Leistungsdatum: {new Date(printInvoice.sentDate).toLocaleDateString('de-DE')}</p>}
+                                                    <p>Nr.: {printInvoice.invoiceNumber}</p>
+                                                    {printInvoice.sentDate && !isStorno && <p>Leistungsdatum: {new Date(printInvoice.sentDate).toLocaleDateString('de-DE')}</p>}
+                                                    {printInvoice.relatedInvoiceId && <p className="text-xs mt-1">Ref: {invoices.find(i => i.id === printInvoice.relatedInvoiceId)?.invoiceNumber}</p>}
                                                 </div>
                                             </div>
 
@@ -636,10 +668,13 @@ export const Finances: React.FC<FinancesProps> = ({
                                             </div>
 
                                             {/* TITLE */}
-                                            <h2 className="text-xl font-bold mb-6">Rechnung {printInvoice.invoiceNumber}</h2>
+                                            <h2 className="text-xl font-bold mb-6">{titlePrefix} {printInvoice.invoiceNumber}</h2>
                                             <p className="text-sm text-slate-600 mb-8">
                                                 Sehr geehrte Damen und Herren,<br/>
-                                                vielen Dank für Ihren Auftrag. Wir stellen Ihnen folgende Leistungen in Rechnung:
+                                                {isStorno 
+                                                    ? 'hiermit korrigieren wir die ursprüngliche Rechnung wie folgt:' 
+                                                    : 'vielen Dank für Ihren Auftrag. Wir stellen Ihnen folgende Leistungen in Rechnung:'
+                                                }
                                             </p>
 
                                             {/* TABLE */}
@@ -679,7 +714,11 @@ export const Finances: React.FC<FinancesProps> = ({
                                             </table>
 
                                             <p className="text-sm text-slate-600 mb-8">
-                                                Bitte überweisen Sie den Betrag innerhalb von 14 Tagen auf das unten genannte Konto.<br/>
+                                                {isStorno 
+                                                    ? 'Der Betrag wird Ihrem Konto gutgeschrieben bzw. mit offenen Forderungen verrechnet.' 
+                                                    : 'Bitte überweisen Sie den Betrag innerhalb von 14 Tagen auf das unten genannte Konto.'
+                                                }
+                                                <br/>
                                                 {!calc.isStandardTax && 'Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.'}
                                             </p>
 

@@ -106,6 +106,9 @@ export interface Invoice {
   sentDate?: string;
   paidDate?: string;
   isPaid: boolean;
+  // GoBD Fields
+  isCancelled?: boolean;
+  relatedInvoiceId?: string; // ID der Stornorechnung oder der Originalrechnung
 }
 
 export interface Expense {
@@ -121,6 +124,16 @@ export interface Expense {
   contactName?: string; // NEU: Cache Name
 }
 
+export interface EmailSettings {
+    invoiceTemplateId?: string;
+    invoiceAttachPdf?: boolean;
+    reminderTemplateId?: string;
+    offerTemplateId?: string;
+    // NEU: Welcome Mail Automation
+    welcomeTemplateId?: string;
+    welcomeSendAutomatically?: boolean;
+}
+
 export interface InvoiceConfig {
   companyName: string;
   addressLine1: string; 
@@ -134,6 +147,7 @@ export interface InvoiceConfig {
   logoBase64?: string;
   footerText?: string;
   taxRule?: 'small_business' | 'standard'; // NEU: Steuermodus
+  emailSettings?: EmailSettings; // NEU: E-Mail Automation
 }
 
 export interface EmailTemplate {

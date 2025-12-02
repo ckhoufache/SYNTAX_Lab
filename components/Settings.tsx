@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle, Key, RefreshCw, Copy, FileText, Image as ImageIcon, Briefcase, Settings as SettingsIcon, HardDrive, Users, DownloadCloud, RefreshCcw, Sparkles, Sliders } from 'lucide-react';
+import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle, Key, RefreshCw, Copy, FileText, Image as ImageIcon, Briefcase, Settings as SettingsIcon, HardDrive, Users, DownloadCloud, RefreshCcw, Sparkles, Sliders, Link, Paperclip, Star } from 'lucide-react';
 import { UserProfile, Theme, ProductPreset, Contact, Deal, Task, BackupData, BackendConfig, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate } from '../types';
 import { IDataService } from '../services/dataService';
 
@@ -223,8 +223,11 @@ export const Settings: React.FC<SettingsProps> = ({
   }, []);
 
   useEffect(() => {
+      // If invoice config changes from outside, update local form BUT respect nested emailSettings
       if (invoiceConfig.companyName !== invConfigForm.companyName && !invConfigForm.companyName) {
            setInvConfigForm(invoiceConfig);
+      } else if (!invConfigForm.emailSettings && invoiceConfig.emailSettings) {
+           setInvConfigForm(prev => ({...prev, emailSettings: invoiceConfig.emailSettings}));
       }
   }, [invoiceConfig]);
 
@@ -250,6 +253,16 @@ export const Settings: React.FC<SettingsProps> = ({
   const handleInvConfigChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
       const { name, value } = e.target;
       setInvConfigForm(prev => ({ ...prev, [name]: value }));
+  };
+  
+  const handleEmailSettingsChange = (key: string, value: any) => {
+      setInvConfigForm(prev => ({
+          ...prev,
+          emailSettings: {
+              ...prev.emailSettings,
+              [key]: value
+          }
+      }));
   };
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -714,21 +727,124 @@ export const Settings: React.FC<SettingsProps> = ({
                      onToggle={() => toggleSubSection('config_email')}
                  >
                      <div className="py-2">
+                         <p className="text-xs text-slate-500 mb-3">Erstellen und bearbeiten Sie hier Textvorlagen für Ihre E-Mails.</p>
                         <div className="space-y-2 mb-4">
                             {emailTemplates.map(template => (
-                                <div key={template.id} className="flex items-center justify-between p-3 border rounded-lg bg-white dark:bg-slate-800 dark:border-slate-700">
+                                <div key={template.id} className="flex items-center justify-between p-3 border rounded-lg bg-white dark:bg-slate-800 dark:border-slate-700 hover:border-indigo-300 transition-colors">
                                     <div>
-                                        <p className="font-medium text-sm text-slate-800 dark:text-slate-200">{template.title}</p>
-                                        <p className="text-xs text-slate-500">{template.subject}</p>
+                                        <p className="font-medium text-sm text-slate-800 dark:text-slate-200 flex items-center gap-2"><FileText className="w-3.5 h-3.5 text-indigo-500"/> {template.title}</p>
+                                        <p className="text-xs text-slate-500 truncate max-w-xs">{template.subject}</p>
                                     </div>
                                     <div className="flex gap-2">
-                                        <button onClick={() => openTemplateModal(template)} className="text-slate-400 hover:text-indigo-600"><Pencil className="w-4 h-4"/></button>
-                                        <button onClick={() => onDeleteTemplate(template.id)} className="text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4"/></button>
+                                        <button onClick={() => openTemplateModal(template)} className="text-slate-400 hover:text-indigo-600 p-1.5 hover:bg-slate-100 rounded" title="Bearbeiten"><Pencil className="w-4 h-4"/></button>
+                                        <button onClick={() => onDeleteTemplate(template.id)} className="text-slate-400 hover:text-red-600 p-1.5 hover:bg-red-50 rounded" title="Löschen"><Trash2 className="w-4 h-4"/></button>
                                     </div>
                                 </div>
                             ))}
+                            {emailTemplates.length === 0 && <p className="text-sm text-slate-400 text-center py-4 italic">Keine Vorlagen vorhanden.</p>}
                         </div>
                         <button onClick={() => openTemplateModal()} className="w-full py-2 border border-dashed border-slate-300 rounded-lg text-slate-500 hover:bg-slate-50 flex items-center justify-center gap-2 text-sm"><Plus className="w-4 h-4" /> Neue Vorlage erstellen</button>
+                     </div>
+                 </SubSection>
+                 
+                 {/* Email Versand & Automation (NEU) */}
+                 <SubSection
+                     title="E-Mail Versand & Automation"
+                     isDark={isDark}
+                     isOpen={activeSubSection === 'config_email_automation'}
+                     onToggle={() => toggleSubSection('config_email_automation')}
+                 >
+                     <div className="py-2 space-y-6">
+                        {/* Welcome Mail Section */}
+                        <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-lg border dark:border-slate-700">
+                             <h4 className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-3 flex items-center gap-2"><Star className="w-4 h-4 text-yellow-500" /> Willkommens-E-Mail (Deal gewonnen)</h4>
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                 <div>
+                                     <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400 mb-1 block">Standard-Vorlage</label>
+                                     <select 
+                                        value={invConfigForm.emailSettings?.welcomeTemplateId || ''}
+                                        onChange={(e) => handleEmailSettingsChange('welcomeTemplateId', e.target.value)}
+                                        className="w-full px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                                     >
+                                         <option value="">-- Keine Vorlage --</option>
+                                         {emailTemplates.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+                                     </select>
+                                 </div>
+                                 <div className="flex items-end">
+                                      <label className="flex items-center gap-2 cursor-pointer p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg w-full transition-colors">
+                                         <input 
+                                            type="checkbox"
+                                            checked={invConfigForm.emailSettings?.welcomeSendAutomatically || false}
+                                            onChange={(e) => handleEmailSettingsChange('welcomeSendAutomatically', e.target.checked)}
+                                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4"
+                                         />
+                                         <span className="text-sm dark:text-slate-300 flex items-center gap-2">Automatisch senden bei Status "Gewonnen"</span>
+                                      </label>
+                                 </div>
+                             </div>
+                        </div>
+
+                        <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-lg border dark:border-slate-700">
+                             <h4 className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-3 flex items-center gap-2"><Mail className="w-4 h-4 text-indigo-600" /> Rechnungsversand</h4>
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                 <div>
+                                     <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400 mb-1 block">Standard-Vorlage</label>
+                                     <select 
+                                        value={invConfigForm.emailSettings?.invoiceTemplateId || ''}
+                                        onChange={(e) => handleEmailSettingsChange('invoiceTemplateId', e.target.value)}
+                                        className="w-full px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                                     >
+                                         <option value="">-- Keine Vorlage --</option>
+                                         {emailTemplates.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+                                     </select>
+                                 </div>
+                                 <div className="flex items-end">
+                                      <label className="flex items-center gap-2 cursor-pointer p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg w-full transition-colors">
+                                         <input 
+                                            type="checkbox"
+                                            checked={invConfigForm.emailSettings?.invoiceAttachPdf || false}
+                                            onChange={(e) => handleEmailSettingsChange('invoiceAttachPdf', e.target.checked)}
+                                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4"
+                                         />
+                                         <span className="text-sm dark:text-slate-300 flex items-center gap-2"><Paperclip className="w-3.5 h-3.5"/> Rechnung als PDF anhängen</span>
+                                      </label>
+                                 </div>
+                             </div>
+                        </div>
+
+                        <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-lg border dark:border-slate-700">
+                             <h4 className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-3 flex items-center gap-2"><Briefcase className="w-4 h-4 text-amber-600" /> Angebotsversand</h4>
+                             <div>
+                                 <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400 mb-1 block">Standard-Vorlage für Angebote</label>
+                                 <select 
+                                    value={invConfigForm.emailSettings?.offerTemplateId || ''}
+                                    onChange={(e) => handleEmailSettingsChange('offerTemplateId', e.target.value)}
+                                    className="w-full px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                                 >
+                                     <option value="">-- Keine Vorlage --</option>
+                                     {emailTemplates.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+                                 </select>
+                             </div>
+                        </div>
+
+                        <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-lg border dark:border-slate-700">
+                             <h4 className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-3 flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-red-600" /> Mahnwesen</h4>
+                             <div>
+                                 <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400 mb-1 block">Standard-Vorlage für Mahnungen</label>
+                                 <select 
+                                    value={invConfigForm.emailSettings?.reminderTemplateId || ''}
+                                    onChange={(e) => handleEmailSettingsChange('reminderTemplateId', e.target.value)}
+                                    className="w-full px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                                 >
+                                     <option value="">-- Keine Vorlage --</option>
+                                     {emailTemplates.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+                                 </select>
+                             </div>
+                        </div>
+
+                        <div className="flex justify-end">
+                             <button onClick={() => { onUpdateInvoiceConfig(invConfigForm); alert('E-Mail Einstellungen gespeichert'); }} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">Speichern</button>
+                        </div>
                      </div>
                  </SubSection>
              </div>
@@ -907,13 +1023,16 @@ export const Settings: React.FC<SettingsProps> = ({
       {/* Template Modal */}
       {isTemplateModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-              <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden">
-                  <div className="px-6 py-4 border-b bg-slate-50 flex justify-between"><h2 className="font-bold">E-Mail Vorlage</h2><button onClick={() => setIsTemplateModalOpen(false)}><X className="w-5"/></button></div>
-                  <form onSubmit={saveTemplate} className="p-6 space-y-4">
-                      <div><label className="text-xs font-bold uppercase text-slate-500">Titel</label><input required value={templateForm.title} onChange={e=>setTemplateForm({...templateForm, title:e.target.value})} className="w-full border p-2 rounded mt-1" placeholder="z.B. Angebot Follow-Up" /></div>
-                      <div><label className="text-xs font-bold uppercase text-slate-500">Betreff</label><input required value={templateForm.subject} onChange={e=>setTemplateForm({...templateForm, subject:e.target.value})} className="w-full border p-2 rounded mt-1" /></div>
-                      <div><label className="text-xs font-bold uppercase text-slate-500">Text (Platzhalter: {'{name}'})</label><textarea required value={templateForm.body} onChange={e=>setTemplateForm({...templateForm, body:e.target.value})} className="w-full border p-2 rounded mt-1" rows={6} /></div>
-                      <div className="flex justify-end pt-2"><button type="submit" className="bg-indigo-600 text-white px-4 py-2 rounded text-sm font-medium">Speichern</button></div>
+              <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+                  <div className="px-6 py-4 border-b dark:border-slate-700 bg-slate-50 dark:bg-slate-900 flex justify-between items-center"><h2 className="font-bold dark:text-white">{editingTemplateId ? 'Vorlage bearbeiten' : 'Neue Vorlage'}</h2><button onClick={() => setIsTemplateModalOpen(false)} className="dark:text-slate-400"><X className="w-5"/></button></div>
+                  <form onSubmit={saveTemplate} className="p-6 space-y-4 overflow-y-auto">
+                      <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Bezeichnung (Intern)</label><input required value={templateForm.title} onChange={e=>setTemplateForm({...templateForm, title:e.target.value})} className="w-full border dark:border-slate-600 p-2 rounded mt-1 dark:bg-slate-700 dark:text-white" placeholder="z.B. Angebot Follow-Up" /></div>
+                      <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Betreff</label><input required value={templateForm.subject} onChange={e=>setTemplateForm({...templateForm, subject:e.target.value})} className="w-full border dark:border-slate-600 p-2 rounded mt-1 dark:bg-slate-700 dark:text-white" /></div>
+                      <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Text (Platzhalter: {'{name}'})</label><textarea required value={templateForm.body} onChange={e=>setTemplateForm({...templateForm, body:e.target.value})} className="w-full border dark:border-slate-600 p-2 rounded mt-1 dark:bg-slate-700 dark:text-white" rows={8} /></div>
+                      <div className="flex justify-end pt-2 gap-3">
+                          <button type="button" onClick={() => setIsTemplateModalOpen(false)} className="text-slate-500 dark:text-slate-400 px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-sm font-medium">Abbrechen</button>
+                          <button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded text-sm font-medium">Speichern</button>
+                      </div>
                   </form>
               </div>
           </div>

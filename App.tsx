@@ -519,8 +519,11 @@ const App: React.FC = () => {
           await dataService.deleteTask(deleteIntent.id);
           setTasks(prev => prev.filter(t => t.id !== deleteIntent.id));
         } else if (deleteIntent.type === 'invoice') {
-          await dataService.deleteInvoice(deleteIntent.id);
-          setInvoices(prev => prev.filter(i => i.id !== deleteIntent.id));
+          // GoBD: Cancel instead of Delete
+          const { creditNote, updatedOriginal, activity } = await dataService.cancelInvoice(deleteIntent.id);
+          setInvoices(prev => prev.map(i => i.id === updatedOriginal.id ? updatedOriginal : i));
+          setInvoices(prev => [creditNote, ...prev]);
+          setActivities(prev => [activity, ...prev]);
         } else if (deleteIntent.type === 'expense') {
           await dataService.deleteExpense(deleteIntent.id);
           setExpenses(prev => prev.filter(e => e.id !== deleteIntent.id));
@@ -528,7 +531,7 @@ const App: React.FC = () => {
           await dataService.deleteEmailTemplate(deleteIntent.id);
           setEmailTemplates(prev => prev.filter(t => t.id !== deleteIntent.id));
         }
-    } catch (e) { console.error("Delete failed", e); alert("Löschen fehlgeschlagen."); } finally { setDeleteIntent(null); }
+    } catch (e) { console.error("Action failed", e); alert("Vorgang fehlgeschlagen: " + (e as Error).message); } finally { setDeleteIntent(null); }
   };
 
   const handleNavigateToContacts = (filter: 'all' | 'recent', focusId?: string) => {
@@ -549,7 +552,7 @@ const App: React.FC = () => {
 
   if (isLoading || !userProfile || !invoiceConfig) {
       return (
-          <div className={`flex h-screen w-full items-center justify-center ${theme === 'dark' ? 'bg-slate-950' : 'bg-slate-50'}`}>
+          <div className={`flex h-screen w-full items-center justify-center ${theme === 'dark' ? 'bg-slate-900' : 'bg-slate-50'}`}>
               <div className="flex flex-col items-center gap-4">
                   <Loader2 className="w-10 h-10 animate-spin text-indigo-600" />
                   <p className={`${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'} font-medium`}>Lade CRM Daten...</p>
@@ -631,6 +634,8 @@ const App: React.FC = () => {
             invoices={invoices}
             onAddActivity={handleAddActivity}
             onNavigateToContacts={handleNavigateToContacts}
+            invoiceConfig={invoiceConfig} // PASSED
+            emailTemplates={emailTemplates} // PASSED
           />
         );
       case 'tasks':
@@ -706,8 +711,16 @@ const App: React.FC = () => {
         {renderView()}
         <ConfirmDialog 
           isOpen={!!deleteIntent}
-          title={deleteIntent?.type === 'expense' ? 'Ausgabe löschen?' : 'Eintrag löschen?'}
-          message="Möchten Sie diesen Eintrag wirklich unwiderruflich löschen?"
+          title={
+             deleteIntent?.type === 'invoice' ? 'Rechnung stornieren?' : 
+             deleteIntent?.type === 'expense' ? 'Ausgabe löschen?' : 
+             'Eintrag löschen?'
+          }
+          message={
+             deleteIntent?.type === 'invoice' 
+             ? "Gemäß GoBD können Rechnungen nicht einfach gelöscht werden. Stattdessen wird eine Stornorechnung (Gutschrift) erstellt und die Originalrechnung als storniert markiert." 
+             : "Möchten Sie diesen Eintrag wirklich unwiderruflich löschen?"
+          }
           onConfirm={confirmDelete}
           onCancel={() => setDeleteIntent(null)}
         />

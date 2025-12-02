@@ -1,7 +1,8 @@
 
 import React, { useState, DragEvent, useMemo } from 'react';
-import { Deal, DealStage, Contact, ProductPreset, Task, Invoice, Activity } from '../types';
+import { Deal, DealStage, Contact, ProductPreset, Task, Invoice, Activity, InvoiceConfig, EmailTemplate } from '../types';
 import { Plus, MoreHorizontal, DollarSign, X, Calendar, Trash2, User, Filter, Eye, EyeOff, Package, Pencil, Search } from 'lucide-react';
+import { DataServiceFactory } from '../services/dataService';
 
 interface PipelineProps {
   deals: Deal[];
@@ -21,6 +22,10 @@ interface PipelineProps {
   invoices: Invoice[];
   onAddActivity: (activity: Activity) => void;
   onNavigateToContacts: (filter: 'all' | 'recent', focusId?: string) => void;
+  
+  // NEW PROPS for Automation
+  invoiceConfig: InvoiceConfig | null;
+  emailTemplates: EmailTemplate[];
 }
 
 export const Pipeline: React.FC<PipelineProps> = ({ 
@@ -40,7 +45,9 @@ export const Pipeline: React.FC<PipelineProps> = ({
   onAddInvoice,
   invoices,
   onAddActivity,
-  onNavigateToContacts
+  onNavigateToContacts,
+  invoiceConfig,
+  emailTemplates
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDealId, setEditingDealId] = useState<string | null>(null);
@@ -79,17 +86,16 @@ export const Pipeline: React.FC<PipelineProps> = ({
       return `2025-${maxNum + 1}`;
   };
 
-  const handleDragStart = (e: DragEvent<HTMLDivElement>, dealId: string) => {
-    setDraggedDealId(dealId);
-    e.dataTransfer.effectAllowed = "move";
+  const handleDragStart = (e: DragEvent<HTMLDivElement>, id: string) => {
+    setDraggedDealId(id);
+    e.dataTransfer.effectAllowed = 'move';
   };
 
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
   };
 
-  const handleDrop = (e: DragEvent<HTMLDivElement>, targetStage: DealStage) => {
+  const handleDrop = async (e: DragEvent<HTMLDivElement>, targetStage: DealStage) => {
     e.preventDefault();
     if (!draggedDealId) return;
 
@@ -129,11 +135,12 @@ export const Pipeline: React.FC<PipelineProps> = ({
         if (taskToDelete) onAutoDeleteTask(taskToDelete.id);
     }
 
-    // AUTO INVOICE: -> WON
+    // LOGIC FOR "WON"
     if (targetStage === DealStage.WON && deal.stage !== DealStage.WON) {
         const contact = contacts.find(c => c.id === deal.contactId);
         const contactName = contact ? `${contact.name} (${contact.company})` : 'Unbekannt';
         
+        // 1. Auto Invoice
         onAddInvoice({
             id: Math.random().toString(36).substr(2, 9),
             invoiceNumber: generateNextInvoiceNumber(),
@@ -144,6 +151,37 @@ export const Pipeline: React.FC<PipelineProps> = ({
             amount: deal.value,
             isPaid: false
         });
+
+        // 2. Auto Welcome Email
+        if (invoiceConfig && invoiceConfig.emailSettings?.welcomeSendAutomatically && invoiceConfig.emailSettings.welcomeTemplateId && contact && contact.email) {
+             const template = emailTemplates.find(t => t.id === invoiceConfig.emailSettings!.welcomeTemplateId);
+             
+             if (template) {
+                 // Check Google Connection Logic (Local Implementation)
+                 const isGoogleMailConnected = localStorage.getItem('google_mail_connected') === 'true';
+                 const storedConfig = localStorage.getItem('backend_config');
+                 const config = storedConfig ? JSON.parse(storedConfig) : { mode: 'local' };
+                 
+                 if (isGoogleMailConnected) {
+                     const service = DataServiceFactory.create(config);
+                     const body = template.body.replace('{name}', contact.name.split(' ')[0]);
+                     
+                     // Send non-blocking
+                     service.sendMail(contact.email, template.subject, body).then(success => {
+                         if (success) {
+                             onAddActivity({
+                                id: Math.random().toString(36).substr(2, 9),
+                                contactId: contact.id,
+                                type: 'email',
+                                content: `Automatische Willkommens-Mail gesendet (${template.title})`,
+                                date: new Date().toISOString().split('T')[0],
+                                timestamp: new Date().toISOString()
+                            });
+                         }
+                     });
+                 }
+             }
+        }
     }
 
     if (deal.stage !== targetStage) {
