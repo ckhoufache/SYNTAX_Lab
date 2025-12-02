@@ -1,9 +1,8 @@
-
-import React, { useState, useRef } from 'react';
-import { Plus, X, Trash2, CheckCircle2, AlertTriangle, Info, Calendar, Download, Upload, Filter, PieChart as PieChartIcon, Clock, TrendingUp, TrendingDown, PiggyBank, Printer, Paperclip, Pencil, RefreshCw, User, Ban } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Plus, X, Trash2, CheckCircle2, TrendingUp, TrendingDown, PiggyBank, Printer, Pencil, RefreshCw, Ban, Loader2 } from 'lucide-react';
 import { Invoice, Contact, Expense, InvoiceConfig, Activity } from '../types';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { compileInvoiceTemplate } from '../services/dataService';
+import { DataServiceFactory, compileInvoiceTemplate } from '../services/dataService';
 
 interface FinancesProps {
     invoices: Invoice[];
@@ -43,484 +42,375 @@ export const Finances: React.FC<FinancesProps> = ({
 
     const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
-    const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
     
+    // Editing States
     const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
     const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
-    const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null);
-
-    const fileInputRef = useRef<HTMLInputElement>(null);
-    const expenseFileRef = useRef<HTMLInputElement>(null);
     
-    // Filter State
-    const [filter, setFilter] = useState<'all' | 'paid' | 'open' | 'cancelled'>('all');
+    // Printing State
+    const [isPrinting, setIsPrinting] = useState<string | null>(null);
 
-    // Forms
-    const [invoiceForm, setInvoiceForm] = useState<{
-        invoiceNumber: string; date: string; contactId: string; amount: string; sentDate: string; isPaid: boolean; paidDate: string; description: string;
-    }>({ invoiceNumber: '', date: new Date().toISOString().split('T')[0], contactId: '', amount: '', sentDate: '', isPaid: false, paidDate: '', description: '' });
+    // Form States
+    const [invoiceForm, setInvoiceForm] = useState<Partial<Invoice>>({
+        invoiceNumber: '',
+        date: new Date().toISOString().split('T')[0],
+        contactId: '',
+        description: '',
+        amount: 0,
+        isPaid: false
+    });
 
-    const [expenseForm, setExpenseForm] = useState<{
-        title: string; amount: string; date: string; category: Expense['category']; notes: string; attachment?: string; attachmentName?: string; contactId: string;
-    }>({ title: '', amount: '', date: new Date().toISOString().split('T')[0], category: 'office', notes: '', attachment: '', attachmentName: '', contactId: '' });
+    const [expenseForm, setExpenseForm] = useState<Partial<Expense>>({
+        title: '',
+        amount: 0,
+        date: new Date().toISOString().split('T')[0],
+        category: 'office',
+        contactId: ''
+    });
 
-    // --- FINANCIAL CALCULATIONS ---
-    const LIMIT = 22000;
-    // Fix: Calculate revenue based on ALL invoices to ensure Storno (+500 and -500) balances to 0.
-    // Explicitly cast to Number to prevent string concatenation bugs.
-    const totalRevenue = invoices.reduce((sum, inv) => sum + Number(inv.amount), 0);
-    const totalExpenses = expenses.reduce((sum, ex) => sum + Number(ex.amount), 0);
-    const profit = totalRevenue - totalExpenses;
-    const taxReserve = Math.max(0, profit * 0.30); // 30% Steuerrücklage
+    // Stats
+    const totalIncome = invoices.reduce((sum, i) => sum + i.amount, 0);
+    const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
+    const profit = totalIncome - totalExpenses;
+    
+    // Data for Charts
+    const expenseData = useMemo(() => {
+        const categories = expenses.reduce((acc, curr) => {
+            acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
+            return acc;
+        }, {} as Record<string, number>);
+        
+        return Object.entries(categories).map(([name, value]) => ({ name, value }));
+    }, [expenses]);
+    
+    const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
 
-    // Ampel-Status (Kleinunternehmer)
-    const percentage = Math.min((totalRevenue / LIMIT) * 100, 100);
-    let statusColor = 'bg-green-500';
-    let statusText = 'Kleinunternehmer i.O.';
-    if (totalRevenue > 18000) { statusColor = 'bg-yellow-500'; statusText = 'Limit nähert sich'; }
-    if (totalRevenue >= LIMIT) { statusColor = 'bg-red-500'; statusText = 'USt-Pflichtig!'; }
-
-    // --- PIE CHART DATA ---
-    const pieData = [
-        { name: 'Einnahmen', value: Math.max(0, totalRevenue), color: '#10b981' }, // emerald-500
-        { name: 'Ausgaben', value: totalExpenses, color: '#ef4444' }, // red-500
-    ];
-
-    const activePieData = pieData.filter(d => d.value > 0);
-
-    // --- CHART INTERACTION ---
-    const handlePieClick = (data: any) => {
-        if (data.name === 'Einnahmen') setActiveTab('income');
-        if (data.name === 'Ausgaben') setActiveTab('expenses');
-    };
-
-    // --- INVOICE HANDLERS ---
-    const generateNextInvoiceNumber = () => {
-        if (invoices.length === 0) return '2025-101';
-        const maxNum = invoices.reduce((max, inv) => {
-            const numPart = parseInt(inv.invoiceNumber.split('-')[1]);
-            return isNaN(numPart) ? max : Math.max(max, numPart);
-        }, 100);
-        return `2025-${maxNum + 1}`;
-    };
-
-    const handleOpenCreateInvoice = () => {
-        setEditingInvoiceId(null);
-        setInvoiceForm({ invoiceNumber: generateNextInvoiceNumber(), date: new Date().toISOString().split('T')[0], contactId: '', amount: '', sentDate: '', isPaid: false, paidDate: '', description: '' });
-        setIsInvoiceModalOpen(true);
-    };
-
-    const handleOpenEditInvoice = (invoice: Invoice) => {
-        if (invoice.isCancelled) return; 
-        if (invoice.amount < 0) return; 
-        setEditingInvoiceId(invoice.id);
-        setInvoiceForm({
-            invoiceNumber: invoice.invoiceNumber, date: invoice.date, contactId: invoice.contactId, amount: invoice.amount.toString(),
-            sentDate: invoice.sentDate || '', isPaid: invoice.isPaid, paidDate: invoice.paidDate || '', description: invoice.description || ''
-        });
-        setIsInvoiceModalOpen(true);
-    };
-
-    const handleSubmitInvoice = (e: React.FormEvent) => {
+    // Handlers
+    const handleInvoiceSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!invoiceForm.amount || !invoiceForm.contactId) return;
-        const selectedContact = contacts.find(c => c.id === invoiceForm.contactId);
-        const contactName = selectedContact ? `${selectedContact.name} (${selectedContact.company})` : 'Unbekannt';
-
-        const invoiceData: Invoice = {
-            id: editingInvoiceId || Math.random().toString(36).substr(2, 9),
-            invoiceNumber: invoiceForm.invoiceNumber,
-            date: invoiceForm.date,
-            contactId: invoiceForm.contactId,
-            contactName: contactName,
-            description: invoiceForm.description,
-            amount: parseFloat(invoiceForm.amount),
-            sentDate: invoiceForm.sentDate || undefined,
-            isPaid: invoiceForm.isPaid,
-            paidDate: invoiceForm.isPaid ? (invoiceForm.paidDate || invoiceForm.date) : undefined
-        };
-        editingInvoiceId ? onUpdateInvoice(invoiceData) : onAddInvoice(invoiceData);
+        const contact = contacts.find(c => c.id === invoiceForm.contactId);
+        
+        if (editingInvoiceId) {
+            const original = invoices.find(i => i.id === editingInvoiceId);
+            if(original) {
+                onUpdateInvoice({
+                    ...original,
+                    ...invoiceForm as Invoice,
+                    contactName: contact ? contact.name : original.contactName
+                });
+            }
+        } else {
+             const newInvoice: Invoice = {
+                id: crypto.randomUUID(),
+                ...invoiceForm as Invoice,
+                invoiceNumber: invoiceForm.invoiceNumber || `Rechnung-${Date.now()}`, // Fallback if user didn't provide number
+                contactName: contact ? contact.name : 'Unbekannt',
+            };
+            onAddInvoice(newInvoice);
+        }
         setIsInvoiceModalOpen(false);
     };
-
-    const togglePaidStatus = (e: React.MouseEvent, invoice: Invoice) => {
-        e.stopPropagation();
-        if (invoice.isCancelled) return;
-        // Erlaubt nun auch Statusänderung für Storno-Rechnungen (amount < 0)
-        onUpdateInvoice({ ...invoice, isPaid: !invoice.isPaid, paidDate: !invoice.isPaid ? new Date().toISOString().split('T')[0] : undefined });
-    };
-
-    // --- EXPENSE HANDLERS ---
-    const handleOpenCreateExpense = () => {
-        setEditingExpenseId(null);
-        setExpenseForm({ title: '', amount: '', date: new Date().toISOString().split('T')[0], category: 'office', notes: '', attachment: '', attachmentName: '', contactId: '' });
-        setIsExpenseModalOpen(true);
-    };
-
-    const handleOpenEditExpense = (ex: Expense) => {
-        setEditingExpenseId(ex.id);
-        setExpenseForm({ title: ex.title, amount: ex.amount.toString(), date: ex.date, category: ex.category, notes: ex.notes || '', attachment: ex.attachment || '', attachmentName: ex.attachmentName || '', contactId: ex.contactId || '' });
-        setIsExpenseModalOpen(true);
-    };
-
-    const handleAttachmentUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        if (file.size > 2 * 1024 * 1024) { 
-            alert("Der Beleg darf maximal 2MB groß sein (Browser-Limit).");
-            return;
-        }
-
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            setExpenseForm(prev => ({ 
-                ...prev, 
-                attachment: event.target?.result as string,
-                attachmentName: file.name
-            }));
-        };
-        reader.readAsDataURL(file);
-    };
-
-    const handleSubmitExpense = (e: React.FormEvent) => {
+    
+    const handleExpenseSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!expenseForm.title || !expenseForm.amount) return;
+        const contact = contacts.find(c => c.id === expenseForm.contactId);
         
-        const selectedContact = contacts.find(c => c.id === expenseForm.contactId);
-        
-        const expenseData: Expense = {
-            id: editingExpenseId || Math.random().toString(36).substr(2, 9),
-            title: expenseForm.title,
-            amount: parseFloat(expenseForm.amount),
-            date: expenseForm.date,
-            category: expenseForm.category,
-            notes: expenseForm.notes,
-            attachment: expenseForm.attachment,
-            attachmentName: expenseForm.attachmentName,
-            contactId: expenseForm.contactId || undefined,
-            contactName: selectedContact ? selectedContact.name : undefined
-        };
-        editingExpenseId ? onUpdateExpense(expenseData) : onAddExpense(expenseData);
+        if (editingExpenseId) {
+             const original = expenses.find(e => e.id === editingExpenseId);
+             if (original) {
+                 onUpdateExpense({
+                     ...original,
+                     ...expenseForm as Expense,
+                     contactName: contact ? contact.name : undefined
+                 });
+             }
+        } else {
+            const newExpense: Expense = {
+                id: crypto.randomUUID(),
+                ...expenseForm as Expense,
+                contactName: contact ? contact.name : undefined
+            };
+            onAddExpense(newExpense);
+        }
         setIsExpenseModalOpen(false);
     };
 
-    const viewAttachment = (ex: Expense) => {
-        if (!ex.attachment) return;
-        const win = window.open();
-        if (win) {
-            win.document.write(`<iframe src="${ex.attachment}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+    const openInvoiceModal = (invoice?: Invoice) => {
+        if (invoice) {
+            setEditingInvoiceId(invoice.id);
+            setInvoiceForm(invoice);
+        } else {
+            setEditingInvoiceId(null);
+            // Auto-generate invoice number logic could go here
+            setInvoiceForm({
+                invoiceNumber: '',
+                date: new Date().toISOString().split('T')[0],
+                contactId: '',
+                description: '',
+                amount: 0,
+                isPaid: false
+            });
         }
+        setIsInvoiceModalOpen(true);
     };
 
-    // --- PRINT ---
-    const handleDirectDownload = (e: React.MouseEvent, invoice: Invoice) => {
-        e.stopPropagation();
-        setPrintInvoice(invoice);
-        setIsPrintModalOpen(true);
-    };
-
-    const triggerBrowserPrint = () => {
-        const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement;
-        if (iframe && iframe.contentWindow) {
-            iframe.contentWindow.print();
+    const openExpenseModal = (expense?: Expense) => {
+        if (expense) {
+            setEditingExpenseId(expense.id);
+            setExpenseForm(expense);
+        } else {
+            setEditingExpenseId(null);
+            setExpenseForm({
+                title: '',
+                amount: 0,
+                date: new Date().toISOString().split('T')[0],
+                category: 'office',
+                contactId: ''
+            });
         }
+        setIsExpenseModalOpen(true);
     };
 
-    // --- RENDER HELPERS ---
-    const filteredInvoices = invoices.filter(inv => {
-        if (filter === 'paid') return inv.isPaid && !inv.isCancelled;
-        if (filter === 'open') return !inv.isPaid && !inv.isCancelled;
-        if (filter === 'cancelled') return inv.isCancelled;
-        return true;
-    });
+    const handlePrintInvoice = async (invoice: Invoice) => {
+        setIsPrinting(invoice.id);
+        try {
+            // 1. Create Data Service (Local)
+            const storedConfig = localStorage.getItem('backend_config');
+            const config = storedConfig ? JSON.parse(storedConfig) : { mode: 'local' };
+            const service = DataServiceFactory.create(config);
 
-    const categoryLabel = {
-        office: 'Büro', software: 'Software', travel: 'Reise', marketing: 'Marketing', personnel: 'Personal', other: 'Sonstiges'
+            // 2. Compile Template
+            const html = compileInvoiceTemplate(invoice, invoiceConfig);
+
+            // 3. Generate PDF Base64
+            const base64Pdf = await service.generatePdf(html);
+
+            // 4. Convert to Blob
+            const byteCharacters = atob(base64Pdf);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: 'application/pdf' });
+
+            // 5. Open in new window
+            const blobUrl = URL.createObjectURL(blob);
+            window.open(blobUrl, '_blank');
+
+        } catch (e: any) {
+            console.error("Printing failed", e);
+            alert("Fehler beim Generieren der PDF: " + e.message);
+        } finally {
+            setIsPrinting(null);
+        }
     };
 
     return (
-        <div className="flex-1 bg-slate-50 h-screen overflow-y-auto flex flex-col relative">
-            <header className="bg-white border-b border-slate-200 px-8 py-6 flex justify-between items-center shrink-0">
+        <div className="flex-1 bg-slate-50 dark:bg-slate-950 h-screen overflow-y-auto flex flex-col relative">
+            <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-8 py-6 shrink-0 flex justify-between items-center">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-800">Finanzen</h1>
-                    <p className="text-slate-500 text-sm mt-1">Einnahmen, Ausgaben & Profitabilität</p>
+                    <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Finanzen</h1>
+                    <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Übersicht über Einnahmen und Ausgaben.</p>
                 </div>
-                <div className="flex items-center gap-4">
-                    <button 
-                         onClick={onRunRetainer}
-                         className="bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-50 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 shadow-sm transition-colors"
-                         title="Prüft auf fällige Retainer-Verträge und erstellt automatisch Rechnungen."
-                    >
-                         <RefreshCw className="w-4 h-4" /> Retainer-Lauf starten
+                <div className="flex gap-3">
+                     <button onClick={onRunRetainer} className="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2">
+                        <RefreshCw className="w-4 h-4"/> Retainer Lauf
                     </button>
-                    <div className="flex bg-slate-100 p-1 rounded-lg">
-                        <button 
-                            onClick={() => setActiveTab('income')}
-                            className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'income' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                        >Einnahmen</button>
-                        <button 
-                            onClick={() => setActiveTab('expenses')}
-                            className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'expenses' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                        >Ausgaben</button>
-                    </div>
+                    {activeTab === 'income' ? (
+                        <button onClick={() => openInvoiceModal()} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2">
+                            <Plus className="w-4 h-4" /> Rechnung erstellen
+                        </button>
+                    ) : (
+                        <button onClick={() => openExpenseModal()} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2">
+                            <Plus className="w-4 h-4" /> Ausgabe erfassen
+                        </button>
+                    )}
                 </div>
             </header>
 
-            <main className="p-8 space-y-8 pb-20">
-                {/* FINANCIAL OVERVIEW WIDGETS */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    {/* Revenue */}
-                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                        <div className="flex justify-between items-start">
-                            <div>
-                                <p className="text-sm font-medium text-slate-500 mb-1">Einnahmen</p>
-                                <h3 className="text-2xl font-bold text-slate-900">{totalRevenue.toLocaleString('de-DE')} €</h3>
-                            </div>
-                            <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg"><TrendingUp className="w-5 h-5"/></div>
-                        </div>
-                        <div className="mt-3 text-xs flex justify-between items-center">
-                            <span className={`${statusColor} text-white px-2 py-0.5 rounded-full`}>{statusText}</span>
-                            <span className="text-slate-400">{percentage.toFixed(0)}% von 22k</span>
-                        </div>
-                    </div>
-
-                    {/* Expenses */}
-                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+            <div className="p-8 pb-0">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                     <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
                          <div className="flex justify-between items-start">
-                            <div>
-                                <p className="text-sm font-medium text-slate-500 mb-1">Ausgaben</p>
-                                <h3 className="text-2xl font-bold text-slate-900">{totalExpenses.toLocaleString('de-DE')} €</h3>
-                            </div>
-                            <div className="p-2 bg-red-100 text-red-600 rounded-lg"><TrendingDown className="w-5 h-5"/></div>
-                        </div>
-                         <p className="text-xs text-slate-400 mt-3">{expenses.length} Einträge verbucht</p>
-                    </div>
-
-                    {/* Profit */}
-                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                         <div className="flex justify-between items-start">
-                            <div>
-                                <p className="text-sm font-medium text-slate-500 mb-1">Gewinn (Vor Steuer)</p>
-                                <h3 className={`text-2xl font-bold ${profit >= 0 ? 'text-indigo-600' : 'text-red-600'}`}>
-                                    {profit.toLocaleString('de-DE')} €
-                                </h3>
-                            </div>
-                            <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg"><PieChartIcon className="w-5 h-5"/></div>
-                        </div>
-                         <p className="text-xs text-slate-400 mt-3">Marge: {totalRevenue ? ((profit/totalRevenue)*100).toFixed(1) : 0}%</p>
-                    </div>
-
-                     {/* Tax Reserve */}
-                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                         <div className="flex justify-between items-start">
-                            <div>
-                                <p className="text-sm font-medium text-slate-500 mb-1">Steuerrücklage (~30%)</p>
-                                <h3 className="text-2xl font-bold text-slate-700">{taxReserve.toLocaleString('de-DE')} €</h3>
-                            </div>
-                            <div className="p-2 bg-blue-100 text-blue-600 rounded-lg"><PiggyBank className="w-5 h-5"/></div>
-                        </div>
-                         <p className="text-xs text-slate-400 mt-3">Empfohlene Rückstellung</p>
-                    </div>
-                </div>
-
-                {/* PIE CHART (Verhältnis Einnahmen vs Ausgaben) */}
-                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm h-96 flex flex-col">
-                    <h3 className="text-lg font-bold text-slate-800 mb-4">Verhältnis Einnahmen / Ausgaben</h3>
-                    <div className="flex-1 w-full min-h-0">
-                        {activePieData.length > 0 ? (
-                            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                                <PieChart margin={{ top: 0, left: 0, right: 0, bottom: 0 }}>
-                                    <Pie
-                                        data={activePieData}
-                                        cx="50%"
-                                        cy="45%"
-                                        innerRadius={60}
-                                        outerRadius={90}
-                                        paddingAngle={5}
-                                        dataKey="value"
-                                        onClick={handlePieClick}
-                                        cursor="pointer"
-                                    >
-                                        {activePieData.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={entry.color} />
-                                        ))}
-                                    </Pie>
-                                    <Tooltip 
-                                        formatter={(value: number) => [`${value.toLocaleString('de-DE')} €`, '']}
-                                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                    />
-                                    <Legend verticalAlign="bottom" height={36} wrapperStyle={{ paddingTop: '20px' }} />
-                                </PieChart>
-                            </ResponsiveContainer>
-                        ) : (
-                             <div className="h-full flex items-center justify-center text-slate-400">
-                                 Keine Finanzdaten vorhanden
+                             <div>
+                                 <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Einnahmen (Gesamt)</p>
+                                 <h3 className="text-2xl font-bold text-green-600 mt-1">{totalIncome.toLocaleString('de-DE')} €</h3>
                              </div>
-                        )}
-                    </div>
+                             <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg">
+                                 <TrendingUp className="w-5 h-5 text-green-600 dark:text-green-400" />
+                             </div>
+                         </div>
+                     </div>
+                     <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                         <div className="flex justify-between items-start">
+                             <div>
+                                 <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Ausgaben (Gesamt)</p>
+                                 <h3 className="text-2xl font-bold text-red-600 mt-1">{totalExpenses.toLocaleString('de-DE')} €</h3>
+                             </div>
+                             <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-lg">
+                                 <TrendingDown className="w-5 h-5 text-red-600 dark:text-red-400" />
+                             </div>
+                         </div>
+                     </div>
+                     <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                         <div className="flex justify-between items-start">
+                             <div>
+                                 <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Gewinn (Saldo)</p>
+                                 <h3 className={`text-2xl font-bold mt-1 ${profit >= 0 ? 'text-indigo-600 dark:text-indigo-400' : 'text-red-600'}`}>{profit.toLocaleString('de-DE')} €</h3>
+                             </div>
+                             <div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg">
+                                 <PiggyBank className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                             </div>
+                         </div>
+                     </div>
                 </div>
 
+                <div className="flex gap-4 border-b border-slate-200 dark:border-slate-800 mb-6">
+                    <button 
+                        onClick={() => setActiveTab('income')}
+                        className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'income' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}
+                    >
+                        Rechnungen & Einnahmen
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('expenses')}
+                        className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'expenses' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}
+                    >
+                        Ausgaben & Belege
+                    </button>
+                </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-8 pb-8">
                 {activeTab === 'income' ? (
-                    // --- INCOME VIEW ---
-                    <>
-                        <div className="flex justify-between items-center">
-                            <div className="flex gap-2">
-                                <button onClick={() => setFilter('all')} className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${filter === 'all' ? 'bg-slate-800 text-white' : 'bg-white border text-slate-600'}`}>Alle</button>
-                                <button onClick={() => setFilter('paid')} className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${filter === 'paid' ? 'bg-green-600 text-white' : 'bg-white border text-slate-600'}`}>Bezahlt</button>
-                                <button onClick={() => setFilter('open')} className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${filter === 'open' ? 'bg-amber-500 text-white' : 'bg-white border text-slate-600'}`}>Offen</button>
-                                <button onClick={() => setFilter('cancelled')} className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${filter === 'cancelled' ? 'bg-slate-200 text-slate-600' : 'bg-white border text-slate-600'}`}>Storniert</button>
-                            </div>
-                            <button onClick={handleOpenCreateInvoice} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 shadow-sm">
-                                <Plus className="w-4 h-4" /> Rechnung erstellen
-                            </button>
-                        </div>
-                        
-                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                            <table className="w-full text-left border-collapse">
-                                <thead className="bg-slate-50 border-b border-slate-200">
+                    <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
+                                <tr>
+                                    <th className="px-6 py-3 font-semibold text-slate-500 dark:text-slate-400">Nr.</th>
+                                    <th className="px-6 py-3 font-semibold text-slate-500 dark:text-slate-400">Datum</th>
+                                    <th className="px-6 py-3 font-semibold text-slate-500 dark:text-slate-400">Kunde</th>
+                                    <th className="px-6 py-3 font-semibold text-slate-500 dark:text-slate-400">Betrag</th>
+                                    <th className="px-6 py-3 font-semibold text-slate-500 dark:text-slate-400">Status</th>
+                                    <th className="px-6 py-3 font-semibold text-slate-500 dark:text-slate-400 text-right">Aktionen</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                {invoices.length > 0 ? invoices.map(invoice => (
+                                    <tr key={invoice.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                                        <td className="px-6 py-4 font-medium dark:text-slate-200">{invoice.invoiceNumber}</td>
+                                        <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{invoice.date}</td>
+                                        <td className="px-6 py-4 dark:text-slate-300">{invoice.contactName}</td>
+                                        <td className={`px-6 py-4 font-bold ${invoice.amount < 0 ? 'text-red-600' : 'text-slate-800 dark:text-slate-200'}`}>{invoice.amount.toLocaleString('de-DE')} €</td>
+                                        <td className="px-6 py-4">
+                                            {invoice.isCancelled ? (
+                                                 <span className="bg-red-100 text-red-700 text-xs px-2 py-1 rounded-full font-medium">Storniert</span>
+                                            ) : invoice.isPaid ? (
+                                                <span className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full font-medium flex items-center w-fit gap-1"><CheckCircle2 className="w-3 h-3"/> Bezahlt</span>
+                                            ) : (
+                                                <span className="bg-amber-100 text-amber-700 text-xs px-2 py-1 rounded-full font-medium">Offen</span>
+                                            )}
+                                        </td>
+                                        <td className="px-6 py-4 text-right flex justify-end gap-2">
+                                            <button 
+                                                onClick={() => handlePrintInvoice(invoice)} 
+                                                disabled={!!isPrinting}
+                                                className="p-1.5 text-slate-400 hover:text-indigo-600 rounded hover:bg-slate-100 dark:hover:bg-slate-700" 
+                                                title="Drucken / PDF"
+                                            >
+                                                {isPrinting === invoice.id ? <Loader2 className="w-4 h-4 animate-spin text-indigo-600"/> : <Printer className="w-4 h-4"/>}
+                                            </button>
+                                            <button onClick={() => openInvoiceModal(invoice)} className="p-1.5 text-slate-400 hover:text-blue-600 rounded hover:bg-slate-100 dark:hover:bg-slate-700" title="Bearbeiten"><Pencil className="w-4 h-4"/></button>
+                                            <button onClick={() => onDeleteInvoice(invoice.id)} className="p-1.5 text-slate-400 hover:text-red-600 rounded hover:bg-slate-100 dark:hover:bg-slate-700" title="Löschen / Stornieren"><Ban className="w-4 h-4"/></button>
+                                        </td>
+                                    </tr>
+                                )) : (
+                                    <tr><td colSpan={6} className="px-6 py-12 text-center text-slate-400">Keine Rechnungen vorhanden.</td></tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div className="lg:col-span-2 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+                             <table className="w-full text-left text-sm">
+                                <thead className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
                                     <tr>
-                                        <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">Nr.</th>
-                                        <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">Datum</th>
-                                        <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">Kunde / Beschreibung</th>
-                                        <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">Betrag (Netto)</th>
-                                        <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">Status</th>
-                                        <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase text-right">Aktionen</th>
+                                        <th className="px-6 py-3 font-semibold text-slate-500 dark:text-slate-400">Datum</th>
+                                        <th className="px-6 py-3 font-semibold text-slate-500 dark:text-slate-400">Titel</th>
+                                        <th className="px-6 py-3 font-semibold text-slate-500 dark:text-slate-400">Kategorie</th>
+                                        <th className="px-6 py-3 font-semibold text-slate-500 dark:text-slate-400">Betrag</th>
+                                        <th className="px-6 py-3 font-semibold text-slate-500 dark:text-slate-400 text-right">Aktionen</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                    {filteredInvoices.map(inv => {
-                                        const isCancelled = inv.isCancelled;
-                                        const isStorno = inv.amount < 0;
-                                        
-                                        return (
-                                        <tr 
-                                            key={inv.id} 
-                                            className={`hover:bg-slate-50 group cursor-pointer ${isCancelled ? 'bg-slate-50/50' : ''}`}
-                                            onClick={() => {
-                                                setPrintInvoice(inv);
-                                                setIsPrintModalOpen(true);
-                                            }}
-                                        >
-                                            <td className={`px-6 py-4 text-sm font-medium text-slate-900 ${isCancelled ? 'line-through text-slate-400' : ''}`}>{inv.invoiceNumber}</td>
-                                            <td className={`px-6 py-4 text-sm text-slate-700 ${isCancelled ? 'text-slate-400' : ''}`}>{inv.date}</td>
-                                            <td className={`px-6 py-4 text-sm text-slate-700 ${isCancelled ? 'text-slate-400' : ''}`}>
-                                                <div className="font-medium">{inv.contactName}</div>
-                                                <div className="text-xs text-slate-500">{inv.description || "Keine Beschreibung"}</div>
-                                            </td>
-                                            <td className={`px-6 py-4 text-sm font-bold ${isStorno ? 'text-slate-800' : isCancelled ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
-                                                {inv.amount.toLocaleString('de-DE')} €
-                                            </td>
-                                            <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
-                                                {isCancelled ? (
-                                                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500 border border-slate-200">
-                                                        <Ban className="w-3.5 h-3.5" /> Storniert
-                                                    </span>
-                                                ) : isStorno ? (
-                                                    <button onClick={(e) => togglePaidStatus(e, inv)} className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border ${inv.isPaid ? 'bg-green-50 text-green-700 border-green-200' : 'bg-amber-50 text-amber-600 border-amber-200'}`}>
-                                                        {inv.isPaid ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
-                                                        {inv.isPaid ? 'Rückerstattet' : 'Ausstehend'}
-                                                    </button>
-                                                ) : (
-                                                    <button onClick={(e) => togglePaidStatus(e, inv)} className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border ${inv.isPaid ? 'bg-green-50 text-green-700 border-green-200' : 'bg-white text-slate-500 border-slate-200'}`}>
-                                                        {inv.isPaid ? <CheckCircle2 className="w-3.5 h-3.5" /> : <div className="w-3.5 h-3.5 rounded-full border border-slate-300"></div>}
-                                                        {inv.isPaid ? 'Bezahlt' : 'Offen'}
-                                                    </button>
-                                                )}
-                                            </td>
-                                            <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
-                                                <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <button onClick={(e) => handleDirectDownload(e, inv)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded" title="Als PDF speichern"><Download className="w-4 h-4"/></button>
-                                                    {!isCancelled && !isStorno && (
-                                                        <>
-                                                            <button onClick={() => handleOpenEditInvoice(inv)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded" title="Bearbeiten"><Pencil className="w-4 h-4"/></button>
-                                                            <button onClick={() => onDeleteInvoice(inv.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded" title="Stornieren"><Trash2 className="w-4 h-4"/></button>
-                                                        </>
-                                                    )}
-                                                </div>
+                                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                    {expenses.length > 0 ? expenses.map(expense => (
+                                        <tr key={expense.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                                            <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{expense.date}</td>
+                                            <td className="px-6 py-4 font-medium dark:text-slate-200">{expense.title} {expense.contactName && <span className="text-xs text-slate-400 block">{expense.contactName}</span>}</td>
+                                            <td className="px-6 py-4"><span className="capitalize bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded text-xs text-slate-600 dark:text-slate-300">{expense.category}</span></td>
+                                            <td className="px-6 py-4 font-bold text-slate-800 dark:text-slate-200">{expense.amount.toLocaleString('de-DE')} €</td>
+                                            <td className="px-6 py-4 text-right flex justify-end gap-2">
+                                                <button onClick={() => openExpenseModal(expense)} className="p-1.5 text-slate-400 hover:text-blue-600 rounded hover:bg-slate-100 dark:hover:bg-slate-700" title="Bearbeiten"><Pencil className="w-4 h-4"/></button>
+                                                <button onClick={() => onDeleteExpense(expense.id)} className="p-1.5 text-slate-400 hover:text-red-600 rounded hover:bg-slate-100 dark:hover:bg-slate-700" title="Löschen"><Trash2 className="w-4 h-4"/></button>
                                             </td>
                                         </tr>
-                                    )})}
+                                    )) : (
+                                        <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-400">Keine Ausgaben vorhanden.</td></tr>
+                                    )}
                                 </tbody>
                             </table>
                         </div>
-                    </>
-                ) : (
-                    // --- EXPENSES VIEW ---
-                    <>
-                        <div className="flex justify-end items-center">
-                            <button onClick={handleOpenCreateExpense} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 shadow-sm">
-                                <Plus className="w-4 h-4" /> Ausgabe erfassen
-                            </button>
+                        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6 flex flex-col items-center">
+                            <h3 className="text-lg font-bold mb-4 dark:text-white">Ausgaben nach Kategorie</h3>
+                            <div className="w-full h-64">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <PieChart>
+                                        <Pie data={expenseData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} fill="#8884d8" paddingAngle={5} dataKey="value">
+                                            {expenseData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+                                        </Pie>
+                                        <Tooltip />
+                                        <Legend />
+                                    </PieChart>
+                                </ResponsiveContainer>
+                            </div>
                         </div>
-                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                             <table className="w-full text-left border-collapse">
-                                <thead className="bg-slate-50 border-b border-slate-200">
-                                    <tr>
-                                        <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">Datum</th>
-                                        <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">Bezeichnung</th>
-                                        <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">Kategorie</th>
-                                        <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">Betrag</th>
-                                        <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase text-right">Aktionen</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                    {expenses.map(ex => (
-                                        <tr key={ex.id} className="hover:bg-slate-50 group">
-                                            <td className="px-6 py-4 text-sm text-slate-700">{ex.date}</td>
-                                            <td className="px-6 py-4 text-sm font-medium text-slate-900">
-                                                <div className="flex items-center gap-2">
-                                                    {ex.title}
-                                                    {ex.attachment && (
-                                                        <Paperclip className="w-3.5 h-3.5 text-indigo-500" />
-                                                    )}
-                                                </div>
-                                                {ex.contactName && <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-1"><User className="w-3 h-3"/> {ex.contactName}</div>}
-                                            </td>
-                                            <td className="px-6 py-4 text-sm text-slate-600"><span className="bg-slate-100 px-2 py-0.5 rounded text-xs">{categoryLabel[ex.category]}</span></td>
-                                            <td className="px-6 py-4 text-sm font-bold text-red-600">-{ex.amount.toLocaleString('de-DE')} €</td>
-                                            <td className="px-6 py-4 text-right">
-                                                <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100">
-                                                    {ex.attachment && (
-                                                        <button onClick={() => viewAttachment(ex)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded" title="Beleg ansehen">
-                                                            <Paperclip className="w-4 h-4"/>
-                                                        </button>
-                                                    )}
-                                                    <button onClick={() => handleOpenEditExpense(ex)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded"><Info className="w-4 h-4"/></button>
-                                                    <button onClick={() => onDeleteExpense(ex.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4"/></button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                    {expenses.length === 0 && (
-                                        <tr><td colSpan={5} className="text-center py-8 text-slate-400">Keine Ausgaben erfasst.</td></tr>
-                                    )}
-                                </tbody>
-                             </table>
-                        </div>
-                    </>
+                    </div>
                 )}
-            </main>
+            </div>
 
             {/* INVOICE MODAL */}
             {isInvoiceModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden">
-                        <div className="px-6 py-4 border-b bg-slate-50 flex justify-between"><h2 className="font-bold">Rechnung</h2><button onClick={()=>setIsInvoiceModalOpen(false)}><X className="w-5"/></button></div>
-                        <form onSubmit={handleSubmitInvoice} className="p-6 space-y-4">
+                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-lg overflow-hidden">
+                        <div className="flex justify-between items-center px-6 py-4 border-b dark:border-slate-700 bg-slate-50 dark:bg-slate-900">
+                             <h2 className="text-lg font-bold dark:text-white">{editingInvoiceId ? 'Rechnung bearbeiten' : 'Neue Rechnung'}</h2>
+                             <button onClick={() => setIsInvoiceModalOpen(false)}><X className="w-5 h-5 dark:text-slate-400"/></button>
+                        </div>
+                        <form onSubmit={handleInvoiceSubmit} className="p-6 space-y-4">
                             <div className="grid grid-cols-2 gap-4">
-                                <input placeholder="Nr" value={invoiceForm.invoiceNumber} onChange={e=>setInvoiceForm({...invoiceForm, invoiceNumber:e.target.value})} className="border p-2 rounded" />
-                                <input type="date" value={invoiceForm.date} onChange={e=>setInvoiceForm({...invoiceForm, date:e.target.value})} className="border p-2 rounded" />
+                                <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Nr.</label><input value={invoiceForm.invoiceNumber} onChange={e=>setInvoiceForm({...invoiceForm, invoiceNumber:e.target.value})} className="w-full border p-2 rounded mt-1 dark:bg-slate-700 dark:border-slate-600 dark:text-white" placeholder="Auto" /></div>
+                                <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Datum</label><input type="date" value={invoiceForm.date} onChange={e=>setInvoiceForm({...invoiceForm, date:e.target.value})} className="w-full border p-2 rounded mt-1 dark:bg-slate-700 dark:border-slate-600 dark:text-white" required /></div>
                             </div>
-                            <select value={invoiceForm.contactId} onChange={e=>setInvoiceForm({...invoiceForm, contactId:e.target.value})} className="w-full border p-2 rounded bg-white">
-                                <option value="">Kunde wählen...</option>
-                                {contacts.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-                            </select>
-                            <input type="text" placeholder="Beschreibung (z.B. Projektname)" value={invoiceForm.description} onChange={e=>setInvoiceForm({...invoiceForm, description:e.target.value})} className="w-full border p-2 rounded" />
-                            <input type="number" placeholder="Betrag (Netto) €" value={invoiceForm.amount} onChange={e=>setInvoiceForm({...invoiceForm, amount:e.target.value})} className="w-full border p-2 rounded" />
-                            <div className="flex justify-end pt-4 gap-3">
-                                <button type="button" onClick={() => setIsInvoiceModalOpen(false)} className="text-slate-500 hover:bg-slate-100 px-4 py-2 rounded text-sm font-medium transition-colors">Abbrechen</button>
-                                <button type="submit" className="bg-indigo-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-indigo-700 transition-colors">Speichern</button>
+                            <div>
+                                <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Kunde</label>
+                                <select value={invoiceForm.contactId} onChange={e=>setInvoiceForm({...invoiceForm, contactId:e.target.value})} className="w-full border p-2 rounded mt-1 dark:bg-slate-700 dark:border-slate-600 dark:text-white" required>
+                                    <option value="">Wählen...</option>
+                                    {contacts.map(c => <option key={c.id} value={c.id}>{c.name} ({c.company})</option>)}
+                                </select>
+                            </div>
+                            <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Beschreibung</label><input value={invoiceForm.description} onChange={e=>setInvoiceForm({...invoiceForm, description:e.target.value})} className="w-full border p-2 rounded mt-1 dark:bg-slate-700 dark:border-slate-600 dark:text-white" placeholder="Leistung..." required /></div>
+                            <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Betrag (Netto)</label><input type="number" step="0.01" value={invoiceForm.amount} onChange={e=>setInvoiceForm({...invoiceForm, amount:parseFloat(e.target.value)})} className="w-full border p-2 rounded mt-1 dark:bg-slate-700 dark:border-slate-600 dark:text-white" required /></div>
+                            
+                            <div className="flex items-center gap-2 pt-2">
+                                <input type="checkbox" checked={invoiceForm.isPaid} onChange={e=>setInvoiceForm({...invoiceForm, isPaid:e.target.checked})} id="isPaidInv" className="w-4 h-4 text-indigo-600 rounded" />
+                                <label htmlFor="isPaidInv" className="text-sm font-medium dark:text-slate-300">Bereits bezahlt?</label>
+                            </div>
+
+                            <div className="pt-4 flex justify-end gap-2">
+                                <button type="button" onClick={() => setIsInvoiceModalOpen(false)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded">Abbrechen</button>
+                                <button type="submit" className="px-4 py-2 text-sm font-medium bg-indigo-600 text-white rounded hover:bg-indigo-700">Speichern</button>
                             </div>
                         </form>
                     </div>
@@ -529,74 +419,44 @@ export const Finances: React.FC<FinancesProps> = ({
 
             {/* EXPENSE MODAL */}
             {isExpenseModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden">
-                         <div className="px-6 py-4 border-b bg-slate-50 flex justify-between"><h2 className="font-bold">Ausgabe</h2><button onClick={()=>setIsExpenseModalOpen(false)}><X className="w-5"/></button></div>
-                         <form onSubmit={handleSubmitExpense} className="p-6 space-y-4">
-                            <input placeholder="Bezeichnung (z.B. Software Abo)" value={expenseForm.title} onChange={e=>setExpenseForm({...expenseForm, title:e.target.value})} className="w-full border p-2 rounded" autoFocus />
+                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-lg overflow-hidden">
+                        <div className="flex justify-between items-center px-6 py-4 border-b dark:border-slate-700 bg-slate-50 dark:bg-slate-900">
+                             <h2 className="text-lg font-bold dark:text-white">{editingExpenseId ? 'Ausgabe bearbeiten' : 'Neue Ausgabe'}</h2>
+                             <button onClick={() => setIsExpenseModalOpen(false)}><X className="w-5 h-5 dark:text-slate-400"/></button>
+                        </div>
+                        <form onSubmit={handleExpenseSubmit} className="p-6 space-y-4">
                             <div className="grid grid-cols-2 gap-4">
-                                <input type="number" placeholder="Betrag €" value={expenseForm.amount} onChange={e=>setExpenseForm({...expenseForm, amount:e.target.value})} className="border p-2 rounded" />
-                                <input type="date" value={expenseForm.date} onChange={e=>setExpenseForm({...expenseForm, date:e.target.value})} className="border p-2 rounded" />
+                                <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Titel</label><input value={expenseForm.title} onChange={e=>setExpenseForm({...expenseForm, title:e.target.value})} className="w-full border p-2 rounded mt-1 dark:bg-slate-700 dark:border-slate-600 dark:text-white" required /></div>
+                                <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Betrag</label><input type="number" step="0.01" value={expenseForm.amount} onChange={e=>setExpenseForm({...expenseForm, amount:parseFloat(e.target.value)})} className="w-full border p-2 rounded mt-1 dark:bg-slate-700 dark:border-slate-600 dark:text-white" required /></div>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
-                                <select value={expenseForm.category} onChange={e=>setExpenseForm({...expenseForm, category:e.target.value as any})} className="w-full border p-2 rounded bg-white">
-                                    {Object.entries(categoryLabel).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-                                </select>
-                                <select value={expenseForm.contactId} onChange={e=>setExpenseForm({...expenseForm, contactId:e.target.value})} className="w-full border p-2 rounded bg-white">
-                                    <option value="">Projekt/Kunde zuordnen (Optional)</option>
-                                    {contacts.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-                                </select>
+                                <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Datum</label><input type="date" value={expenseForm.date} onChange={e=>setExpenseForm({...expenseForm, date:e.target.value})} className="w-full border p-2 rounded mt-1 dark:bg-slate-700 dark:border-slate-600 dark:text-white" required /></div>
+                                <div>
+                                    <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Kategorie</label>
+                                    <select value={expenseForm.category} onChange={e=>setExpenseForm({...expenseForm, category:e.target.value as any})} className="w-full border p-2 rounded mt-1 dark:bg-slate-700 dark:border-slate-600 dark:text-white">
+                                        <option value="office">Büro</option>
+                                        <option value="software">Software</option>
+                                        <option value="travel">Reise</option>
+                                        <option value="marketing">Marketing</option>
+                                        <option value="personnel">Personal</option>
+                                        <option value="other">Sonstiges</option>
+                                    </select>
+                                </div>
                             </div>
-                            
-                            {/* File Upload for Attachment */}
-                            <div className="border border-dashed border-slate-300 rounded-lg p-4 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-50 transition-colors" onClick={() => expenseFileRef.current?.click()}>
-                                <input type="file" ref={expenseFileRef} onChange={handleAttachmentUpload} className="hidden" accept="image/*,application/pdf" />
-                                {expenseForm.attachmentName ? (
-                                    <div className="flex items-center gap-2 text-indigo-600 font-medium">
-                                        <CheckCircle2 className="w-5 h-5" />
-                                        <span className="truncate max-w-[200px]">{expenseForm.attachmentName}</span>
-                                    </div>
-                                ) : (
-                                    <>
-                                        <Upload className="w-6 h-6 text-slate-400 mb-2" />
-                                        <span className="text-sm text-slate-500">Beleg hochladen (max. 2MB)</span>
-                                    </>
-                                )}
+                            <div>
+                                <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Projekt / Kunde (Optional)</label>
+                                <select value={expenseForm.contactId} onChange={e=>setExpenseForm({...expenseForm, contactId:e.target.value})} className="w-full border p-2 rounded mt-1 dark:bg-slate-700 dark:border-slate-600 dark:text-white">
+                                    <option value="">-- Kein --</option>
+                                    {contacts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                </select>
                             </div>
 
-                            <textarea placeholder="Notizen" value={expenseForm.notes} onChange={e=>setExpenseForm({...expenseForm, notes:e.target.value})} className="w-full border p-2 rounded" rows={3}></textarea>
-                            <div className="flex justify-end pt-4 gap-3">
-                                <button type="button" onClick={() => setIsExpenseModalOpen(false)} className="text-slate-500 hover:bg-slate-100 px-4 py-2 rounded text-sm font-medium transition-colors">Abbrechen</button>
-                                <button type="submit" className="bg-red-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-red-700 transition-colors">Speichern</button>
+                            <div className="pt-4 flex justify-end gap-2">
+                                <button type="button" onClick={() => setIsExpenseModalOpen(false)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded">Abbrechen</button>
+                                <button type="submit" className="px-4 py-2 text-sm font-medium bg-indigo-600 text-white rounded hover:bg-indigo-700">Speichern</button>
                             </div>
-                         </form>
-                    </div>
-                </div>
-            )}
-
-            {/* PRINT MODAL (Dynamic Preview) */}
-            {isPrintModalOpen && printInvoice && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                    <div className="bg-slate-200 w-full h-full max-w-4xl rounded-xl flex flex-col overflow-hidden max-h-screen">
-                        <div className="bg-white p-4 border-b flex justify-between items-center shrink-0">
-                            <h2 className="font-bold text-slate-800">Rechnungsvorschau</h2>
-                            <div className="flex gap-2">
-                                <button onClick={triggerBrowserPrint} className="bg-indigo-600 text-white px-4 py-2 rounded flex items-center gap-2 text-sm font-medium hover:bg-indigo-700">
-                                    <Printer className="w-4 h-4" /> PDF / Drucken
-                                </button>
-                                <button onClick={()=>setIsPrintModalOpen(false)} className="bg-slate-100 text-slate-600 px-4 py-2 rounded text-sm font-medium hover:bg-slate-200">Schließen</button>
-                            </div>
-                        </div>
-                        <div className="flex-1 overflow-y-auto relative bg-slate-500/10 flex justify-center p-8">
-                             {/* The actual preview logic happens here by compiling the template */}
-                             <iframe 
-                                id="preview-iframe"
-                                title="Invoice Preview"
-                                srcDoc={compileInvoiceTemplate(printInvoice, invoiceConfig)}
-                                className="w-[210mm] min-h-[297mm] shadow-2xl bg-white scale-100 origin-top"
-                                style={{transform: 'scale(1)', transformOrigin: 'top center'}} 
-                             />
-                        </div>
+                        </form>
                     </div>
                 </div>
             )}

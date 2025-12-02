@@ -200,7 +200,7 @@ export const Tasks: React.FC<TasksProps> = ({
           }
       } else {
           onAddTask({
-              id: Math.random().toString(36).substr(2, 9),
+              id: crypto.randomUUID(),
               isCompleted: false,
               ...(taskData as Task)
           });

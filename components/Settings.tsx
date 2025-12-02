@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle, Key, RefreshCw, Copy, FileText, Image as ImageIcon, Briefcase, Settings as SettingsIcon, HardDrive, Users, DownloadCloud, RefreshCcw, Sparkles, Sliders, Link, Paperclip, Star, Paperclip as PaperclipIcon, FileCode, Printer, Info, AlertOctagon, Repeat } from 'lucide-react';
 import { UserProfile, Theme, ProductPreset, Contact, Deal, Task, BackupData, BackendConfig, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate, EmailAttachment, EmailAutomationConfig } from '../types';
@@ -332,7 +331,6 @@ export const Settings: React.FC<SettingsProps> = ({
   const [isConnecting, setIsConnecting] = useState<string | null>(null);
   
   const [showSaved, setShowSaved] = useState(false);
-  const [isPreviewEnv, setIsPreviewEnv] = useState(false);
 
   const [localPresets, setLocalPresets] = useState<ProductPreset[]>(productPresets);
   const [newPresetTitle, setNewPresetTitle] = useState('');
@@ -374,10 +372,6 @@ export const Settings: React.FC<SettingsProps> = ({
         setIsMailConnected(mail);
     };
     loadIntegrations();
-    try {
-        if (window.location.protocol === 'blob:' || window.parent !== window) setIsPreviewEnv(true);
-    } catch(e) { setIsPreviewEnv(true); }
-
   }, [dataService]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -452,7 +446,7 @@ export const Settings: React.FC<SettingsProps> = ({
   const handleAddPreset = () => {
       if (!newPresetTitle || !newPresetValue) return;
       const newPreset: ProductPreset = {
-          id: Math.random().toString(36).substr(2, 9),
+          id: crypto.randomUUID(),
           title: newPresetTitle,
           value: parseFloat(newPresetValue),
           isSubscription: newPresetIsSub
@@ -563,7 +557,7 @@ export const Settings: React.FC<SettingsProps> = ({
       if (!templateForm.title || !templateForm.subject) return;
       
       const newTemplate: EmailTemplate = {
-          id: editingTemplateId || Math.random().toString(36).substr(2, 9),
+          id: editingTemplateId || crypto.randomUUID(),
           title: templateForm.title,
           subject: templateForm.subject,
           body: templateForm.body
@@ -571,18 +565,6 @@ export const Settings: React.FC<SettingsProps> = ({
 
       editingTemplateId ? onUpdateTemplate(newTemplate) : onAddTemplate(newTemplate);
       setIsTemplateModalOpen(false);
-  };
-
-  const generateApiKey = () => {
-      const key = 'sk_' + Math.random().toString(36).substr(2, 9) + Math.random().toString(36).substr(2, 9);
-      setBackendForm({...backendForm, apiKey: key});
-  };
-
-  const copyApiKey = () => {
-      if (backendForm.apiKey) {
-          navigator.clipboard.writeText(backendForm.apiKey);
-          alert('API Key kopiert!');
-      }
   };
 
   // --- UPDATE LOGIC ---
@@ -1037,13 +1019,6 @@ export const Settings: React.FC<SettingsProps> = ({
                     </div>
                     <p className="text-[10px] text-slate-400 mt-1">Benötigt für KI-Analysen. Wird nur lokal im Browser gespeichert.</p>
                  </div>
-
-                 {isPreviewEnv && (
-                     <div className="p-3 bg-amber-50 text-amber-800 text-xs rounded-lg border border-amber-200 flex items-start gap-2">
-                         <AlertTriangle className="w-4 h-4 shrink-0" />
-                         <p>Hinweis: In der Web-Preview können Google-Logins blockiert werden. Nutzen Sie die Desktop-Version für volle Funktionalität.</p>
-                     </div>
-                 )}
              </div>
          </SettingsSection>
 
@@ -1068,30 +1043,6 @@ export const Settings: React.FC<SettingsProps> = ({
                      <span className="text-xs text-slate-400">JSON-Datei importieren</span>
                  </button>
                  <input ref={fileInputRef} type="file" onChange={handleFileChange} className="hidden" accept=".json" />
-                 
-                 {/* API Config for Developers */}
-                 <div className="col-span-2 mt-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
-                     <h3 className="font-bold text-sm text-slate-700 dark:text-slate-300 mb-2 flex items-center gap-2"><Server className="w-4 h-4"/> Backend Modus (Entwickler)</h3>
-                     <div className="flex items-center gap-4 mb-3">
-                         <label className="flex items-center gap-2 cursor-pointer">
-                             <input type="radio" checked={backendForm.mode === 'local'} onChange={() => setBackendForm({...backendForm, mode: 'local'})} />
-                             <span className="text-sm dark:text-slate-400">Lokal (Browser Storage)</span>
-                         </label>
-                         <label className="flex items-center gap-2 cursor-pointer">
-                             <input type="radio" checked={backendForm.mode === 'api'} onChange={() => setBackendForm({...backendForm, mode: 'api'})} />
-                             <span className="text-sm dark:text-slate-400">Externer API Server</span>
-                         </label>
-                     </div>
-                     {backendForm.mode === 'api' && (
-                         <div className="space-y-2 animate-in fade-in">
-                             <input value={backendForm.apiUrl || ''} onChange={e => setBackendForm({...backendForm, apiUrl: e.target.value})} placeholder="https://api.crm-backend.de" className="w-full px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-600" />
-                             <input value={backendForm.apiToken || ''} onChange={e => setBackendForm({...backendForm, apiToken: e.target.value})} placeholder="Bearer Token" type="password" className="w-full px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-600" />
-                         </div>
-                     )}
-                     <div className="mt-3 pt-3 border-t dark:border-slate-700 flex justify-end">
-                         <button onClick={() => { onUpdateBackendConfig(backendForm); alert('Backend Konfiguration gespeichert. Seite wird neu geladen.'); window.location.reload(); }} className="text-xs bg-slate-800 text-white px-3 py-1.5 rounded hover:bg-slate-700">Speichern & Reload</button>
-                     </div>
-                 </div>
              </div>
          </SettingsSection>
          

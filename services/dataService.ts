@@ -1,6 +1,6 @@
+
 // ... existing imports ...
 import { Contact, Deal, Task, UserProfile, ProductPreset, Theme, BackendConfig, BackendMode, BackupData, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate, EmailAttachment, DealStage } from '../types';
-// Mock Data imports removed for clean start
 
 // Declare Google Types globally for TS
 declare global {
@@ -10,7 +10,6 @@ declare global {
     }
 }
 
-// ... existing PDF Template CONSTANTS and compileInvoiceTemplate ...
 const DEFAULT_PDF_TEMPLATE = `<!DOCTYPE html>
 <html lang="de">
 <head>
@@ -322,26 +321,26 @@ class LocalDataService implements IDataService {
         this.cache.emailTemplates = this.getFromStorage<EmailTemplate[]>('emailTemplates', []);
         
         this.cache.userProfile = this.getFromStorage<UserProfile>('userProfile', {
-            firstName: 'Admin',
-            lastName: 'User',
-            email: 'admin@local.test',
-            role: 'Administrator',
+            firstName: 'Benutzer',
+            lastName: '',
+            email: '',
+            role: 'Admin',
             avatar: 'https://ui-avatars.com/api/?name=Admin&background=random'
         });
         
         this.cache.productPresets = this.getFromStorage<ProductPreset[]>('productPresets', []);
         
         this.cache.invoiceConfig = this.getFromStorage<InvoiceConfig>('invoiceConfig', {
-            companyName: 'Meine Firma GmbH',
-            addressLine1: 'Hauptstraße 1',
-            addressLine2: '10115 Berlin',
-            taxId: '123/456/7890',
-            bankName: 'Berliner Volksbank',
-            iban: 'DE12 1001 0010 1234 5678 90',
-            bic: 'GENODEF1BRL',
-            email: 'buchhaltung@meinefirma.de',
-            website: 'www.meinefirma.de',
-            footerText: 'Geschäftsführer: Max Mustermann • HRB 12345 Amtsgericht Charlottenburg',
+            companyName: '[Firmenname]',
+            addressLine1: '[Straße & Hausnummer]',
+            addressLine2: '[PLZ & Ort]',
+            taxId: '[Steuernummer]',
+            bankName: '[Bankname]',
+            iban: '[IBAN]',
+            bic: '[BIC]',
+            email: '[E-Mail Adresse]',
+            website: '[Webseite]',
+            footerText: '[Geschäftsführer / HRB / Gerichtsstand]',
             taxRule: 'small_business',
             pdfTemplate: DEFAULT_PDF_TEMPLATE,
             emailSettings: {
@@ -400,8 +399,68 @@ class LocalDataService implements IDataService {
     
     // ... (All other simple CRUD methods for deals, tasks, activities, etc. remain the same as previous) ...
     async importContactsFromCSV(csvText: string): Promise<{ contacts: Contact[], deals: Deal[], activities: Activity[] }> {
-        // ... (Keep existing implementation) ...
-        return { contacts: [], deals: [], activities: [] }; // MOCK for this update file, full code in real file
+        const lines = csvText.split('\n');
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+        const contacts: Contact[] = [];
+        const deals: Deal[] = [];
+        const activities: Activity[] = [];
+
+        // Helper to find index
+        const idx = (name: string) => headers.findIndex(h => h.includes(name));
+
+        for (let i = 1; i < lines.length; i++) {
+            if (!lines[i].trim()) continue;
+            const cols = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+            
+            const name = cols[idx('name')] || cols[idx('vorname')] || 'Unbekannt';
+            const email = cols[idx('email')] || '';
+            const company = cols[idx('firma')] || cols[idx('company')] || '';
+            
+            if (name === 'Unbekannt' && !email && !company) continue;
+
+            const newContact: Contact = {
+                id: crypto.randomUUID(),
+                name,
+                email,
+                company,
+                role: cols[idx('role')] || cols[idx('position')] || '',
+                avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
+                lastContact: new Date().toISOString().split('T')[0],
+                notes: 'Importiert aus CSV',
+                type: 'lead'
+            };
+            contacts.push(newContact);
+            
+            // Create Ghost Deal
+            const deal: Deal = {
+                id: crypto.randomUUID(),
+                title: 'Neuer Lead (Import)',
+                value: 0,
+                stage: DealStage.LEAD,
+                contactId: newContact.id,
+                dueDate: new Date().toISOString().split('T')[0],
+                stageEnteredDate: new Date().toISOString().split('T')[0],
+                isPlaceholder: true
+            };
+            deals.push(deal);
+
+            // Log Activity
+            activities.push({
+                id: crypto.randomUUID(),
+                contactId: newContact.id,
+                type: 'system_deal',
+                content: 'Kontakt importiert (CSV)',
+                date: new Date().toISOString().split('T')[0],
+                timestamp: new Date().toISOString()
+            });
+        }
+        
+        // Save to cache
+        this.set('contacts', 'contacts', [...contacts, ...(this.cache.contacts || [])]);
+        this.set('deals', 'deals', [...deals, ...(this.cache.deals || [])]);
+        this.set('activities', 'activities', [...activities, ...(this.cache.activities || [])]);
+
+        return { contacts, deals, activities };
     }
     
     // ... Implement missing CRUDs for compilation ...
@@ -438,7 +497,7 @@ class LocalDataService implements IDataService {
         const nextNum = `2025-${maxNum + 1}`;
 
         const creditNote: Invoice = {
-            id: Math.random().toString(36).substr(2, 9),
+            id: crypto.randomUUID(),
             invoiceNumber: nextNum,
             description: `Storno zu Rechnung ${original.invoiceNumber}`,
             date: new Date().toISOString().split('T')[0],
@@ -456,7 +515,7 @@ class LocalDataService implements IDataService {
         await this.updateInvoice(updatedOriginal);
         
         const activity: Activity = {
-            id: Math.random().toString(36).substr(2, 9),
+            id: crypto.randomUUID(),
             contactId: original.contactId,
             type: 'system_invoice',
             content: `Rechnung ${original.invoiceNumber} storniert durch Stornorechnung ${creditNote.invoiceNumber}`,
@@ -484,17 +543,182 @@ class LocalDataService implements IDataService {
     async updateEmailTemplate(t: any) { const l = this.cache.emailTemplates||[]; this.set('emailTemplates','emailTemplates',l.map(x=>x.id===t.id?t:x)); return t; }
     async deleteEmailTemplate(id: any) { const l = this.cache.emailTemplates||[]; this.set('emailTemplates','emailTemplates',l.filter(x=>x.id!==id)); }
 
-    // ... Google & Auth stubs ...
-    async connectGoogle() { return false; }
-    async disconnectGoogle() { return true; }
-    async getIntegrationStatus() { return false; }
-    async loginWithGoogle() { return null; }
-    async logout() { }
-    async sendMail(to: string, subject: string, body: string, attachments: any[] = []) { 
-        // Simple console log for mock sending in this optimized file view, 
-        // Real implementation in full file handles API
-        console.log(`Sending mail to ${to} with ${attachments.length} attachments`);
-        return true; 
+    // --- GOOGLE AUTH & INTEGRATION RESTORED ---
+    
+    async connectGoogle(service: 'calendar' | 'mail', clientId?: string): Promise<boolean> {
+        if (!clientId) {
+            alert("Bitte geben Sie zuerst eine Google Client ID in den Einstellungen ein.");
+            return false;
+        }
+        
+        return new Promise((resolve) => {
+            try {
+                // Initialize Token Client for Incremental Authorization
+                const client = window.google.accounts.oauth2.initTokenClient({
+                    client_id: clientId,
+                    scope: service === 'calendar' ? 'https://www.googleapis.com/auth/calendar.events' : 'https://www.googleapis.com/auth/gmail.send',
+                    callback: (tokenResponse: any) => {
+                        if (tokenResponse && tokenResponse.access_token) {
+                            // Merge scopes
+                            const currentToken = localStorage.getItem('google_access_token');
+                            this.accessToken = tokenResponse.access_token;
+                            localStorage.setItem('google_access_token', tokenResponse.access_token);
+                            localStorage.setItem(`google_${service}_connected`, 'true');
+                            resolve(true);
+                        } else {
+                            resolve(false);
+                        }
+                    },
+                });
+                client.requestAccessToken();
+            } catch (e) {
+                console.error("Google Connect Error", e);
+                alert("Verbindung fehlgeschlagen. Popup blockiert?");
+                resolve(false);
+            }
+        });
+    }
+
+    async disconnectGoogle(service: 'calendar' | 'mail'): Promise<boolean> {
+        localStorage.removeItem(`google_${service}_connected`);
+        if (!localStorage.getItem('google_calendar_connected') && !localStorage.getItem('google_mail_connected')) {
+            const token = localStorage.getItem('google_access_token');
+            if (token && window.google) {
+                window.google.accounts.oauth2.revoke(token, () => {
+                    console.log('Token revoked');
+                });
+            }
+            localStorage.removeItem('google_access_token');
+            this.accessToken = null;
+        }
+        return true;
+    }
+
+    async getIntegrationStatus(service: 'calendar' | 'mail'): Promise<boolean> {
+        return localStorage.getItem(`google_${service}_connected`) === 'true';
+    }
+
+    async loginWithGoogle(): Promise<UserProfile | null> {
+        if (!this.googleClientId) {
+            alert("Google Client ID fehlt in den Einstellungen (Backend Config).");
+            return null;
+        }
+
+        return new Promise((resolve) => {
+            try {
+                const client = window.google.accounts.oauth2.initTokenClient({
+                    client_id: this.googleClientId,
+                    scope: 'https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
+                    callback: async (tokenResponse: any) => {
+                        if (tokenResponse && tokenResponse.access_token) {
+                            this.accessToken = tokenResponse.access_token;
+                            localStorage.setItem('google_access_token', tokenResponse.access_token);
+                            
+                            // Fetch User Info
+                            try {
+                                const res = await fetch('https://www.googleapis.com/oauth2/v1/userinfo?alt=json', {
+                                    headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
+                                });
+                                const data = await res.json();
+                                
+                                const profile: UserProfile = {
+                                    firstName: data.given_name || 'User',
+                                    lastName: data.family_name || '',
+                                    email: data.email,
+                                    role: 'Admin',
+                                    avatar: data.picture || ''
+                                };
+                                
+                                this.saveUserProfile(profile);
+                                resolve(profile);
+                            } catch (e) {
+                                console.error("Error fetching user info", e);
+                                resolve(null);
+                            }
+                        } else {
+                            resolve(null);
+                        }
+                    },
+                });
+                client.requestAccessToken();
+            } catch (e) {
+                console.error("Google Auth Error", e);
+                alert("Google Auth konnte nicht initialisiert werden. Prüfen Sie Ihre Internetverbindung.");
+                resolve(null);
+            }
+        });
+    }
+
+    async logout(): Promise<void> {
+        this.accessToken = null;
+        localStorage.removeItem('google_access_token');
+        // We keep local data, just remove auth token
+    }
+
+    async sendMail(to: string, subject: string, body: string, attachments: EmailAttachment[] = []): Promise<boolean> {
+        const token = localStorage.getItem('google_access_token');
+        if (!token) {
+            alert("Nicht mit Google verbunden. Bitte in den Einstellungen verbinden.");
+            return false;
+        }
+
+        try {
+            // MIME Message Construction
+            const boundary = "foo_bar_baz";
+            const nl = "\r\n";
+            
+            // Helper for UTF-8 Base64 Encoding
+            const encodeUTF8Base64 = (str: string) => {
+                return btoa(unescape(encodeURIComponent(str)));
+            };
+            
+            let message = "";
+            
+            // Headers
+            message += `To: ${to}${nl}`;
+            // Correct encoding for UTF-8 Subject (Umlaute/Emojis)
+            message += `Subject: =?utf-8?B?${encodeUTF8Base64(subject)}?=${nl}`;
+            message += `MIME-Version: 1.0${nl}`;
+            message += `Content-Type: multipart/mixed; boundary="${boundary}"${nl}${nl}`;
+            
+            // Body Part
+            message += `--${boundary}${nl}`;
+            message += `Content-Type: text/plain; charset="UTF-8"${nl}`;
+            message += `Content-Transfer-Encoding: base64${nl}${nl}`;
+            // Encode body to Base64 to ensure all characters are preserved safely
+            message += `${encodeUTF8Base64(body)}${nl}${nl}`;
+            
+            // Attachments Parts
+            for (const att of attachments) {
+                const base64Data = att.data.split(',')[1]; // Remove data URL prefix
+                message += `--${boundary}${nl}`;
+                message += `Content-Type: ${att.type}; name="${att.name}"${nl}`;
+                message += `Content-Disposition: attachment; filename="${att.name}"${nl}`;
+                message += `Content-Transfer-Encoding: base64${nl}${nl}`;
+                message += `${base64Data}${nl}${nl}`;
+            }
+            
+            message += `--${boundary}--`;
+
+            const raw = btoa(unescape(encodeURIComponent(message)))
+                .replace(/\+/g, '-')
+                .replace(/\//g, '_')
+                .replace(/=+$/, '');
+
+            await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ raw })
+            });
+            return true;
+        } catch (e) {
+            console.error("Mail Send Error", e);
+            alert("Fehler beim Senden der E-Mail via Google API.");
+            return false;
+        }
     }
 
     // ... Automation ...
@@ -529,7 +753,7 @@ class LocalDataService implements IDataService {
             const invAmount = contact.retainerAmount!;
             
             const inv: Invoice = {
-                id: Math.random().toString(36).substr(2, 9),
+                id: crypto.randomUUID(),
                 invoiceNumber: invoiceNum,
                 date: new Date().toISOString().split('T')[0],
                 contactId: contact.id,
@@ -549,7 +773,7 @@ class LocalDataService implements IDataService {
             await this.updateContact(updatedContact);
 
             const act: Activity = {
-                id: Math.random().toString(36).substr(2, 9),
+                id: crypto.randomUUID(),
                 contactId: contact.id,
                 type: 'system_invoice',
                 content: `Retainer-Rechnung: ${invoiceNum}`,
@@ -578,7 +802,6 @@ class LocalDataService implements IDataService {
             const localHtml = await localResponse.text();
 
             // 3. STRICT Equality Check (First Line of Defense)
-            // If the content is identical byte-for-byte (ignoring whitespace just in case), no update needed.
             if (remoteHtml.trim() === localHtml.trim()) {
                 console.log("Update check: Exact match found. No update.");
                 return false;
@@ -596,8 +819,6 @@ class LocalDataService implements IDataService {
             const localAssets = extractAssets(localHtml);
             const remoteAssets = extractAssets(remoteHtml);
 
-            // If we found hashes in BOTH and they match, it's definitely the same version.
-            // (Even if HTML whitespace differed slightly).
             if (localAssets.jsHash && remoteAssets.jsHash && 
                 localAssets.jsHash === remoteAssets.jsHash && 
                 localAssets.cssHash === remoteAssets.cssHash) {
@@ -676,62 +897,8 @@ class LocalDataService implements IDataService {
     }
 }
 
-// ... APIDataService and Factory ...
-class APIDataService implements IDataService {
-    // ... (minimal stub implementation for compilation) ...
-    init = async () => {};
-    getContacts = async () => [];
-    saveContact = async (c: any) => c;
-    updateContact = async (c: any) => c;
-    deleteContact = async () => {};
-    importContactsFromCSV = async () => ({ contacts: [], deals: [], activities: [] });
-    getActivities = async () => [];
-    saveActivity = async (a: any) => a;
-    deleteActivity = async () => {};
-    getDeals = async () => [];
-    saveDeal = async (d: any) => d;
-    updateDeal = async (d: any) => d;
-    deleteDeal = async () => {};
-    getTasks = async () => [];
-    saveTask = async (t: any) => t;
-    updateTask = async (t: any) => t;
-    deleteTask = async () => {};
-    getInvoices = async () => [];
-    saveInvoice = async (i: any) => i;
-    updateInvoice = async (i: any) => i;
-    deleteInvoice = async () => {};
-    cancelInvoice = async () => ({ creditNote: {} as any, updatedOriginal: {} as any, activity: {} as any });
-    getExpenses = async () => [];
-    saveExpense = async (e: any) => e;
-    updateExpense = async (e: any) => e;
-    deleteExpense = async () => {};
-    getUserProfile = async () => ({} as any);
-    saveUserProfile = async (p: any) => p;
-    getProductPresets = async () => [];
-    saveProductPresets = async (p: any) => p;
-    getInvoiceConfig = async () => ({} as any);
-    saveInvoiceConfig = async (c: any) => c;
-    getEmailTemplates = async () => [];
-    saveEmailTemplate = async (t: any) => t;
-    updateEmailTemplate = async (t: any) => t;
-    deleteEmailTemplate = async () => {};
-    connectGoogle = async () => false;
-    disconnectGoogle = async () => true;
-    getIntegrationStatus = async () => false;
-    loginWithGoogle = async () => null;
-    logout = async () => {};
-    sendMail = async () => false;
-    processDueRetainers = async () => ({ updatedContacts: [], newInvoices: [], newActivities: [] });
-    checkAndInstallUpdate = async () => false;
-    generatePdf = async () => "";
-    wipeAllData = async () => {};
-}
-
 export const DataServiceFactory = {
     create: (config: BackendConfig): IDataService => {
-        if (config.mode === 'api' && config.apiUrl) {
-            // return new APIDataService(config.apiUrl, config.apiToken || '');
-        }
         return new LocalDataService(config.googleClientId);
     }
 };

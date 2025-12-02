@@ -118,7 +118,7 @@ export const Pipeline: React.FC<PipelineProps> = ({
         const contactName = contact ? contact.name : 'Unbekannt';
 
         onAddTask({
-            id: Math.random().toString(36).substr(2, 9),
+            id: crypto.randomUUID(),
             title: `Follow-up: ${contactName}`,
             type: 'todo',
             priority: 'medium',
@@ -142,7 +142,7 @@ export const Pipeline: React.FC<PipelineProps> = ({
         
         // 1. Auto Invoice
         const newInvoice: Invoice = {
-            id: Math.random().toString(36).substr(2, 9),
+            id: crypto.randomUUID(),
             invoiceNumber: generateNextInvoiceNumber(),
             date: new Date().toISOString().split('T')[0],
             contactId: deal.contactId,
@@ -210,7 +210,7 @@ export const Pipeline: React.FC<PipelineProps> = ({
                  service.sendMail(contact.email, subject, body, attachments).then(success => {
                      if (success) {
                          onAddActivity({
-                            id: Math.random().toString(36).substr(2, 9),
+                            id: crypto.randomUUID(),
                             contactId: contact.id,
                             type: 'email',
                             content: `Automatische Willkommens-Mail gesendet (mit Rechnung PDF)`,
@@ -273,7 +273,7 @@ export const Pipeline: React.FC<PipelineProps> = ({
         if (existingDeal) onUpdateDeal({ ...existingDeal, title: formData.title, value: parseFloat(formData.value), stage: formData.stage, contactId: formData.contactId, dueDate: formData.dueDate || existingDeal.dueDate });
     } else {
         onAddDeal({
-            id: Math.random().toString(36).substr(2, 9),
+            id: crypto.randomUUID(),
             title: formData.title, value: parseFloat(formData.value), stage: formData.stage, contactId: formData.contactId,
             dueDate: formData.dueDate || new Date().toISOString().split('T')[0], stageEnteredDate: new Date().toISOString().split('T')[0]
         });

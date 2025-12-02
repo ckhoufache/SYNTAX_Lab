@@ -55,14 +55,20 @@ const App: React.FC = () => {
   // Authentication State
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
-  // STARTUP CHECK: Update
+  // STARTUP CHECK: Update (RUNS ONLY ONCE)
   useEffect(() => {
+      let mounted = true;
       const checkUpdateOnStart = async () => {
+          // Use a fresh factory instance or the initial one to check update
+          // The update check only needs local storage URL, not auth
           const updateUrl = localStorage.getItem('update_url');
           if (updateUrl && window.require) { // Only if URL set and in Electron
-              setUpdateStatus("Prüfe auf Updates...");
+              if (mounted) setUpdateStatus("Prüfe auf Updates...");
               try {
-                  const hasUpdate = await dataService.checkAndInstallUpdate(updateUrl, (status) => setUpdateStatus(status));
+                  const service = DataServiceFactory.create(backendConfig);
+                  const hasUpdate = await service.checkAndInstallUpdate(updateUrl, (status) => {
+                      if (mounted) setUpdateStatus(status);
+                  });
                   if (hasUpdate) {
                       return; // Don't proceed to load app, waiting for restart
                   }
@@ -71,12 +77,13 @@ const App: React.FC = () => {
                   // Proceed to app load even if update check fails
               }
           }
-          setIsCheckingUpdate(false);
+          if (mounted) setIsCheckingUpdate(false);
       };
       checkUpdateOnStart();
-  }, [dataService]);
+      return () => { mounted = false; };
+  }, []); // Strictly empty dependency to run once
 
-  // Re-Initialize Service when Config changes
+  // Re-Initialize Service when Config changes OR update check finishes
   useEffect(() => {
     // Only load data if update check is done
     if (isCheckingUpdate) return;
@@ -233,7 +240,7 @@ const App: React.FC = () => {
     
     // Log Activity
     handleAddActivity({
-        id: Math.random().toString(36).substr(2, 9),
+        id: crypto.randomUUID(),
         contactId: savedContact.id,
         type: 'system_deal',
         content: 'Kontakt erstellt',
@@ -243,7 +250,7 @@ const App: React.FC = () => {
     
     // Auto Create Deal
     const ghostDeal: Deal = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: crypto.randomUUID(),
       title: 'Neuer Lead',
       value: 0,
       stage: DealStage.LEAD,
@@ -301,7 +308,7 @@ const App: React.FC = () => {
         const oldDeal = currentDeals.find(d => d.id === updatedDeal.id);
         if (oldDeal && oldDeal.stage !== DealStage.WON && updatedDeal.stage === DealStage.WON) {
             handleAddActivity({
-                id: Math.random().toString(36).substr(2, 9),
+                id: crypto.randomUUID(),
                 contactId: updatedDeal.contactId,
                 type: 'system_deal',
                 content: `Deal gewonnen: ${updatedDeal.title} (${updatedDeal.value} €)`,
@@ -356,7 +363,7 @@ const App: React.FC = () => {
       setInvoices(prev => [saved, ...prev]);
       
       handleAddActivity({
-          id: Math.random().toString(36).substr(2, 9),
+          id: crypto.randomUUID(),
           contactId: newInvoice.contactId,
           type: 'system_invoice',
           content: `Rechnung erstellt: ${newInvoice.invoiceNumber} (${newInvoice.amount} €)`,

@@ -312,7 +312,7 @@ export const Contacts: React.FC<ContactsProps> = ({
       }
     } else {
       const newContact: Contact = {
-        id: Math.random().toString(36).substr(2, 9),
+        id: crypto.randomUUID(),
         name: formData.name || '',
         role: formData.role || 'Unbekannt',
         company: formData.company || '',
@@ -338,7 +338,7 @@ export const Contacts: React.FC<ContactsProps> = ({
       if (!editingContactId || !newActivityContent.trim()) return;
 
       onAddActivity({
-          id: Math.random().toString(36).substr(2, 9),
+          id: crypto.randomUUID(),
           contactId: editingContactId,
           type: newActivityType,
           content: newActivityContent,
@@ -444,7 +444,7 @@ export const Contacts: React.FC<ContactsProps> = ({
 
       if (success && emailData.contactId) {
           onAddActivity({
-              id: Math.random().toString(36).substr(2, 9),
+              id: crypto.randomUUID(),
               contactId: emailData.contactId,
               type: 'email',
               content: `E-Mail gesendet: ${emailData.subject}`,
@@ -670,7 +670,7 @@ export const Contacts: React.FC<ContactsProps> = ({
 
       {/* CREATE / EDIT & HISTORY MODAL */}
       {isModalOpen && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
             <div className={`bg-white rounded-xl shadow-2xl w-full ${editingContactId ? 'max-w-5xl' : 'max-w-lg'} overflow-hidden flex flex-col max-h-[90vh]`}>
                 <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 bg-slate-50 shrink-0">
                     <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
@@ -914,7 +914,7 @@ export const Contacts: React.FC<ContactsProps> = ({
 
       {/* Send Email Modal */}
       {isEmailModalOpen && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
                 <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 bg-slate-50">
                     <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Mail className="w-5 h-5 text-indigo-600" />E-Mail verfassen</h2>
