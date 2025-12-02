@@ -512,6 +512,9 @@ export const Contacts: React.FC<ContactsProps> = ({
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center gap-3">
+                      {contact.linkedin && (
+                        <a href={contact.linkedin} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors" title="LinkedIn Profil"><Linkedin className="w-4 h-4" /></a>
+                      )}
                       <img src={contact.avatar} alt={contact.name} className="w-9 h-9 rounded-full object-cover ring-2 ring-white" />
                       <div><p className="text-sm font-semibold text-slate-900">{contact.name}</p><p className="text-xs text-slate-500">{contact.email}</p></div>
                     </div>
@@ -551,7 +554,6 @@ export const Contacts: React.FC<ContactsProps> = ({
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right relative">
                     <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      {contact.linkedin && (<a href={contact.linkedin} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="p-1.5 hover:bg-blue-50 text-slate-400 hover:text-blue-600 rounded" title="LinkedIn Profil"><Linkedin className="w-4 h-4" /></a>)}
                       <button onClick={(e) => { e.stopPropagation(); handleEmailClick(contact); }} className="p-1.5 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 rounded" title="E-Mail senden"><Mail className="w-4 h-4" /></button>
                       <div className="relative row-menu-trigger" onClick={(e) => e.stopPropagation()}>
                         <button onClick={() => setActiveMenuId(activeMenuId === contact.id ? null : contact.id)} className={`p-1.5 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded ${activeMenuId === contact.id ? 'bg-slate-100 text-slate-600' : ''}`}><MoreHorizontal className="w-4 h-4" /></button>

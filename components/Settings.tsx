@@ -404,7 +404,7 @@ export const Settings: React.FC<SettingsProps> = ({
       
       localStorage.setItem('update_url', updateUrl);
       setIsUpdating(true);
-      setUpdateStatus('Prüfe URL...');
+      setUpdateStatus('Prüfe auf Updates...');
 
       try {
           let baseUrl = updateUrl.replace(/\/index\.html$/, '').replace(/\/$/, '');
@@ -414,7 +414,45 @@ export const Settings: React.FC<SettingsProps> = ({
           if (!indexResponse.ok) throw new Error("Konnte index.html nicht laden");
           const indexHtml = await indexResponse.text();
 
-          setUpdateStatus('Analysiere Version...');
+          // --- NEU: Robust Versionscheck ---
+          setUpdateStatus('Vergleiche Versionen...');
+          try {
+              const localResponse = await fetch('/index.html', { cache: 'no-store' });
+              if (localResponse.ok) {
+                  const localHtml = await localResponse.text();
+                  
+                  // Extract assets hash from HTML to compare versions robustly
+                  const extractAssetFilenames = (html: string) => {
+                      const regex = /["'](?:\.?\/)?assets\/([^"']+)["']/g;
+                      const assets = [];
+                      let match;
+                      while ((match = regex.exec(html)) !== null) {
+                          assets.push(match[1]);
+                      }
+                      return assets.sort();
+                  };
+
+                  const localAssets = extractAssetFilenames(localHtml);
+                  const remoteAssets = extractAssetFilenames(indexHtml);
+
+                  // Deep check if asset lists are identical
+                  const isSameVersion = localAssets.length > 0 && 
+                                        localAssets.length === remoteAssets.length && 
+                                        localAssets.every((val, index) => val === remoteAssets[index]);
+
+                  if (isSameVersion) {
+                      setUpdateStatus('System ist aktuell.');
+                      alert("Kein Update verfügbar. Sie verwenden bereits die neueste Version.");
+                      setIsUpdating(false);
+                      return; // ABBRUCH: Kein Neustart
+                  }
+              }
+          } catch(e) {
+              console.warn("Konnte lokale Version nicht prüfen, fahre fort.", e);
+          }
+          // --------------------------
+
+          setUpdateStatus('Neue Version gefunden! Analysiere Assets...');
           
           const assetRegex = /["'](?:\.?\/)?assets\/([^"']+)["']/g;
           const matches = [...indexHtml.matchAll(assetRegex)];
