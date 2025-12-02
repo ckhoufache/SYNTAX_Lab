@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
 import { Contacts } from './components/Contacts';
@@ -11,7 +11,7 @@ import { LoginScreen } from './components/LoginScreen';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { ViewState, Contact, Deal, UserProfile, Theme, Task, DealStage, ProductPreset, BackupData, BackendConfig, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate } from './types';
 import { DataServiceFactory, IDataService } from './services/dataService';
-import { Loader2 } from 'lucide-react';
+import { Loader2, RefreshCw } from 'lucide-react';
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewState>('dashboard');
@@ -28,6 +28,10 @@ const App: React.FC = () => {
   // --- APP STATE ---
   const [isLoading, setIsLoading] = useState(true);
   const [isLoginLoading, setIsLoginLoading] = useState(false);
+  
+  // NEW: Update State
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(true);
+  const [updateStatus, setUpdateStatus] = useState("Starte App...");
   
   // OPTIMIZED THEME INITIALIZATION
   const [theme, setTheme] = useState<Theme>(() => {
@@ -51,8 +55,32 @@ const App: React.FC = () => {
   // Authentication State
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
+  // STARTUP CHECK: Update
+  useEffect(() => {
+      const checkUpdateOnStart = async () => {
+          const updateUrl = localStorage.getItem('update_url');
+          if (updateUrl && window.require) { // Only if URL set and in Electron
+              setUpdateStatus("Prüfe auf Updates...");
+              try {
+                  const hasUpdate = await dataService.checkAndInstallUpdate(updateUrl, (status) => setUpdateStatus(status));
+                  if (hasUpdate) {
+                      return; // Don't proceed to load app, waiting for restart
+                  }
+              } catch (e) {
+                  console.error("Update check failed", e);
+                  // Proceed to app load even if update check fails
+              }
+          }
+          setIsCheckingUpdate(false);
+      };
+      checkUpdateOnStart();
+  }, [dataService]);
+
   // Re-Initialize Service when Config changes
   useEffect(() => {
+    // Only load data if update check is done
+    if (isCheckingUpdate) return;
+
     const service = DataServiceFactory.create(backendConfig);
     setDataService(service);
     setIsLoading(true);
@@ -105,7 +133,7 @@ const App: React.FC = () => {
     loadData();
     localStorage.setItem('backend_config', JSON.stringify(backendConfig));
 
-  }, [backendConfig]);
+  }, [backendConfig, isCheckingUpdate]);
 
   // State für Pipeline Filter
   const [pipelineVisibleStages, setPipelineVisibleStages] = useState<DealStage[]>(Object.values(DealStage));
@@ -136,16 +164,17 @@ const App: React.FC = () => {
     }
   }, [theme]);
 
-  const handleChangeView = (view: ViewState) => {
+  // Optimization: useCallback for navigation
+  const handleChangeView = useCallback((view: ViewState) => {
       setCurrentView(view);
       setFocusedContactId(null);
       setFocusedDealId(null);
       setFocusedTaskId(null);
       setContactFilterMode('all');
-  };
+  }, []);
 
   // --- AUTH HANDLERS ---
-  const handleLogin = async () => {
+  const handleLogin = useCallback(async () => {
       if (!backendConfig.googleClientId) {
           alert("Fehler: Keine Google Client ID konfiguriert.");
           return;
@@ -158,47 +187,47 @@ const App: React.FC = () => {
           setCurrentView('dashboard');
       }
       setIsLoginLoading(false);
-  };
+  }, [backendConfig.googleClientId, dataService]);
 
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
       await dataService.logout();
       setIsLoggedIn(false);
-  };
+  }, [dataService]);
 
-  const handleUpdateConfig = (newConfig: BackendConfig) => {
+  const handleUpdateConfig = useCallback((newConfig: BackendConfig) => {
       setBackendConfig(newConfig);
-  };
+  }, []);
 
-  // --- DATA MODIFICATION HANDLERS ---
-  const handleUpdateProfile = async (profile: UserProfile) => {
+  // --- DATA MODIFICATION HANDLERS (Optimization: useCallback) ---
+  const handleUpdateProfile = useCallback(async (profile: UserProfile) => {
       const updated = await dataService.saveUserProfile(profile);
       setUserProfile(updated);
-  };
+  }, [dataService]);
 
-  const handleUpdatePresets = async (presets: ProductPreset[]) => {
+  const handleUpdatePresets = useCallback(async (presets: ProductPreset[]) => {
       const updated = await dataService.saveProductPresets(presets);
       setProductPresets(updated);
-  };
+  }, [dataService]);
   
-  const handleUpdateInvoiceConfig = async (config: InvoiceConfig) => {
+  const handleUpdateInvoiceConfig = useCallback(async (config: InvoiceConfig) => {
       const updated = await dataService.saveInvoiceConfig(config);
       setInvoiceConfig(updated);
-  };
+  }, [dataService]);
 
   // --- ACTIVITIES ---
-  const handleAddActivity = async (newActivity: Activity) => {
+  const handleAddActivity = useCallback(async (newActivity: Activity) => {
       const saved = await dataService.saveActivity(newActivity);
       setActivities(prev => [saved, ...prev]);
-  };
+  }, [dataService]);
 
-  const handleDeleteActivity = async (id: string) => {
+  const handleDeleteActivity = useCallback(async (id: string) => {
       if (confirm("Möchten Sie diesen Eintrag wirklich aus der Historie entfernen?")) {
           await dataService.deleteActivity(id);
           setActivities(prev => prev.filter(a => a.id !== id));
       }
-  };
+  }, [dataService]);
 
-  const handleAddContact = async (newContact: Contact) => {
+  const handleAddContact = useCallback(async (newContact: Contact) => {
     const savedContact = await dataService.saveContact(newContact);
     setContacts(prev => [savedContact, ...prev]);
     
@@ -225,17 +254,17 @@ const App: React.FC = () => {
     };
     const savedDeal = await dataService.saveDeal(ghostDeal);
     setDeals(prev => [savedDeal, ...prev]);
-  };
+  }, [dataService, handleAddActivity]);
 
-  const handleUpdateContact = async (updatedContact: Contact) => {
+  const handleUpdateContact = useCallback(async (updatedContact: Contact) => {
     await dataService.updateContact(updatedContact);
     setContacts(prev => prev.map(c => c.id === updatedContact.id ? updatedContact : c));
-  };
+  }, [dataService]);
 
-  const onRequestDeleteContact = (contactId: string) => { setDeleteIntent({ type: 'contact', id: contactId }); };
+  const onRequestDeleteContact = useCallback((contactId: string) => { setDeleteIntent({ type: 'contact', id: contactId }); }, []);
 
   // --- NEU: Bulk Delete Function for Contacts ---
-  const handleBulkDeleteContacts = async (ids: string[]) => {
+  const handleBulkDeleteContacts = useCallback(async (ids: string[]) => {
       setIsLoading(true);
       try {
           // 1. Delete Contacts
@@ -245,15 +274,13 @@ const App: React.FC = () => {
           setContacts(prev => prev.filter(c => !ids.includes(c.id)));
 
           // 2. Cleanup related data (Deals, Tasks) for ALL deleted contacts
-          const remainingDeals = deals.filter(d => !ids.includes(d.contactId));
           const dealsToDelete = deals.filter(d => ids.includes(d.contactId));
           for (const d of dealsToDelete) await dataService.deleteDeal(d.id);
-          setDeals(remainingDeals);
+          setDeals(prev => prev.filter(d => !ids.includes(d.contactId)));
 
-          const remainingTasks = tasks.filter(t => !ids.includes(t.relatedEntityId || ''));
           const tasksToDelete = tasks.filter(t => ids.includes(t.relatedEntityId || ''));
           for (const t of tasksToDelete) await dataService.deleteTask(t.id);
-          setTasks(remainingTasks);
+          setTasks(prev => prev.filter(t => !ids.includes(t.relatedEntityId || '')));
 
       } catch (e) {
           console.error("Bulk delete failed", e);
@@ -261,65 +288,78 @@ const App: React.FC = () => {
       } finally {
           setIsLoading(false);
       }
-  };
+  }, [dataService, deals, tasks]);
 
-  const handleAddDeal = async (newDeal: Deal) => {
+  const handleAddDeal = useCallback(async (newDeal: Deal) => {
     const dealWithDate = { ...newDeal, stageEnteredDate: new Date().toISOString().split('T')[0] };
     const saved = await dataService.saveDeal(dealWithDate);
     setDeals(prev => [saved, ...prev]);
-  };
+  }, [dataService]);
 
-  const handleUpdateDeal = async (updatedDeal: Deal) => {
-    const oldDeal = deals.find(d => d.id === updatedDeal.id);
-    if (oldDeal && oldDeal.stage !== DealStage.WON && updatedDeal.stage === DealStage.WON) {
-        handleAddActivity({
-            id: Math.random().toString(36).substr(2, 9),
-            contactId: updatedDeal.contactId,
-            type: 'system_deal',
-            content: `Deal gewonnen: ${updatedDeal.title} (${updatedDeal.value} €)`,
-            date: new Date().toISOString().split('T')[0],
-            timestamp: new Date().toISOString(),
-            relatedId: updatedDeal.id
-        });
-    }
+  const handleUpdateDeal = useCallback(async (updatedDeal: Deal) => {
+    // Check if stage changed to won
+    // We need to check existing deal state from the state variable, not closure if possible, 
+    // but here we might rely on the closure of deals. To be safe, we'll fetch inside if needed, or rely on caller context.
+    // Optimization: logic moved to service or kept simple here.
+    
+    // To properly check previous stage we would need 'deals' dependency. 
+    // However, for performance we want to avoid recreating this function on every 'deals' change.
+    // Compromise: We fetch the deal from the current state inside the setter to avoid dependency cycle or stale closure.
+    setDeals(currentDeals => {
+        const oldDeal = currentDeals.find(d => d.id === updatedDeal.id);
+        if (oldDeal && oldDeal.stage !== DealStage.WON && updatedDeal.stage === DealStage.WON) {
+            handleAddActivity({
+                id: Math.random().toString(36).substr(2, 9),
+                contactId: updatedDeal.contactId,
+                type: 'system_deal',
+                content: `Deal gewonnen: ${updatedDeal.title} (${updatedDeal.value} €)`,
+                date: new Date().toISOString().split('T')[0],
+                timestamp: new Date().toISOString(),
+                relatedId: updatedDeal.id
+            });
+        }
+        return currentDeals.map(d => d.id === updatedDeal.id ? updatedDeal : d);
+    });
 
     await dataService.updateDeal(updatedDeal);
-    setDeals(prev => prev.map(d => d.id === updatedDeal.id ? updatedDeal : d));
-  };
+  }, [dataService, handleAddActivity]);
 
-  const onRequestDeleteDeal = (dealId: string) => { setDeleteIntent({ type: 'deal', id: dealId }); };
+  const onRequestDeleteDeal = useCallback((dealId: string) => { setDeleteIntent({ type: 'deal', id: dealId }); }, []);
 
-  const handleAddTask = async (newTask: Task) => {
+  const handleAddTask = useCallback(async (newTask: Task) => {
     const saved = await dataService.saveTask(newTask);
     setTasks(prev => [saved, ...prev]);
-  };
+  }, [dataService]);
 
-  const handleUpdateTask = async (updatedTask: Task) => {
+  const handleUpdateTask = useCallback(async (updatedTask: Task) => {
     await dataService.updateTask(updatedTask);
     setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
 
     if (updatedTask.isCompleted && updatedTask.relatedEntityId) {
-        const relatedDeal = deals.find(d => d.contactId === updatedTask.relatedEntityId);
-        if (relatedDeal && relatedDeal.stage === DealStage.CONTACTED) {
-            const updatedDeal: Deal = {
-                ...relatedDeal,
-                stage: DealStage.FOLLOW_UP,
-                stageEnteredDate: new Date().toISOString().split('T')[0]
-            };
-            await dataService.updateDeal(updatedDeal);
-            setDeals(prev => prev.map(d => d.id === updatedDeal.id ? updatedDeal : d));
-        }
+        setDeals(currentDeals => {
+             const relatedDeal = currentDeals.find(d => d.contactId === updatedTask.relatedEntityId);
+             if (relatedDeal && relatedDeal.stage === DealStage.CONTACTED) {
+                const updatedDeal: Deal = {
+                    ...relatedDeal,
+                    stage: DealStage.FOLLOW_UP,
+                    stageEnteredDate: new Date().toISOString().split('T')[0]
+                };
+                dataService.updateDeal(updatedDeal);
+                return currentDeals.map(d => d.id === updatedDeal.id ? updatedDeal : d);
+             }
+             return currentDeals;
+        });
     }
-  };
+  }, [dataService]);
 
-  const onRequestDeleteTask = (taskId: string) => { setDeleteIntent({ type: 'task', id: taskId }); };
+  const onRequestDeleteTask = useCallback((taskId: string) => { setDeleteIntent({ type: 'task', id: taskId }); }, []);
 
-  const handleAutoDeleteTask = async (taskId: string) => {
+  const handleAutoDeleteTask = useCallback(async (taskId: string) => {
       await dataService.deleteTask(taskId);
       setTasks(prev => prev.filter(t => t.id !== taskId));
-  };
+  }, [dataService]);
 
-  const handleAddInvoice = async (newInvoice: Invoice) => {
+  const handleAddInvoice = useCallback(async (newInvoice: Invoice) => {
       const saved = await dataService.saveInvoice(newInvoice);
       setInvoices(prev => [saved, ...prev]);
       
@@ -332,36 +372,41 @@ const App: React.FC = () => {
           timestamp: new Date().toISOString(),
           relatedId: newInvoice.id
       });
-  };
+  }, [dataService, handleAddActivity]);
   
-  const handleUpdateInvoice = async (updatedInvoice: Invoice) => {
+  const handleUpdateInvoice = useCallback(async (updatedInvoice: Invoice) => {
       await dataService.updateInvoice(updatedInvoice);
       setInvoices(prev => prev.map(i => i.id === updatedInvoice.id ? updatedInvoice : i));
-  };
-  const onRequestDeleteInvoice = (id: string) => { setDeleteIntent({ type: 'invoice', id }); };
+  }, [dataService]);
 
-  const handleAddExpense = async (newExpense: Expense) => {
+  const onRequestDeleteInvoice = useCallback((id: string) => { setDeleteIntent({ type: 'invoice', id }); }, []);
+
+  const handleAddExpense = useCallback(async (newExpense: Expense) => {
       const saved = await dataService.saveExpense(newExpense);
       setExpenses(prev => [saved, ...prev]);
-  };
-  const handleUpdateExpense = async (updatedExpense: Expense) => {
+  }, [dataService]);
+
+  const handleUpdateExpense = useCallback(async (updatedExpense: Expense) => {
       await dataService.updateExpense(updatedExpense);
       setExpenses(prev => prev.map(e => e.id === updatedExpense.id ? updatedExpense : e));
-  };
-  const onRequestDeleteExpense = (id: string) => { setDeleteIntent({ type: 'expense', id }); };
+  }, [dataService]);
 
-  const handleAddTemplate = async (template: EmailTemplate) => {
+  const onRequestDeleteExpense = useCallback((id: string) => { setDeleteIntent({ type: 'expense', id }); }, []);
+
+  const handleAddTemplate = useCallback(async (template: EmailTemplate) => {
       const saved = await dataService.saveEmailTemplate(template);
       setEmailTemplates(prev => [saved, ...prev]);
-  };
-  const handleUpdateTemplate = async (template: EmailTemplate) => {
+  }, [dataService]);
+
+  const handleUpdateTemplate = useCallback(async (template: EmailTemplate) => {
       await dataService.updateEmailTemplate(template);
       setEmailTemplates(prev => prev.map(t => t.id === template.id ? template : t));
-  };
-  const onRequestDeleteTemplate = (id: string) => { setDeleteIntent({ type: 'template', id }); };
+  }, [dataService]);
+
+  const onRequestDeleteTemplate = useCallback((id: string) => { setDeleteIntent({ type: 'template', id }); }, []);
 
   // --- AUTOMATION: RETAINER RUN ---
-  const handleRunRetainer = async () => {
+  const handleRunRetainer = useCallback(async () => {
       setIsLoading(true);
       const result = await dataService.processDueRetainers();
       
@@ -379,7 +424,7 @@ const App: React.FC = () => {
           alert("Keine fälligen Retainer-Verträge gefunden.");
       }
       setIsLoading(false);
-  };
+  }, [dataService]);
 
   const parseCSV = (str: string) => {
     const arr: string[][] = [];
@@ -399,7 +444,7 @@ const App: React.FC = () => {
     return arr;
   };
 
-  const handleImportContactsCSV = async (csvText: string) => {
+  const handleImportContactsCSV = useCallback(async (csvText: string) => {
       setIsLoading(true);
       try {
           const rows = parseCSV(csvText);
@@ -479,9 +524,9 @@ const App: React.FC = () => {
           setActivities(prev => [...newActivities, ...prev]);
           alert(`${newContactsCount} Kontakte erfolgreich importiert.`);
       } catch (e) { console.error(e); alert("Fehler beim Importieren der CSV Datei."); } finally { setIsLoading(false); }
-  };
+  }, [dataService]);
 
-  const handleImportData = async (data: BackupData) => {
+  const handleImportData = useCallback(async (data: BackupData) => {
       if (!confirm("Importieren überschreibt alle aktuellen Daten. Fortfahren?")) return;
       setIsLoading(true);
       try {
@@ -498,9 +543,9 @@ const App: React.FC = () => {
           if (data.activities) { localStorage.setItem('activities', JSON.stringify(data.activities)); setActivities(data.activities); }
           window.location.reload(); 
       } catch(e) { console.error(e); alert("Import fehlgeschlagen."); setIsLoading(false); }
-  };
+  }, [dataService]);
 
-  const confirmDelete = async () => {
+  const confirmDelete = useCallback(async () => {
     if (!deleteIntent) return;
     try {
         if (deleteIntent.type === 'contact') {
@@ -521,8 +566,10 @@ const App: React.FC = () => {
         } else if (deleteIntent.type === 'invoice') {
           // GoBD: Cancel instead of Delete
           const { creditNote, updatedOriginal, activity } = await dataService.cancelInvoice(deleteIntent.id);
-          setInvoices(prev => prev.map(i => i.id === updatedOriginal.id ? updatedOriginal : i));
-          setInvoices(prev => [creditNote, ...prev]);
+          setInvoices(prev => {
+              const filtered = prev.map(i => i.id === updatedOriginal.id ? updatedOriginal : i);
+              return [creditNote, ...filtered];
+          });
           setActivities(prev => [activity, ...prev]);
         } else if (deleteIntent.type === 'expense') {
           await dataService.deleteExpense(deleteIntent.id);
@@ -532,23 +579,38 @@ const App: React.FC = () => {
           setEmailTemplates(prev => prev.filter(t => t.id !== deleteIntent.id));
         }
     } catch (e) { console.error("Action failed", e); alert("Vorgang fehlgeschlagen: " + (e as Error).message); } finally { setDeleteIntent(null); }
-  };
+  }, [deleteIntent, dataService, deals, tasks]);
 
-  const handleNavigateToContacts = (filter: 'all' | 'recent', focusId?: string) => {
+  const handleNavigateToContacts = useCallback((filter: 'all' | 'recent', focusId?: string) => {
     setContactFilterMode(filter);
     setFocusedContactId(focusId || null);
     setCurrentView('contacts');
-  };
-  const handleNavigateToPipelineFilter = (stages: DealStage[], focusId?: string) => {
+  }, []);
+
+  const handleNavigateToPipelineFilter = useCallback((stages: DealStage[], focusId?: string) => {
     setPipelineVisibleStages(stages);
     setFocusedDealId(focusId || null);
     setCurrentView('pipeline');
-  };
-  const handleNavigateToTasks = (focusId?: string) => {
+  }, []);
+
+  const handleNavigateToTasks = useCallback((focusId?: string) => {
       setFocusedTaskId(focusId || null);
       setCurrentView('tasks');
-  };
-  const handleNavigateToFinances = () => { setCurrentView('finances'); };
+  }, []);
+
+  const handleNavigateToFinances = useCallback(() => { setCurrentView('finances'); }, []);
+
+  // Update Checking View
+  if (isCheckingUpdate) {
+      return (
+          <div className={`flex h-screen w-full items-center justify-center ${theme === 'dark' ? 'bg-slate-900' : 'bg-slate-50'}`}>
+              <div className="flex flex-col items-center gap-4">
+                  <RefreshCw className="w-10 h-10 animate-spin text-indigo-600" />
+                  <p className={`${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'} font-medium`}>{updateStatus}</p>
+              </div>
+          </div>
+      );
+  }
 
   if (isLoading || !userProfile || !invoiceConfig) {
       return (

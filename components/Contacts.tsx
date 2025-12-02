@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Search, Filter, MoreHorizontal, Mail, Phone, Plus, Linkedin, X, FileText, Pencil, Trash, Trash2, Clock, Check, Send, Briefcase, Banknote, Calendar, Building, Globe, Upload, ArrowUpDown, ArrowUp, ArrowDown, TrendingUp, TrendingDown, Percent } from 'lucide-react';
-import { Contact, Activity, ActivityType, EmailTemplate, Invoice, Expense } from '../types';
+import { Search, Filter, MoreHorizontal, Mail, Phone, Plus, Linkedin, X, FileText, Pencil, Trash, Trash2, Clock, Check, Send, Briefcase, Banknote, Calendar, Building, Globe, Upload, ArrowUpDown, ArrowUp, ArrowDown, TrendingUp, TrendingDown, Percent, Zap } from 'lucide-react';
+import { Contact, Activity, ActivityType, EmailTemplate, Invoice, Expense, ContactType } from '../types';
 import { DataServiceFactory } from '../services/dataService'; 
 
 interface ContactsProps {
@@ -46,6 +46,8 @@ export const Contacts: React.FC<ContactsProps> = ({
   expenses
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeTab, setActiveTab] = useState<'all' | 'customer' | 'lead' | 'newsletter'>('all'); // NEU: Tabs
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingContactId, setEditingContactId] = useState<string | null>(null);
   
@@ -68,6 +70,7 @@ export const Contacts: React.FC<ContactsProps> = ({
 
   const [newActivityType, setNewActivityType] = useState<ActivityType>('note');
   const [newActivityContent, setNewActivityContent] = useState('');
+  const [isActivityQuickSelectOpen, setIsActivityQuickSelectOpen] = useState(false); // NEU
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -86,6 +89,7 @@ export const Contacts: React.FC<ContactsProps> = ({
     email: '',
     linkedin: '',
     notes: '',
+    type: 'lead', // Default
     retainerActive: false,
     retainerAmount: 0,
     retainerStartDate: '',
@@ -93,12 +97,24 @@ export const Contacts: React.FC<ContactsProps> = ({
     retainerInterval: 'monthly'
   });
 
+  const quickActivityOptions = [
+      "Voicemail hinterlassen",
+      "Erreicht - Follow-up vereinbart",
+      "Angebot nachgefasst",
+      "Vor-Ort Termin wahrgenommen",
+      "LinkedIn Nachricht gesendet",
+      "Xing Kontaktanfrage gesendet",
+      "Kunde hat zurückgerufen",
+      "Rechnung reklamiert",
+      "Support-Fall gelöst"
+  ];
+
   // HELPER: Explicitly close and reset form to avoid state ghosting
   const handleCloseModal = () => {
       setIsModalOpen(false);
       setEditingContactId(null);
       // Explicitly wipe state
-      setFormData({ name: '', role: '', company: '', companyUrl: '', email: '', linkedin: '', notes: '', retainerActive: false, retainerAmount: 0, retainerStartDate: '', retainerNextBilling: '', retainerInterval: 'monthly' });
+      setFormData({ name: '', role: '', company: '', companyUrl: '', email: '', linkedin: '', notes: '', type: 'lead', retainerActive: false, retainerAmount: 0, retainerStartDate: '', retainerNextBilling: '', retainerInterval: 'monthly' });
       setNewActivityContent('');
   };
 
@@ -106,6 +122,13 @@ export const Contacts: React.FC<ContactsProps> = ({
       let result = contacts.filter(c => {
         if (focusedId) {
             return c.id === focusedId;
+        }
+
+        // Tab Logic (Neu)
+        if (activeTab !== 'all') {
+             if (activeTab === 'customer' && c.type !== 'customer') return false;
+             if (activeTab === 'lead' && c.type !== 'lead') return false;
+             if (activeTab === 'newsletter' && c.type !== 'newsletter') return false;
         }
 
         const matchesSearch = c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -152,11 +175,11 @@ export const Contacts: React.FC<ContactsProps> = ({
       }
 
       return result;
-  }, [contacts, focusedId, searchTerm, initialFilter, filters, sortConfig]);
+  }, [contacts, focusedId, searchTerm, initialFilter, filters, sortConfig, activeTab]);
 
   useEffect(() => {
       setSelectedIds(new Set());
-  }, [searchTerm, initialFilter, filters]);
+  }, [searchTerm, initialFilter, filters, activeTab]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -232,7 +255,7 @@ export const Contacts: React.FC<ContactsProps> = ({
 
   const openCreateModal = () => {
     setEditingContactId(null);
-    setFormData({ name: '', role: '', company: '', companyUrl: '', email: '', linkedin: '', notes: '', retainerActive: false, retainerAmount: 0, retainerStartDate: '', retainerNextBilling: '', retainerInterval: 'monthly' });
+    setFormData({ name: '', role: '', company: '', companyUrl: '', email: '', linkedin: '', notes: '', type: 'lead', retainerActive: false, retainerAmount: 0, retainerStartDate: '', retainerNextBilling: '', retainerInterval: 'monthly' });
     setIsModalOpen(true);
   };
 
@@ -246,6 +269,7 @@ export const Contacts: React.FC<ContactsProps> = ({
       email: contact.email,
       linkedin: contact.linkedin || '',
       notes: contact.notes || '',
+      type: contact.type || 'lead',
       retainerActive: contact.retainerActive || false,
       retainerAmount: contact.retainerAmount || 0,
       retainerStartDate: contact.retainerStartDate || '',
@@ -277,6 +301,7 @@ export const Contacts: React.FC<ContactsProps> = ({
           email: formData.email || '',
           linkedin: formData.linkedin,
           notes: formData.notes,
+          type: formData.type || 'lead',
           retainerActive: formData.retainerActive,
           retainerAmount: Number(formData.retainerAmount),
           retainerStartDate: formData.retainerStartDate,
@@ -295,6 +320,7 @@ export const Contacts: React.FC<ContactsProps> = ({
         email: formData.email || '',
         linkedin: formData.linkedin,
         notes: formData.notes,
+        type: formData.type || 'lead',
         avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name || '')}&background=random`,
         lastContact: new Date().toISOString().split('T')[0],
         retainerActive: formData.retainerActive,
@@ -458,6 +484,14 @@ export const Contacts: React.FC<ContactsProps> = ({
              </button>
         </div>
       </header>
+
+      {/* Tabs (NEU) */}
+      <div className="bg-white px-8 border-b border-slate-100 flex gap-1">
+          <button onClick={() => setActiveTab('all')} className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'all' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Alle</button>
+          <button onClick={() => setActiveTab('customer')} className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'customer' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Kunden</button>
+          <button onClick={() => setActiveTab('lead')} className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'lead' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Leads</button>
+          <button onClick={() => setActiveTab('newsletter')} className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'newsletter' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Newsletter</button>
+      </div>
 
       {/* Toolbar */}
       <div className="px-8 py-4 flex items-center justify-between shrink-0">
@@ -627,7 +661,7 @@ export const Contacts: React.FC<ContactsProps> = ({
                   </td>
                 </tr>
               )) : (
-                  <tr><td colSpan={6} className="px-6 py-12 text-center text-slate-400 text-sm">{focusedId ? "Der gesuchte Kontakt wurde nicht gefunden." : initialFilter === 'recent' ? "Keine neuen Kontakte in den letzten 7 Tagen gefunden." : hasActiveFilters ? "Keine Kontakte für die gewählten Filter gefunden." : "Keine Kontakte gefunden."}</td></tr>
+                  <tr><td colSpan={6} className="px-6 py-12 text-center text-slate-400 text-sm">{focusedId ? "Der gesuchte Kontakt wurde nicht gefunden." : initialFilter === 'recent' ? "Keine neuen Kontakte in den letzten 7 Tagen gefunden." : hasActiveFilters ? "Keine Kontakte für die gewählten Filter gefunden." : "Keine Kontakte in dieser Liste gefunden."}</td></tr>
               )}
             </tbody>
           </table>
@@ -660,6 +694,15 @@ export const Contacts: React.FC<ContactsProps> = ({
                                     <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1"><Globe className="w-3 h-3"/> Firmen-Link</label><input name="companyUrl" value={formData.companyUrl} onChange={handleInputChange} type="url" className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="https://firma.de"/></div>
                                     <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase">Rolle</label><input name="role" value={formData.role} onChange={handleInputChange} type="text" className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="z.B. CEO"/></div>
                                     <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase">E-Mail</label><input required name="email" value={formData.email} onChange={handleInputChange} type="email" className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="max@firma.de"/></div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-semibold text-slate-500 uppercase">Kontakt-Typ</label>
+                                        <select name="type" value={formData.type || 'lead'} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
+                                            <option value="lead">Lead (Interessent)</option>
+                                            <option value="customer">Kunde (Customer)</option>
+                                            <option value="partner">Partner</option>
+                                            <option value="newsletter">Newsletter Abonnent</option>
+                                        </select>
+                                    </div>
                                     <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1"><Linkedin className="w-3 h-3 text-blue-600" /> LinkedIn Profil</label><input name="linkedin" value={formData.linkedin} onChange={handleInputChange} type="url" className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="https://linkedin.com/in/..."/></div>
                                     <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase">Allgemeine Notiz</label><textarea name="notes" value={formData.notes} onChange={handleInputChange} rows={3} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none resize-none" placeholder="Statische Infos..."/></div>
                                 </div>
@@ -769,15 +812,45 @@ export const Contacts: React.FC<ContactsProps> = ({
                                     <button onClick={() => setNewActivityType('call')} className={`flex-1 py-1.5 text-xs font-medium rounded border ${newActivityType === 'call' ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-slate-200 text-slate-600'}`}>Anruf</button>
                                     <button onClick={() => setNewActivityType('meeting')} className={`flex-1 py-1.5 text-xs font-medium rounded border ${newActivityType === 'meeting' ? 'bg-purple-50 border-purple-200 text-purple-700' : 'bg-white border-slate-200 text-slate-600'}`}>Meeting</button>
                                 </div>
-                                <div className="flex gap-2">
-                                    <input 
-                                        type="text" 
-                                        value={newActivityContent}
-                                        onChange={(e) => setNewActivityContent(e.target.value)}
-                                        onKeyDown={(e) => e.key === 'Enter' && handleAddManualActivity()}
-                                        placeholder="Was ist passiert?" 
-                                        className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
-                                    />
+                                <div className="flex gap-2 relative">
+                                    <div className="relative flex-1">
+                                        <input 
+                                            type="text" 
+                                            value={newActivityContent}
+                                            onChange={(e) => setNewActivityContent(e.target.value)}
+                                            onKeyDown={(e) => e.key === 'Enter' && handleAddManualActivity()}
+                                            placeholder="Was ist passiert?" 
+                                            className="w-full pl-3 pr-8 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                                        />
+                                        <button 
+                                            onClick={() => setIsActivityQuickSelectOpen(!isActivityQuickSelectOpen)}
+                                            className="absolute right-1 top-1.5 p-1 text-slate-400 hover:text-indigo-600 rounded hover:bg-slate-100"
+                                            title="Schnellauswahl"
+                                        >
+                                            <Zap className="w-4 h-4" />
+                                        </button>
+                                        
+                                        {/* Quick Select Dropdown */}
+                                        {isActivityQuickSelectOpen && (
+                                            <div className="absolute top-full right-0 mt-1 w-64 bg-white rounded-lg shadow-xl border border-slate-100 z-50 animate-in fade-in zoom-in duration-100">
+                                                <div className="p-1">
+                                                    {quickActivityOptions.map((option, i) => (
+                                                        <button 
+                                                            key={i}
+                                                            onClick={() => {
+                                                                setNewActivityContent(option);
+                                                                setIsActivityQuickSelectOpen(false);
+                                                            }}
+                                                            className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 text-slate-700 rounded-md"
+                                                        >
+                                                            {option}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
                                     <button 
                                         onClick={handleAddManualActivity}
                                         disabled={!newActivityContent.trim()}

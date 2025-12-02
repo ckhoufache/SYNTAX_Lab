@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle, Key, RefreshCw, Copy, FileText, Image as ImageIcon, Briefcase, Settings as SettingsIcon, HardDrive, Users, DownloadCloud, RefreshCcw, Sparkles, Sliders, Link, Paperclip, Star, Paperclip as PaperclipIcon, FileCode, Printer } from 'lucide-react';
+import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle, Key, RefreshCw, Copy, FileText, Image as ImageIcon, Briefcase, Settings as SettingsIcon, HardDrive, Users, DownloadCloud, RefreshCcw, Sparkles, Sliders, Link, Paperclip, Star, Paperclip as PaperclipIcon, FileCode, Printer, Info, AlertOctagon, Repeat } from 'lucide-react';
 import { UserProfile, Theme, ProductPreset, Contact, Deal, Task, BackupData, BackendConfig, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate, EmailAttachment, EmailAutomationConfig } from '../types';
 import { IDataService } from '../services/dataService';
 
@@ -308,7 +308,6 @@ export const Settings: React.FC<SettingsProps> = ({
           setActiveSection(null);
       } else {
           setActiveSection(id);
-          // Optional: Automatisch ersten Sub-Punkt öffnen? Hier lassen wir es erstmal leer, bis der User klickt
           setActiveSubSection(null);
       }
   };
@@ -338,10 +337,12 @@ export const Settings: React.FC<SettingsProps> = ({
   const [localPresets, setLocalPresets] = useState<ProductPreset[]>(productPresets);
   const [newPresetTitle, setNewPresetTitle] = useState('');
   const [newPresetValue, setNewPresetValue] = useState('');
+  const [newPresetIsSub, setNewPresetIsSub] = useState(false); // NEU
 
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
   const [editPresetTitle, setEditPresetTitle] = useState('');
   const [editPresetValue, setEditPresetValue] = useState('');
+  const [editPresetIsSub, setEditPresetIsSub] = useState(false); // NEU
   
   // Template States
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
@@ -469,11 +470,13 @@ export const Settings: React.FC<SettingsProps> = ({
       const newPreset: ProductPreset = {
           id: Math.random().toString(36).substr(2, 9),
           title: newPresetTitle,
-          value: parseFloat(newPresetValue)
+          value: parseFloat(newPresetValue),
+          isSubscription: newPresetIsSub
       };
       setLocalPresets([...localPresets, newPreset]);
       setNewPresetTitle('');
       setNewPresetValue('');
+      setNewPresetIsSub(false);
   };
 
   const handleDeletePreset = (id: string) => { setLocalPresets(localPresets.filter(p => p.id !== id)); };
@@ -482,19 +485,21 @@ export const Settings: React.FC<SettingsProps> = ({
       setEditingPresetId(preset.id);
       setEditPresetTitle(preset.title);
       setEditPresetValue(preset.value.toString());
+      setEditPresetIsSub(preset.isSubscription || false);
   };
 
   const handleCancelEditPreset = () => {
       setEditingPresetId(null);
       setEditPresetTitle('');
       setEditPresetValue('');
+      setEditPresetIsSub(false);
   };
 
   const handleSaveEditPreset = () => {
       if (!editingPresetId) return;
       const updatedPresets = localPresets.map(p => 
           p.id === editingPresetId 
-          ? { ...p, title: editPresetTitle, value: parseFloat(editPresetValue) } 
+          ? { ...p, title: editPresetTitle, value: parseFloat(editPresetValue), isSubscription: editPresetIsSub } 
           : p
       );
       setLocalPresets(updatedPresets);
@@ -538,6 +543,26 @@ export const Settings: React.FC<SettingsProps> = ({
       };
       reader.readAsText(file);
   };
+  
+  // --- WIPE / FACTORY RESET LOGIC ---
+  const handleWipeData = async () => {
+      // Step 1
+      if (!confirm("WARNUNG: Sie sind dabei, ALLE Daten im Programm zu löschen.\n\nDies beinhaltet Kontakte, Rechnungen, Einstellungen etc.\n\nSind Sie sicher?")) {
+          return;
+      }
+      // Step 2
+      if (!confirm("WIRKLICH LÖSCHEN?\n\nEs gibt kein 'Rückgängig'. Wenn Sie kein Backup haben, sind die Daten für immer verloren.\n\nWollen Sie wirklich fortfahren?")) {
+          return;
+      }
+      // Step 3
+      const confirmation = prompt("LETZTE SICHERHEITSABFRAGE:\n\nBitte tippen Sie das Wort 'LOESCHEN' (in Großbuchstaben) ein, um den Vorgang zu bestätigen.");
+      
+      if (confirmation === 'LOESCHEN') {
+          await dataService.wipeAllData();
+      } else {
+          alert("Abgebrochen. Das Wort stimmte nicht überein.");
+      }
+  };
 
   const openTemplateModal = (template?: EmailTemplate) => {
       if (template) {
@@ -577,10 +602,27 @@ export const Settings: React.FC<SettingsProps> = ({
       }
   };
 
+  // --- UPDATE LOGIC ---
   const handleCheckUpdate = async () => {
-      // ... (Update Logic - unchanged for this XML block to save tokens, assumes previous implementation is sufficient or not the focus of this specific prompt)
-      // For brevity, skipping the full implementation as it was provided in previous turn.
-      alert("Update-Funktion ist in dieser Demo deaktiviert.");
+      if (!updateUrl) {
+          setUpdateStatus("Bitte geben Sie eine Update-URL an.");
+          return;
+      }
+      setIsUpdating(true);
+      setUpdateStatus("Prüfe auf Updates...");
+
+      try {
+          const hasUpdate = await dataService.checkAndInstallUpdate(updateUrl, (status) => setUpdateStatus(status));
+          if (!hasUpdate) {
+               setUpdateStatus("System ist aktuell.");
+               alert("Kein Update verfügbar. Sie verwenden bereits die neueste Version.");
+               setIsUpdating(false);
+          }
+      } catch (e: any) {
+          console.error(e);
+          setUpdateStatus(`Fehler: ${e.message}`);
+          setIsUpdating(false);
+      }
   };
 
   return (
@@ -654,7 +696,7 @@ export const Settings: React.FC<SettingsProps> = ({
              </div>
          </SettingsSection>
 
-         {/* --- 2. SYSTEMKONFIGURATION (NEU: Gruppiert) --- */}
+         {/* --- 2. SYSTEMKONFIGURATION --- */}
          <SettingsSection
              title="Systemkonfiguration"
              icon={Sliders}
@@ -759,17 +801,35 @@ export const Settings: React.FC<SettingsProps> = ({
                             {localPresets.map(preset => (
                                 <div key={preset.id} className="flex items-center justify-between p-3 border rounded-lg bg-white dark:bg-slate-800 dark:border-slate-700">
                                     {editingPresetId === preset.id ? (
-                                        <div className="flex gap-2 flex-1 items-center">
-                                            <input value={editPresetTitle} onChange={e=>setEditPresetTitle(e.target.value)} className="flex-1 border p-1 rounded text-sm dark:bg-slate-700 dark:text-white" />
-                                            <input value={editPresetValue} onChange={e=>setEditPresetValue(e.target.value)} type="number" className="w-24 border p-1 rounded text-sm dark:bg-slate-700 dark:text-white" />
-                                            <button onClick={handleSaveEditPreset} className="text-green-600"><Check className="w-4 h-4"/></button>
-                                            <button onClick={handleCancelEditPreset} className="text-red-500"><X className="w-4 h-4"/></button>
+                                        <div className="flex flex-col gap-2 w-full">
+                                            <div className="flex gap-2">
+                                                <input value={editPresetTitle} onChange={e=>setEditPresetTitle(e.target.value)} className="flex-1 border p-1 rounded text-sm dark:bg-slate-700 dark:text-white" />
+                                                <input value={editPresetValue} onChange={e=>setEditPresetValue(e.target.value)} type="number" className="w-24 border p-1 rounded text-sm dark:bg-slate-700 dark:text-white" />
+                                            </div>
+                                            <div className="flex justify-between items-center">
+                                                <label className="flex items-center gap-2 cursor-pointer">
+                                                    <input type="checkbox" checked={editPresetIsSub} onChange={e => setEditPresetIsSub(e.target.checked)} className="rounded text-indigo-600"/>
+                                                    <span className="text-xs text-slate-500">Ist Abo / Wiederkehrend</span>
+                                                </label>
+                                                <div className="flex gap-2">
+                                                    <button onClick={handleSaveEditPreset} className="text-green-600 bg-green-50 p-1 rounded"><Check className="w-4 h-4"/></button>
+                                                    <button onClick={handleCancelEditPreset} className="text-red-500 bg-red-50 p-1 rounded"><X className="w-4 h-4"/></button>
+                                                </div>
+                                            </div>
                                         </div>
                                     ) : (
                                         <>
-                                            <div className="flex gap-4">
-                                                <span className="font-medium text-sm text-slate-800 dark:text-slate-200">{preset.title}</span>
-                                                <span className="text-sm text-slate-500">{preset.value} €</span>
+                                            <div className="flex flex-col">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-medium text-sm text-slate-800 dark:text-slate-200">{preset.title}</span>
+                                                    {/* Fix: Wrapped Repeat icon in span to support title attribute without TS error */}
+                                                    {preset.isSubscription && (
+                                                        <span title="Wiederkehrend / Abo" className="flex items-center">
+                                                            <Repeat className="w-3 h-3 text-indigo-500" />
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <span className="text-xs text-slate-500">{preset.value} €</span>
                                             </div>
                                             <div className="flex gap-2">
                                                 <button onClick={() => handleStartEditPreset(preset)} className="text-slate-400 hover:text-indigo-600"><Pencil className="w-4 h-4"/></button>
@@ -780,10 +840,27 @@ export const Settings: React.FC<SettingsProps> = ({
                                 </div>
                             ))}
                         </div>
-                        <div className="flex gap-2">
-                            <input placeholder="Neues Produkt" value={newPresetTitle} onChange={e=>setNewPresetTitle(e.target.value)} className="flex-1 px-3 py-2 border rounded-lg text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white" />
-                            <input placeholder="Preis" type="number" value={newPresetValue} onChange={e=>setNewPresetValue(e.target.value)} className="w-24 px-3 py-2 border rounded-lg text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white" />
-                            <button onClick={() => { handleAddPreset(); onUpdatePresets(localPresets); }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-sm"><Plus className="w-4 h-4" /></button>
+                        
+                        {/* New Preset Input Form */}
+                        <div className="bg-slate-50 dark:bg-slate-800/50 p-3 rounded-lg border border-slate-200 dark:border-slate-700">
+                            <div className="flex gap-2 mb-2">
+                                <input placeholder="Neues Produkt" value={newPresetTitle} onChange={e=>setNewPresetTitle(e.target.value)} className="flex-1 px-3 py-2 border rounded-lg text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white" />
+                                <input placeholder="Preis" type="number" value={newPresetValue} onChange={e=>setNewPresetValue(e.target.value)} className="w-24 px-3 py-2 border rounded-lg text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white" />
+                            </div>
+                            <div className="flex items-center justify-between">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={newPresetIsSub} 
+                                        onChange={e => setNewPresetIsSub(e.target.checked)} 
+                                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4"
+                                    />
+                                    <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Ist Abo / Wiederkehrend</span>
+                                </label>
+                                <button onClick={() => { handleAddPreset(); onUpdatePresets(localPresets); }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-sm flex items-center gap-1">
+                                    <Plus className="w-3 h-3" /> Hinzufügen
+                                </button>
+                            </div>
                         </div>
                      </div>
                  </SubSection>
@@ -905,7 +982,224 @@ export const Settings: React.FC<SettingsProps> = ({
                  </SubSection>
              </div>
          </SettingsSection>
+
+         {/* --- 3. INTEGRATIONEN & API --- */}
+         <SettingsSection 
+            title="Integrationen & API" 
+            icon={Globe} 
+            isDark={isDark} 
+            description="Google Dienste & KI Anbindung"
+            isOpen={activeSection === 'integrations'}
+            onToggle={() => toggleSection('integrations')}
+         >
+             <div className="px-6 pb-6 pt-2 space-y-4">
+                 <div className="flex items-center justify-between p-4 border rounded-lg bg-white dark:bg-slate-800 dark:border-slate-700">
+                     <div className="flex items-center gap-4">
+                         <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-full"><Calendar className="w-5 h-5 text-blue-600 dark:text-blue-400" /></div>
+                         <div>
+                             <h3 className="font-semibold text-sm dark:text-white">Google Calendar</h3>
+                             <p className="text-xs text-slate-500 dark:text-slate-400">Termine synchronisieren</p>
+                         </div>
+                     </div>
+                     <button 
+                         onClick={handleToggleCalendar}
+                         disabled={!!isConnecting}
+                         className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                             isCalendarConnected 
+                                 ? 'bg-green-100 text-green-700 border border-green-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200' 
+                                 : 'bg-slate-100 text-slate-600 hover:bg-indigo-50 hover:text-indigo-600'
+                         }`}
+                     >
+                         {isConnecting === 'calendar' ? 'Lade...' : isCalendarConnected ? 'Verbunden' : 'Verbinden'}
+                     </button>
+                 </div>
+
+                 <div className="flex items-center justify-between p-4 border rounded-lg bg-white dark:bg-slate-800 dark:border-slate-700">
+                     <div className="flex items-center gap-4">
+                         <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-full"><Mail className="w-5 h-5 text-red-600 dark:text-red-400" /></div>
+                         <div>
+                             <h3 className="font-semibold text-sm dark:text-white">Google Mail</h3>
+                             <p className="text-xs text-slate-500 dark:text-slate-400">E-Mails direkt senden</p>
+                         </div>
+                     </div>
+                     <button 
+                         onClick={handleToggleMail}
+                         disabled={!!isConnecting}
+                         className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                             isMailConnected 
+                                 ? 'bg-green-100 text-green-700 border border-green-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200' 
+                                 : 'bg-slate-100 text-slate-600 hover:bg-indigo-50 hover:text-indigo-600'
+                         }`}
+                     >
+                         {isConnecting === 'mail' ? 'Lade...' : isMailConnected ? 'Verbunden' : 'Verbinden'}
+                     </button>
+                 </div>
+                 
+                 <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
+                    <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400 flex items-center gap-2 mb-2"><Sparkles className="w-3.5 h-3.5 text-indigo-500"/> Google Gemini API Key</label>
+                    <div className="flex gap-2">
+                        <input 
+                            type="password"
+                            value={geminiKey}
+                            onChange={(e) => setGeminiKey(e.target.value)}
+                            className="flex-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-600 dark:text-white"
+                            placeholder="AIzaSy..."
+                        />
+                        <button 
+                            onClick={() => { localStorage.setItem('gemini_api_key', geminiKey); alert('API Key gespeichert.'); }} 
+                            className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700"
+                        >
+                            Speichern
+                        </button>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">Benötigt für KI-Analysen. Wird nur lokal im Browser gespeichert.</p>
+                 </div>
+
+                 {isPreviewEnv && (
+                     <div className="p-3 bg-amber-50 text-amber-800 text-xs rounded-lg border border-amber-200 flex items-start gap-2">
+                         <AlertTriangle className="w-4 h-4 shrink-0" />
+                         <p>Hinweis: In der Web-Preview können Google-Logins blockiert werden. Nutzen Sie die Desktop-Version für volle Funktionalität.</p>
+                     </div>
+                 )}
+             </div>
+         </SettingsSection>
+
+         {/* --- 4. DATENVERWALTUNG --- */}
+         <SettingsSection 
+            title="Datenverwaltung" 
+            icon={Database} 
+            isDark={isDark} 
+            description="Backup, Export & Import"
+            isOpen={activeSection === 'data'}
+            onToggle={() => toggleSection('data')}
+         >
+             <div className="p-6 grid grid-cols-2 gap-4">
+                 <button onClick={handleExport} className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-all group">
+                     <DownloadCloud className="w-8 h-8 text-slate-400 group-hover:text-indigo-600 mb-2" />
+                     <span className="font-semibold text-slate-700 dark:text-slate-300">Backup erstellen</span>
+                     <span className="text-xs text-slate-400">Alle Daten als JSON exportieren</span>
+                 </button>
+                 <button onClick={handleImportClick} className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-all group">
+                     <Upload className="w-8 h-8 text-slate-400 group-hover:text-indigo-600 mb-2" />
+                     <span className="font-semibold text-slate-700 dark:text-slate-300">Backup wiederherstellen</span>
+                     <span className="text-xs text-slate-400">JSON-Datei importieren</span>
+                 </button>
+                 <input ref={fileInputRef} type="file" onChange={handleFileChange} className="hidden" accept=".json" />
+                 
+                 {/* API Config for Developers */}
+                 <div className="col-span-2 mt-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
+                     <h3 className="font-bold text-sm text-slate-700 dark:text-slate-300 mb-2 flex items-center gap-2"><Server className="w-4 h-4"/> Backend Modus (Entwickler)</h3>
+                     <div className="flex items-center gap-4 mb-3">
+                         <label className="flex items-center gap-2 cursor-pointer">
+                             <input type="radio" checked={backendForm.mode === 'local'} onChange={() => setBackendForm({...backendForm, mode: 'local'})} />
+                             <span className="text-sm dark:text-slate-400">Lokal (Browser Storage)</span>
+                         </label>
+                         <label className="flex items-center gap-2 cursor-pointer">
+                             <input type="radio" checked={backendForm.mode === 'api'} onChange={() => setBackendForm({...backendForm, mode: 'api'})} />
+                             <span className="text-sm dark:text-slate-400">Externer API Server</span>
+                         </label>
+                     </div>
+                     {backendForm.mode === 'api' && (
+                         <div className="space-y-2 animate-in fade-in">
+                             <input value={backendForm.apiUrl || ''} onChange={e => setBackendForm({...backendForm, apiUrl: e.target.value})} placeholder="https://api.crm-backend.de" className="w-full px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-600" />
+                             <input value={backendForm.apiToken || ''} onChange={e => setBackendForm({...backendForm, apiToken: e.target.value})} placeholder="Bearer Token" type="password" className="w-full px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-600" />
+                         </div>
+                     )}
+                     <div className="mt-3 pt-3 border-t dark:border-slate-700 flex justify-end">
+                         <button onClick={() => { onUpdateBackendConfig(backendForm); alert('Backend Konfiguration gespeichert. Seite wird neu geladen.'); window.location.reload(); }} className="text-xs bg-slate-800 text-white px-3 py-1.5 rounded hover:bg-slate-700">Speichern & Reload</button>
+                     </div>
+                 </div>
+             </div>
+         </SettingsSection>
+         
+         {/* --- 5. SOFTWARE UPDATE --- */}
+         <SettingsSection 
+            title="Software Update" 
+            icon={RefreshCw} 
+            isDark={isDark} 
+            description="Version prüfen & aktualisieren"
+            isOpen={activeSection === 'update'}
+            onToggle={() => toggleSection('update')}
+         >
+             <div className="p-6">
+                 <div className="flex gap-2 mb-4">
+                     <input 
+                         value={updateUrl}
+                         onChange={(e) => { setUpdateUrl(e.target.value); localStorage.setItem('update_url', e.target.value); }}
+                         placeholder="https://mein-update-server.de/updates" 
+                         className="flex-1 px-4 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                     />
+                     <button 
+                         onClick={handleCheckUpdate} 
+                         disabled={isUpdating}
+                         className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2"
+                     >
+                         {isUpdating ? <Loader2 className="w-4 h-4 animate-spin"/> : <RefreshCcw className="w-4 h-4" />}
+                         {isUpdating ? 'Vergleiche Versionen...' : 'Update prüfen'}
+                     </button>
+                 </div>
+                 {updateStatus && (
+                     <div className={`p-3 rounded-lg text-sm font-medium flex items-center gap-2 ${updateStatus.includes('erfolgreich') ? 'bg-green-100 text-green-700' : updateStatus.includes('aktuell') ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-700'}`}>
+                         <Info className="w-4 h-4"/> {updateStatus}
+                     </div>
+                 )}
+                 <p className="text-xs text-slate-400 mt-2">
+                     Geben Sie die URL zu Ihrem Update-Server an, der die `index.html` und Assets hostet.
+                 </p>
+             </div>
+         </SettingsSection>
+
+         {/* --- 6. GEFAHRENZONE (Factory Reset) --- */}
+         <SettingsSection 
+            title="Gefahrenzone" 
+            icon={AlertOctagon} 
+            isDark={isDark} 
+            description="Datenlöschung & Reset"
+            isOpen={activeSection === 'danger'}
+            onToggle={() => toggleSection('danger')}
+         >
+             <div className="p-6 bg-red-50 dark:bg-red-900/10 border-t border-red-100 dark:border-red-900/30">
+                 <div className="flex items-start gap-4">
+                     <div className="p-3 bg-red-100 dark:bg-red-900/30 text-red-600 rounded-full">
+                         <Trash2 className="w-6 h-6" />
+                     </div>
+                     <div className="flex-1">
+                         <h3 className="text-lg font-bold text-red-700 dark:text-red-400">Alles Löschen (Factory Reset)</h3>
+                         <p className="text-sm text-red-600/80 dark:text-red-400/80 mt-1 mb-4">
+                             Diese Aktion löscht alle Kontakte, Rechnungen, Einstellungen und Aktivitäten unwiderruflich. 
+                             Das Programm wird auf den Werkszustand zurückgesetzt.
+                         </p>
+                         <button 
+                             onClick={handleWipeData}
+                             className="bg-red-600 hover:bg-red-700 text-white px-5 py-2.5 rounded-lg font-bold shadow-lg shadow-red-200 dark:shadow-none flex items-center gap-2"
+                         >
+                             <AlertOctagon className="w-4 h-4" />
+                             Alle Daten unwiderruflich löschen
+                         </button>
+                     </div>
+                 </div>
+             </div>
+         </SettingsSection>
+
       </main>
+
+      {/* Template Modal */}
+      {isTemplateModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+              <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-lg overflow-hidden">
+                  <div className="px-6 py-4 border-b dark:border-slate-700 flex justify-between items-center">
+                      <h2 className="font-bold dark:text-white">{editingTemplateId ? 'Vorlage bearbeiten' : 'Neue Vorlage'}</h2>
+                      <button onClick={() => setIsTemplateModalOpen(false)} className="dark:text-slate-400"><X className="w-5 h-5"/></button>
+                  </div>
+                  <form onSubmit={saveTemplate} className="p-6 space-y-4">
+                      <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Titel (Intern)</label><input value={templateForm.title} onChange={e=>setTemplateForm({...templateForm, title:e.target.value})} className="w-full border p-2 rounded mt-1 bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white" autoFocus required/></div>
+                      <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Betreff</label><input value={templateForm.subject} onChange={e=>setTemplateForm({...templateForm, subject:e.target.value})} className="w-full border p-2 rounded mt-1 bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white" required/></div>
+                      <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Nachricht</label><textarea value={templateForm.body} onChange={e=>setTemplateForm({...templateForm, body:e.target.value})} className="w-full border p-2 rounded mt-1 bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white" rows={6}/></div>
+                      <div className="flex justify-end pt-2"><button type="submit" className="bg-indigo-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-indigo-700">Speichern</button></div>
+                  </form>
+              </div>
+          </div>
+      )}
     </div>
   );
 };

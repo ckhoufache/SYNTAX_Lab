@@ -144,6 +144,7 @@ export const Finances: React.FC<FinancesProps> = ({
     const togglePaidStatus = (e: React.MouseEvent, invoice: Invoice) => {
         e.stopPropagation();
         if (invoice.isCancelled) return;
+        // Erlaubt nun auch Statusänderung für Storno-Rechnungen (amount < 0)
         onUpdateInvoice({ ...invoice, isPaid: !invoice.isPaid, paidDate: !invoice.isPaid ? new Date().toISOString().split('T')[0] : undefined });
     };
 
@@ -250,6 +251,7 @@ export const Finances: React.FC<FinancesProps> = ({
             
             '{taxLabel}': isStandardTax ? 'Umsatzsteuer 19%' : 'Umsatzsteuer 0% (Kleinunternehmer)',
             '{taxNote}': !isStandardTax ? 'Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.' : '',
+            '{dueDate}': invoice.date ? new Date(new Date(invoice.date).getTime() + 14 * 24 * 60 * 60 * 1000).toLocaleDateString('de-DE') : 'sofort',
             
             // Logo Logic: If logo exists, create img tag, else empty
             '{logoSection}': config.logoBase64 ? `<img src="${config.logoBase64}" style="max-height: 80px; width: auto;" alt="Logo"/>` : `<h1 style="font-size: 24px; font-weight: bold;">${config.companyName}</h1>`
@@ -467,9 +469,10 @@ export const Finances: React.FC<FinancesProps> = ({
                                                         <Ban className="w-3.5 h-3.5" /> Storniert
                                                     </span>
                                                 ) : isStorno ? (
-                                                     <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
-                                                        <CheckCircle2 className="w-3.5 h-3.5" /> Gutschrift
-                                                    </span>
+                                                    <button onClick={(e) => togglePaidStatus(e, inv)} className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border ${inv.isPaid ? 'bg-green-50 text-green-700 border-green-200' : 'bg-amber-50 text-amber-600 border-amber-200'}`}>
+                                                        {inv.isPaid ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
+                                                        {inv.isPaid ? 'Rückerstattet' : 'Ausstehend'}
+                                                    </button>
                                                 ) : (
                                                     <button onClick={(e) => togglePaidStatus(e, inv)} className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border ${inv.isPaid ? 'bg-green-50 text-green-700 border-green-200' : 'bg-white text-slate-500 border-slate-200'}`}>
                                                         {inv.isPaid ? <CheckCircle2 className="w-3.5 h-3.5" /> : <div className="w-3.5 h-3.5 rounded-full border border-slate-300"></div>}
@@ -626,8 +629,8 @@ export const Finances: React.FC<FinancesProps> = ({
             {/* PRINT MODAL (Dynamic Preview) */}
             {isPrintModalOpen && printInvoice && (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                    <div className="bg-slate-200 w-full h-full max-w-4xl rounded-xl flex flex-col overflow-hidden">
-                        <div className="bg-white p-4 border-b flex justify-between items-center">
+                    <div className="bg-slate-200 w-full h-full max-w-4xl rounded-xl flex flex-col overflow-hidden max-h-screen">
+                        <div className="bg-white p-4 border-b flex justify-between items-center shrink-0">
                             <h2 className="font-bold text-slate-800">Rechnungsvorschau</h2>
                             <div className="flex gap-2">
                                 <button onClick={triggerBrowserPrint} className="bg-indigo-600 text-white px-4 py-2 rounded flex items-center gap-2 text-sm font-medium hover:bg-indigo-700">
@@ -636,13 +639,13 @@ export const Finances: React.FC<FinancesProps> = ({
                                 <button onClick={()=>setIsPrintModalOpen(false)} className="bg-slate-100 text-slate-600 px-4 py-2 rounded text-sm font-medium hover:bg-slate-200">Schließen</button>
                             </div>
                         </div>
-                        <div className="flex-1 overflow-hidden relative bg-slate-500/10 flex justify-center p-8">
+                        <div className="flex-1 overflow-y-auto relative bg-slate-500/10 flex justify-center p-8">
                              {/* The actual preview logic happens here by compiling the template */}
                              <iframe 
                                 id="preview-iframe"
                                 title="Invoice Preview"
                                 srcDoc={compileInvoiceTemplate(printInvoice, invoiceConfig)}
-                                className="w-[210mm] h-[297mm] shadow-2xl bg-white scale-100 origin-top"
+                                className="w-[210mm] min-h-[297mm] shadow-2xl bg-white scale-100 origin-top"
                                 style={{transform: 'scale(1)', transformOrigin: 'top center'}} 
                              />
                         </div>

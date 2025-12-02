@@ -12,7 +12,8 @@ interface SidebarProps {
   onLogout: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, userProfile, theme, onLogout }) => {
+// Optimization: Use React.memo to prevent re-renders when parent state changes but props remain equal
+export const Sidebar: React.FC<SidebarProps> = React.memo(({ currentView, onChangeView, userProfile, theme, onLogout }) => {
   const isDark = theme === 'dark';
   
   const navItemClass = (view: ViewState) => 
@@ -117,4 +118,4 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, use
       </div>
     </aside>
   );
-};
+});

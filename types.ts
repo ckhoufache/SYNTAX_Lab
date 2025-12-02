@@ -12,6 +12,8 @@ export enum DealStage {
   LOST = 'Verloren'
 }
 
+export type ContactType = 'lead' | 'customer' | 'partner' | 'newsletter';
+
 export type BackendMode = 'local' | 'api';
 
 export interface BackendConfig {
@@ -26,6 +28,7 @@ export interface ProductPreset {
   id: string;
   title: string;
   value: number;
+  isSubscription?: boolean; // NEU: Abo / Einmalig
 }
 
 export interface UserProfile {
@@ -41,13 +44,14 @@ export interface Contact {
   name: string;
   role: string;
   company: string;
-  companyUrl?: string; // NEU
+  companyUrl?: string;
   email: string;
   avatar: string;
   lastContact: string;
   linkedin?: string;
   notes?: string;
   tags?: string[];
+  type?: ContactType; // NEU: Typisierung für Tabs
   
   // Retainer Details
   retainerActive?: boolean;

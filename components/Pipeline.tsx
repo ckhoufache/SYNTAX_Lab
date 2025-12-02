@@ -158,28 +158,25 @@ export const Pipeline: React.FC<PipelineProps> = ({
              
              if (welcomeConfig.subject && welcomeConfig.body) {
                  // Check Google Connection Logic (Local Implementation)
-                 const isGoogleMailConnected = localStorage.getItem('google_mail_connected') === 'true';
                  const storedConfig = localStorage.getItem('backend_config');
                  const config = storedConfig ? JSON.parse(storedConfig) : { mode: 'local' };
+                 const service = DataServiceFactory.create(config);
                  
-                 if (isGoogleMailConnected) {
-                     const service = DataServiceFactory.create(config);
-                     const body = welcomeConfig.body.replace('{name}', contact.name.split(' ')[0]);
-                     
-                     // Send non-blocking with attachments
-                     service.sendMail(contact.email, welcomeConfig.subject, body, welcomeConfig.attachments).then(success => {
-                         if (success) {
-                             onAddActivity({
-                                id: Math.random().toString(36).substr(2, 9),
-                                contactId: contact.id,
-                                type: 'email',
-                                content: `Automatische Willkommens-Mail gesendet (${welcomeConfig.attachments?.length ? 'mit Anhängen' : 'ohne Anhänge'})`,
-                                date: new Date().toISOString().split('T')[0],
-                                timestamp: new Date().toISOString()
-                            });
-                         }
-                     });
-                 }
+                 const body = welcomeConfig.body.replace('{name}', contact.name.split(' ')[0]);
+                 
+                 // Send non-blocking with attachments
+                 service.sendMail(contact.email, welcomeConfig.subject, body, welcomeConfig.attachments).then(success => {
+                     if (success) {
+                         onAddActivity({
+                            id: Math.random().toString(36).substr(2, 9),
+                            contactId: contact.id,
+                            type: 'email',
+                            content: `Automatische Willkommens-Mail gesendet (${welcomeConfig.attachments?.length ? 'mit Anhängen' : 'ohne Anhänge'})`,
+                            date: new Date().toISOString().split('T')[0],
+                            timestamp: new Date().toISOString()
+                        });
+                     }
+                 });
              }
         }
     }

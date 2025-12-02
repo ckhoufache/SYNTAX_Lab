@@ -10,113 +10,152 @@ declare global {
     }
 }
 
-// --- CONSTANTS: DEFAULT TEMPLATES ---
+// --- CONSTANTS: PROFESSIONAL PDF TEMPLATE ---
 
 const DEFAULT_PDF_TEMPLATE = `<!DOCTYPE html>
 <html lang="de">
 <head>
     <meta charset="UTF-8">
+    <title>Rechnung</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; -webkit-print-color-adjust: exact; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; -webkit-print-color-adjust: exact; color: #1e293b; }
+        .page { max-width: 210mm; margin: 0 auto; background: white; padding: 40px; min-height: 297mm; position: relative; }
+        @media print { 
+            body { background: white; } 
+            .page { box-shadow: none; margin: 0; padding: 20px; width: 100%; } 
+        }
     </style>
 </head>
-<body class="bg-white text-slate-800 p-[10mm] max-w-[210mm] mx-auto">
-    <!-- HEADER -->
+<body class="bg-gray-100">
+
+<div class="page shadow-lg">
+    <!-- TOP BAR (Small Info) -->
+    <div class="text-[10px] text-gray-400 uppercase tracking-widest mb-12 border-b border-gray-100 pb-2">
+        {companyName} • {addressLine1} • {addressLine2}
+    </div>
+
+    <!-- HEADER: LOGO & SENDER -->
     <div class="flex justify-between items-start mb-16">
-        <div>
-            <!-- LOGO PLACEHOLDER -->
-            <div class="mb-4">
+        <div class="w-1/2">
+             <!-- Logo Section -->
+            <div class="mb-6 h-16 flex items-center">
                 {logoSection}
             </div>
-            <p class="text-xs text-slate-500 font-medium">{companyName} • {addressLine1} • {addressLine2}</p>
+            <!-- Recipient Address Block (Window Envelope Style) -->
+            <div class="text-sm leading-relaxed text-gray-800 bg-gray-50/50 p-4 rounded-lg border border-gray-100 inline-block min-w-[300px]">
+                <p class="font-bold mb-1">{contactName}</p>
+                <p>Musterstraße 123</p>
+                <p>12345 Musterstadt</p>
+                <p class="text-gray-500 mt-2 text-xs">{email}</p>
+            </div>
         </div>
-        <div class="text-right text-sm text-slate-600">
-            <h1 class="text-xl font-bold text-slate-900 mb-2">{titlePrefix}</h1>
-            <p><span class="w-24 inline-block text-slate-400">Rechnungs-Nr:</span> <span class="font-mono font-medium">{invoiceNumber}</span></p>
-            <p><span class="w-24 inline-block text-slate-400">Datum:</span> {date}</p>
-            <p><span class="w-24 inline-block text-slate-400">Kunden-Nr:</span> {customerId}</p>
+
+        <!-- INVOICE META DATA -->
+        <div class="w-1/3 text-right">
+            <h1 class="text-3xl font-bold text-slate-800 mb-6 tracking-tight">{titlePrefix}</h1>
+            <div class="space-y-2 text-sm">
+                <div class="flex justify-between border-b border-gray-100 pb-1">
+                    <span class="text-gray-500">Nummer:</span>
+                    <span class="font-mono font-semibold">{invoiceNumber}</span>
+                </div>
+                <div class="flex justify-between border-b border-gray-100 pb-1">
+                    <span class="text-gray-500">Datum:</span>
+                    <span>{date}</span>
+                </div>
+                <div class="flex justify-between border-b border-gray-100 pb-1">
+                    <span class="text-gray-500">Kundennr:</span>
+                    <span>{customerId}</span>
+                </div>
+                 <div class="flex justify-between border-b border-gray-100 pb-1">
+                    <span class="text-gray-500">Bearbeiter:</span>
+                    <span>{footerText}</span>
+                </div>
+            </div>
         </div>
     </div>
 
-    <!-- RECIPIENT -->
-    <div class="mb-16 text-sm leading-relaxed">
-        <p class="font-bold text-lg text-slate-900">{contactName}</p>
-        <p class="text-slate-600">Musterstraße 1</p>
-        <p class="text-slate-600">12345 Musterstadt</p>
-    </div>
-
-    <!-- BODY -->
+    <!-- CONTENT BODY -->
     <div class="mb-8">
-        <h2 class="text-lg font-bold mb-4">{titlePrefix} {invoiceNumber}</h2>
-        <p class="text-sm text-slate-600 mb-6">
-            Sehr geehrte Damen und Herren,<br><br>
-            vielen Dank für Ihren Auftrag. Wir erlauben uns, folgende Leistungen in Rechnung zu stellen:
+        <h2 class="text-lg font-bold mb-2 text-slate-800">{description}</h2>
+        <p class="text-sm text-gray-600 mb-6">
+            Sehr geehrte Damen und Herren,<br>
+            gemäß unserem Vertrag berechnen wir Ihnen folgende Leistungen:
         </p>
     </div>
 
     <!-- TABLE -->
-    <table class="w-full text-left text-sm mb-12 border-collapse">
+    <table class="w-full text-left text-sm mb-12">
         <thead>
-            <tr class="border-b-2 border-slate-900 text-slate-500">
-                <th class="py-3 font-semibold">Beschreibung</th>
-                <th class="py-3 text-right font-semibold">Menge</th>
-                <th class="py-3 text-right font-semibold">Einzelpreis</th>
-                <th class="py-3 text-right font-semibold">Gesamt</th>
+            <tr class="bg-slate-100 text-slate-600 uppercase text-xs tracking-wider">
+                <th class="py-3 px-4 rounded-l-md">Pos.</th>
+                <th class="py-3 px-4">Beschreibung</th>
+                <th class="py-3 px-4 text-right">Menge</th>
+                <th class="py-3 px-4 text-right">Einzelpreis</th>
+                <th class="py-3 px-4 text-right rounded-r-md">Gesamt</th>
             </tr>
         </thead>
-        <tbody class="border-b border-slate-200">
+        <tbody class="divide-y divide-gray-100">
             <tr>
-                <td class="py-4 font-medium text-slate-800">{description}</td>
-                <td class="py-4 text-right text-slate-600">1,00</td>
-                <td class="py-4 text-right text-slate-600">{netAmount}</td>
-                <td class="py-4 text-right text-slate-800 font-medium">{netAmount}</td>
+                <td class="py-4 px-4 text-gray-400">01</td>
+                <td class="py-4 px-4 font-medium text-slate-800">{description}</td>
+                <td class="py-4 px-4 text-right text-gray-600">1,00</td>
+                <td class="py-4 px-4 text-right text-gray-600">{netAmount}</td>
+                <td class="py-4 px-4 text-right text-slate-800 font-medium">{netAmount}</td>
             </tr>
+            <!-- Platzhalter für weitere Zeilen -->
         </tbody>
-        <tfoot class="text-slate-700">
-            <tr>
-                <td colspan="3" class="py-3 text-right">Nettobetrag</td>
-                <td class="py-3 text-right font-medium">{netAmount}</td>
-            </tr>
-            <tr>
-                <td colspan="3" class="py-3 text-right">{taxLabel}</td>
-                <td class="py-3 text-right font-medium">{taxAmount}</td>
-            </tr>
-            <tr class="text-lg font-bold text-slate-900">
-                <td colspan="3" class="py-4 text-right">Gesamtbetrag</td>
-                <td class="py-4 text-right">{grossAmount}</td>
-            </tr>
-        </tfoot>
     </table>
 
-    <!-- TERMS -->
-    <div class="text-sm text-slate-600 mb-12 bg-slate-50 p-6 rounded-lg border border-slate-100">
-        <p class="font-semibold mb-2">Zahlungsbedingungen:</p>
-        <p>Bitte überweisen Sie den Betrag innerhalb von 14 Tagen ohne Abzug auf das unten genannte Konto.</p>
-        <p class="mt-2 text-xs text-slate-500 italic">{taxNote}</p>
+    <!-- TOTALS -->
+    <div class="flex justify-end mb-16">
+        <div class="w-1/2 space-y-2 text-sm">
+            <div class="flex justify-between text-gray-600">
+                <span>Nettobetrag</span>
+                <span>{netAmount}</span>
+            </div>
+            <div class="flex justify-between text-gray-600">
+                <span>{taxLabel}</span>
+                <span>{taxAmount}</span>
+            </div>
+            <div class="flex justify-between text-xl font-bold text-slate-900 border-t-2 border-slate-800 pt-2 mt-2">
+                <span>Gesamtbetrag</span>
+                <span>{grossAmount}</span>
+            </div>
+        </div>
     </div>
 
-    <!-- FOOTER -->
-    <div class="fixed bottom-[10mm] left-[10mm] right-[10mm] text-[10px] text-slate-500 border-t border-slate-200 pt-6 flex justify-between">
+    <!-- TERMS / FOOTER NOTE -->
+    <div class="bg-slate-50 border-l-4 border-indigo-500 p-4 rounded-r text-xs text-gray-600 mb-12">
+        <p class="font-bold text-indigo-900 mb-1">Zahlungsbedingungen:</p>
+        <p>Bitte überweisen Sie den Betrag von <span class="font-bold">{grossAmount}</span> bis zum <span class="font-bold">{dueDate}</span> auf das unten genannte Konto.</p>
+        <p class="mt-2 italic">{taxNote}</p>
+    </div>
+
+    <!-- FIXED FOOTER -->
+    <div class="absolute bottom-10 left-10 right-10 border-t border-gray-200 pt-6 text-[9px] text-gray-500 grid grid-cols-3 gap-8">
         <div>
-            <p class="font-bold text-slate-700">{companyName}</p>
+            <h4 class="font-bold text-gray-700 uppercase mb-1">{companyName}</h4>
             <p>{addressLine1}</p>
             <p>{addressLine2}</p>
             <p>{email}</p>
+            <p>{website}</p>
         </div>
         <div>
-            <p class="font-bold text-slate-700">Bankverbindung</p>
+            <h4 class="font-bold text-gray-700 uppercase mb-1">Bankverbindung</h4>
             <p>{bankName}</p>
             <p>IBAN: {iban}</p>
             <p>BIC: {bic}</p>
         </div>
         <div>
-            <p class="font-bold text-slate-700">Rechtliches</p>
-            <p>St-Nr: {taxId}</p>
-            <p>{footerText}</p>
+            <h4 class="font-bold text-gray-700 uppercase mb-1">Register & Steuer</h4>
+            <p>Steuer-Nr: {taxId}</p>
+            <p>Gerichtsstand: Berlin</p>
         </div>
     </div>
+
+</div>
 </body>
 </html>`;
 
@@ -192,6 +231,12 @@ export interface IDataService {
     
     // Automation
     processDueRetainers(): Promise<{ updatedContacts: Contact[], newInvoices: Invoice[], newActivities: Activity[] }>;
+
+    // System
+    checkAndInstallUpdate(url: string, statusCallback?: (status: string) => void): Promise<boolean>;
+    
+    // MAINTENANCE
+    wipeAllData(): Promise<void>;
 }
 
 // --- Local Storage Implementation (Cached & Optimized) ---
@@ -242,7 +287,13 @@ class LocalDataService implements IDataService {
     async init(): Promise<void> {
         // Load everything into cache at startup
         // Ensure mock data exists if storage is empty
-        if (!localStorage.getItem('contacts')) localStorage.setItem('contacts', JSON.stringify(mockContacts));
+        if (!localStorage.getItem('contacts')) {
+             const enrichedMockContacts = mockContacts.map(c => ({
+                 ...c,
+                 type: (c.id === '3' || c.id === '4') ? 'customer' : 'lead' // Simple mock logic
+             }));
+             localStorage.setItem('contacts', JSON.stringify(enrichedMockContacts));
+        }
         if (!localStorage.getItem('deals')) localStorage.setItem('deals', JSON.stringify(mockDeals));
         if (!localStorage.getItem('tasks')) localStorage.setItem('tasks', JSON.stringify(mockTasks));
         if (!localStorage.getItem('invoices')) localStorage.setItem('invoices', JSON.stringify(mockInvoices));
@@ -266,8 +317,8 @@ class LocalDataService implements IDataService {
             avatar: 'https://ui-avatars.com/api/?name=Max+Mustermann&background=random'
         });
         this.cache.productPresets = this.getFromStorage<ProductPreset[]>('productPresets', [
-            { id: 'beta', title: 'Beta Version', value: 500 },
-            { id: 'release', title: 'Release Version', value: 1500 }
+            { id: 'beta', title: 'Beta Version', value: 500, isSubscription: false },
+            { id: 'release', title: 'Release Version', value: 1500, isSubscription: true }
         ]);
         
         // Initialize Default Config with Professional Templates
@@ -856,7 +907,11 @@ Buchhaltung
 
     // --- MAIL SENDING WITH ATTACHMENT SUPPORT ---
     async sendMail(to: string, subject: string, body: string, attachments: EmailAttachment[] = []): Promise<boolean> {
-        if (!this.accessToken) { alert("Keine Verbindung zu Google."); return false; }
+        // Allow mailto if not connected
+        if (!this.accessToken) { 
+            console.log("No Google Access Token, returning false (caller may fallback to mailto)");
+            return false; 
+        }
         
         // Simple Multipart Construction for Gmail API
         const boundary = "foo_bar_baz";
@@ -963,6 +1018,20 @@ Buchhaltung
         
         // 3. Process each contact
         for (const contact of dueContacts) {
+            
+            // Optimization: Prevent duplicate invoices for same day/amount if run multiple times
+            const alreadyExists = invoices.some(inv => 
+                inv.contactId === contact.id && 
+                inv.amount === contact.retainerAmount &&
+                inv.date === new Date().toISOString().split('T')[0] &&
+                inv.description.includes('Retainer-Service')
+            );
+            
+            if (alreadyExists) {
+                console.warn(`Skipping duplicate retainer invoice for ${contact.name}`);
+                continue;
+            }
+
             maxNum++;
             const invoiceNum = `2025-${maxNum}`;
             const invAmount = contact.retainerAmount!;
@@ -1009,6 +1078,87 @@ Buchhaltung
         }
 
         return { updatedContacts, newInvoices, newActivities };
+    }
+
+    // --- SYSTEM UPDATE LOGIC ---
+    async checkAndInstallUpdate(url: string, statusCallback?: (status: string) => void): Promise<boolean> {
+        try {
+            if (statusCallback) statusCallback("Prüfe Version...");
+            
+            // Fetch Remote
+            const response = await fetch(`${url}/index.html`, { cache: 'no-store' });
+            if (!response.ok) throw new Error("Manifest nicht gefunden");
+            const remoteHtml = await response.text();
+
+            // Fetch Local
+            const localResponse = await fetch('/index.html');
+            const localHtml = await localResponse.text();
+
+            // Compare Assets
+            const extractAssets = (html: string) => {
+                const scriptMatch = html.match(/src="\/assets\/index-([a-zA-Z0-9]+)\.js"/);
+                const cssMatch = html.match(/href="\/assets\/index-([a-zA-Z0-9]+)\.css"/);
+                return {
+                    jsHash: scriptMatch ? scriptMatch[1] : null,
+                    cssHash: cssMatch ? cssMatch[1] : null
+                };
+            };
+            const localAssets = extractAssets(localHtml);
+            const remoteAssets = extractAssets(remoteHtml);
+
+            if (localAssets.jsHash === remoteAssets.jsHash && localAssets.cssHash === remoteAssets.cssHash) {
+                return false; // No update
+            }
+
+            if (statusCallback) statusCallback("Neue Version gefunden. Lade herunter...");
+
+             // 1. Parse Assets from Remote HTML
+            const assetFiles = [];
+            const scriptRegex = /src="\/assets\/([^"]+)"/g;
+            const cssRegex = /href="\/assets\/([^"]+)"/g;
+            let match;
+            while ((match = scriptRegex.exec(remoteHtml)) !== null) assetFiles.push(match[1]);
+            while ((match = cssRegex.exec(remoteHtml)) !== null) assetFiles.push(match[1]);
+
+            // 2. Download Assets
+            const downloadedFiles = [];
+            downloadedFiles.push({ name: 'index.html', content: remoteHtml, type: 'root' });
+
+            for (const fileName of assetFiles) {
+                if (statusCallback) statusCallback(`Lade ${fileName}...`);
+                const fileRes = await fetch(`${url}/assets/${fileName}`);
+                if (!fileRes.ok) throw new Error(`Fehler beim Laden von ${fileName}`);
+                const content = await fileRes.text();
+                downloadedFiles.push({ name: fileName, content: content, type: 'asset' });
+            }
+
+            // 3. Install via Electron IPC
+            if (window.require) {
+                const { ipcRenderer } = window.require('electron');
+                if (statusCallback) statusCallback("Installiere...");
+                const result = await ipcRenderer.invoke('install-update', downloadedFiles);
+                if (result.success) {
+                    if (statusCallback) statusCallback("Neustart...");
+                    setTimeout(() => {
+                        ipcRenderer.invoke('restart-app');
+                    }, 1000);
+                    return true;
+                } else {
+                    throw new Error(result.error);
+                }
+            } else {
+                 throw new Error("Update nur in Desktop-App möglich.");
+            }
+        } catch (e: any) {
+            console.error("Update Error", e);
+            throw e;
+        }
+    }
+    
+    // --- FACTORY RESET ---
+    async wipeAllData(): Promise<void> {
+        localStorage.clear();
+        window.location.reload();
     }
 }
 
@@ -1059,6 +1209,8 @@ class APIDataService implements IDataService {
     loginWithGoogle = async () => null;
     logout = async () => {};
     processDueRetainers = async () => ({ updatedContacts: [], newInvoices: [], newActivities: [] });
+    checkAndInstallUpdate = async () => false;
+    wipeAllData = async () => {};
 }
 
 // --- Factory ---
