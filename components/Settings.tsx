@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle, Key, RefreshCw, Copy, FileText, Image as ImageIcon, Briefcase, Settings as SettingsIcon, HardDrive, Users, DownloadCloud, RefreshCcw, Sparkles, Sliders, Link, Paperclip, Star, Paperclip as PaperclipIcon, FileCode, Printer, Info, AlertOctagon, Repeat } from 'lucide-react';
 import { UserProfile, Theme, ProductPreset, Contact, Deal, Task, BackupData, BackendConfig, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate, EmailAttachment, EmailAutomationConfig } from '../types';
@@ -365,21 +366,9 @@ export const Settings: React.FC<SettingsProps> = ({
       if (storedKey) setGeminiKey(storedKey);
   }, []);
 
-  useEffect(() => {
-      // If invoice config changes from outside, update local form BUT respect nested emailSettings
-      // and ensure defaults are present
-      if (!invConfigForm.companyName && invoiceConfig.companyName) {
-           setInvConfigForm(invoiceConfig);
-      } else {
-          // Selective update if fields are missing in form but present in props
-          if (!invConfigForm.emailSettings && invoiceConfig.emailSettings) {
-             setInvConfigForm(prev => ({...prev, emailSettings: invoiceConfig.emailSettings}));
-          }
-          if (!invConfigForm.pdfTemplate && invoiceConfig.pdfTemplate) {
-             setInvConfigForm(prev => ({...prev, pdfTemplate: invoiceConfig.pdfTemplate}));
-          }
-      }
-  }, [invoiceConfig]);
+  // NOTE: Removed useEffect that auto-synced invConfigForm from props.
+  // This prevents the form from resetting while the user is typing if the parent component re-renders.
+  // The form is initialized via useState(invoiceConfig) which gets the fresh prop when the Settings component mounts.
 
   useEffect(() => {
     const loadIntegrations = async () => {
@@ -543,7 +532,7 @@ export const Settings: React.FC<SettingsProps> = ({
       reader.readAsText(file);
   };
   
-  // --- WIPE / FACTORY RESET LOGIC ---
+  // --- WIPE / FACTORY RESET LOGIC (FIXED: 3x Confirm, no prompt) ---
   const handleWipeData = async () => {
       // Step 1
       if (!confirm("WARNUNG: Sie sind dabei, ALLE Daten im Programm zu löschen.\n\nDies beinhaltet Kontakte, Rechnungen, Einstellungen etc.\n\nSind Sie sicher?")) {
@@ -553,14 +542,12 @@ export const Settings: React.FC<SettingsProps> = ({
       if (!confirm("WIRKLICH LÖSCHEN?\n\nEs gibt kein 'Rückgängig'. Wenn Sie kein Backup haben, sind die Daten für immer verloren.\n\nWollen Sie wirklich fortfahren?")) {
           return;
       }
-      // Step 3
-      const confirmation = prompt("LETZTE SICHERHEITSABFRAGE:\n\nBitte tippen Sie das Wort 'LOESCHEN' (in Großbuchstaben) ein, um den Vorgang zu bestätigen.");
-      
-      if (confirmation === 'LOESCHEN') {
-          await dataService.wipeAllData();
-      } else {
-          alert("Abgebrochen. Das Wort stimmte nicht überein.");
+      // Step 3 (Ersatz für prompt(), da in Electron oft problematisch)
+      if (!confirm("LETZTE WARNUNG: \n\nSind Sie zu 100% sicher, dass Sie alle Daten unwiderruflich löschen wollen?")) {
+          return;
       }
+      
+      await dataService.wipeAllData();
   };
 
   const openTemplateModal = (template?: EmailTemplate) => {

@@ -166,7 +166,7 @@ export const compileInvoiceTemplate = (invoice: Invoice, config: InvoiceConfig) 
     const isStandardTax = config.taxRule === 'standard';
     
     // Calculations
-    const netAmount = invoice.amount;
+    const netAmount = Number(invoice.amount);
     const taxRate = isStandardTax ? 0.19 : 0;
     const taxAmount = netAmount * taxRate;
     const grossAmount = netAmount + taxAmount;
@@ -722,7 +722,7 @@ Buchhaltung
             date: new Date().toISOString().split('T')[0],
             contactId: original.contactId,
             contactName: original.contactName,
-            amount: -Math.abs(original.amount), // Ensure negative
+            amount: -Math.abs(Number(original.amount)), // Ensure negative number
             isPaid: true, // Mark as paid/settled immediately
             paidDate: new Date().toISOString().split('T')[0],
             relatedInvoiceId: original.id
@@ -1325,9 +1325,19 @@ Buchhaltung
         throw new Error("PDF Generierung ist nur in der Desktop-App verfügbar.");
     }
     
-    // --- FACTORY RESET ---
+    // --- FACTORY RESET (Fixed) ---
     async wipeAllData(): Promise<void> {
+        // Clear all storage
         localStorage.clear();
+        
+        // Reset internal cache to prevent lingering data
+        this.cache = {
+            contacts: null, activities: null, deals: null, tasks: null, 
+            invoices: null, expenses: null, userProfile: null, 
+            productPresets: null, invoiceConfig: null, emailTemplates: null
+        };
+        
+        // Force Reload
         window.location.reload();
     }
 }
