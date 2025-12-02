@@ -243,9 +243,20 @@ export const Pipeline: React.FC<PipelineProps> = ({
       <div className="flex-1 overflow-x-auto p-6">
         <div className="flex gap-6 h-full min-w-max">
           {columns.filter(col => visibleStages.includes(col.id as DealStage)).map((col) => {
-             const stageDeals = getDealsForStage(col.id as DealStage);
+             // Sorting Logic: For LEADS, sort by stageEnteredDate ASC (oldest first = longest waiting)
+             let stageDeals = getDealsForStage(col.id as DealStage);
+             
+             if (col.id === DealStage.LEAD) {
+                 stageDeals = [...stageDeals].sort((a, b) => {
+                     const dateA = a.stageEnteredDate ? new Date(a.stageEnteredDate).getTime() : 0;
+                     const dateB = b.stageEnteredDate ? new Date(b.stageEnteredDate).getTime() : 0;
+                     return dateA - dateB; // Oldest date first
+                 });
+             }
+             
              const isMinimalStage = [DealStage.LEAD, DealStage.CONTACTED, DealStage.FOLLOW_UP, DealStage.LOST].includes(col.id as DealStage);
-             const showDuration = col.id === DealStage.CONTACTED || col.id === DealStage.FOLLOW_UP;
+             // Show days for Lead, Contacted, Follow-Up
+             const showDuration = [DealStage.LEAD, DealStage.CONTACTED, DealStage.FOLLOW_UP].includes(col.id as DealStage);
 
              return (
               <div key={col.id} className="w-80 flex flex-col h-full animate-in fade-in slide-in-from-bottom-2 duration-300" onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, col.id as DealStage)}>
@@ -273,7 +284,7 @@ export const Pipeline: React.FC<PipelineProps> = ({
                                         <div className="min-w-0 flex-1"><p className="text-sm font-bold text-slate-700 truncate">{contact?.name || 'Unbekannt'}</p><p className="text-[10px] text-slate-400 truncate flex items-center gap-1"><Calendar className="w-2.5 h-2.5" /> {deal.stage === DealStage.LOST ? deal.lostDate : deal.dueDate}</p></div>
                                     </div>
                                     {showDuration && !deal.isPlaceholder && (
-                                        <div className={`w-12 flex flex-col items-center justify-center border-l shrink-0 ${daysInStage > 7 ? 'bg-red-50 border-red-100 text-red-600' : 'bg-slate-50 border-slate-100 text-slate-500'}`}><span className="text-lg font-bold leading-none">{daysInStage}</span><span className="text-[9px] uppercase tracking-wider opacity-70">Tage</span></div>
+                                        <div className={`w-12 flex flex-col items-center justify-center border-l shrink-0 ${daysInStage > 3 ? 'bg-red-50 border-red-100 text-red-600' : 'bg-slate-50 border-slate-100 text-slate-500'}`}><span className="text-lg font-bold leading-none">{daysInStage}</span><span className="text-[9px] uppercase tracking-wider opacity-70">Tage</span></div>
                                     )}
                                     <div className="absolute top-1 right-1 flex gap-0.5 opacity-0 group-hover:opacity-100 bg-white/80 rounded shadow-sm"><button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => openEditModal(e, deal)} className="text-slate-400 hover:text-indigo-600 p-1"><Pencil className="w-3 h-3" /></button><button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => handleDeleteClick(e, deal.id)} className="text-slate-400 hover:text-red-500 p-1"><Trash2 className="w-3 h-3" /></button></div>
                                 </div>

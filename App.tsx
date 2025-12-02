@@ -7,6 +7,7 @@ import { Pipeline } from './components/Pipeline';
 import { Settings } from './components/Settings';
 import { Tasks } from './components/Tasks';
 import { Finances } from './components/Finances';
+import { LoginScreen } from './components/LoginScreen';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { ViewState, Contact, Deal, UserProfile, Theme, Task, DealStage, ProductPreset, BackupData, BackendConfig, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate } from './types';
 import { DataServiceFactory, IDataService } from './services/dataService';
@@ -26,6 +27,7 @@ const App: React.FC = () => {
 
   // --- APP STATE ---
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoginLoading, setIsLoginLoading] = useState(false);
   
   // OPTIMIZED THEME INITIALIZATION
   const [theme, setTheme] = useState<Theme>(() => {
@@ -86,7 +88,11 @@ const App: React.FC = () => {
             
             // Check if user is effectively logged in via Google Token
             const token = localStorage.getItem('google_access_token');
-            setIsLoggedIn(!!token);
+            if (token) {
+                setIsLoggedIn(true);
+            } else {
+                setIsLoggedIn(false);
+            }
 
         } catch (error) {
             console.error("Failed to load data", error);
@@ -140,24 +146,28 @@ const App: React.FC = () => {
 
   // --- AUTH HANDLERS ---
   const handleLogin = async () => {
-      if (!backendConfig.googleClientId && backendConfig.mode === 'local') {
-          alert("Bitte geben Sie zuerst Ihre Google Client ID in den Einstellungen unter 'System & Verbindungen' ein.");
-          setCurrentView('settings');
+      if (!backendConfig.googleClientId) {
+          alert("Fehler: Keine Google Client ID konfiguriert.");
           return;
       }
-      setIsLoading(true);
+      setIsLoginLoading(true);
       const profile = await dataService.loginWithGoogle();
       if (profile) {
           setUserProfile(profile);
           setIsLoggedIn(true);
+          setCurrentView('dashboard');
       }
-      setIsLoading(false);
+      setIsLoginLoading(false);
   };
 
   const handleLogout = async () => {
       await dataService.logout();
       setIsLoggedIn(false);
-      alert("Sie wurden erfolgreich abgemeldet.");
+      // No alert needed, the UI switch is feedback enough
+  };
+
+  const handleUpdateConfig = (newConfig: BackendConfig) => {
+      setBackendConfig(newConfig);
   };
 
   // --- DATA MODIFICATION HANDLERS ---
@@ -180,6 +190,14 @@ const App: React.FC = () => {
   const handleAddActivity = async (newActivity: Activity) => {
       const saved = await dataService.saveActivity(newActivity);
       setActivities(prev => [saved, ...prev]);
+  };
+
+  const handleDeleteActivity = async (id: string) => {
+      // Direct delete without global confirm dialog for better UX in timeline
+      if (confirm("Möchten Sie diesen Eintrag wirklich aus der Historie entfernen?")) {
+          await dataService.deleteActivity(id);
+          setActivities(prev => prev.filter(a => a.id !== id));
+      }
   };
 
   const handleAddContact = async (newContact: Contact) => {
@@ -318,37 +336,22 @@ const App: React.FC = () => {
   };
   const onRequestDeleteTemplate = (id: string) => { setDeleteIntent({ type: 'template', id }); };
 
-  // --- CSV IMPORT LOGIC (Optimized) ---
+  // --- CSV IMPORT LOGIC ---
   const parseCSV = (str: string) => {
     const arr: string[][] = [];
     let quote = false;
     let row: string[] = [];
     let val = '';
-
     for (let i = 0; i < str.length; i++) {
       const c = str[i];
-      if (c === '"') {
-        quote = !quote;
-      } else if (c === ',' && !quote) {
-        row.push(val);
-        val = '';
-      } else if (c === '\n' && !quote) {
-        // Handle Windows CRLF by trimming carriage return from end of val if present
+      if (c === '"') { quote = !quote; } 
+      else if (c === ',' && !quote) { row.push(val); val = ''; } 
+      else if (c === '\n' && !quote) {
         if (val.endsWith('\r')) val = val.slice(0, -1);
-        row.push(val);
-        arr.push(row);
-        row = [];
-        val = '';
-      } else if (c !== '\r') {
-        val += c;
-      }
+        row.push(val); arr.push(row); row = []; val = '';
+      } else if (c !== '\r') { val += c; }
     }
-    // Push last row if exists
-    if (row.length > 0 || val) {
-        if (val.endsWith('\r')) val = val.slice(0, -1);
-        row.push(val);
-        arr.push(row);
-    }
+    if (row.length > 0 || val) { if (val.endsWith('\r')) val = val.slice(0, -1); row.push(val); arr.push(row); }
     return arr;
   };
 
@@ -356,37 +359,22 @@ const App: React.FC = () => {
       setIsLoading(true);
       try {
           const rows = parseCSV(csvText);
-          
-          if (rows.length < 2) {
-              alert("Die CSV Datei scheint leer oder ungültig zu sein.");
-              setIsLoading(false);
-              return;
-          }
-
+          if (rows.length < 2) { alert("Die CSV Datei scheint leer oder ungültig zu sein."); setIsLoading(false); return; }
           const headers = rows[0].map(h => h.replace(/^"|"$/g, '').trim());
           const lowerHeaders = headers.map(h => h.toLowerCase());
-          
-          // Flexible Header Matching
-          const findCol = (candidates: string[]) => {
-              for (const c of candidates) {
-                  const i = lowerHeaders.indexOf(c.toLowerCase());
-                  if (i !== -1) return i;
-              }
-              return -1;
-          };
-
+          const findCol = (candidates: string[]) => { for (const c of candidates) { const i = lowerHeaders.indexOf(c.toLowerCase()); if (i !== -1) return i; } return -1; };
           const idx = {
               fullName: findCol(['fullName', 'Name', 'Full Name', 'Voller Name']),
               firstName: findCol(['firstName', 'Vorname', 'First Name']),
               lastName: findCol(['lastName', 'Nachname', 'Last Name']),
-              companyName: findCol(['companyName', 'Company', 'Firma', 'Organization', 'Unternehmen']),
-              companyUrl: findCol(['companyUrl', 'regularCompanyUrl', 'Website', 'Webseite', 'URL', 'Homepage']),
-              role: findCol(['title', 'role', 'Position', 'Job Title', 'Job']),
-              linkedIn: findCol(['linkedInProfileUrl', 'profileUrl', 'LinkedIn', 'Social']),
-              img: findCol(['profileImageUrl', 'avatar', 'image', 'photo', 'bild', 'picture', 'profile picture', 'profilbild']),
-              summary: findCol(['summary', 'About', 'Info', 'Beschreibung']),
-              location: findCol(['location', 'Location', 'Ort', 'Stadt']),
-              email: findCol(['emailAddress', 'Email', 'E-Mail', 'Mail'])
+              companyName: findCol(['companyName', 'Company', 'Firma', 'Organization']),
+              companyUrl: findCol(['companyUrl', 'Website', 'Webseite', 'URL']),
+              role: findCol(['title', 'role', 'Position', 'Job Title']),
+              linkedIn: findCol(['linkedInProfileUrl', 'LinkedIn', 'Social']),
+              img: findCol(['profileImageUrl', 'avatar', 'image', 'photo']),
+              summary: findCol(['summary', 'About', 'Info']),
+              location: findCol(['location', 'Ort', 'Stadt']),
+              email: findCol(['emailAddress', 'Email', 'Mail'])
           };
 
           let newContactsCount = 0;
@@ -397,49 +385,26 @@ const App: React.FC = () => {
           for (let i = 1; i < rows.length; i++) {
               const row = rows[i];
               if (row.length < 2) continue;
-
-              const getValue = (index: number) => {
-                  if (index === -1 || index >= row.length) return '';
-                  return row[index].replace(/^"|"$/g, '').trim(); 
-              };
-
+              const getValue = (index: number) => { if (index === -1 || index >= row.length) return ''; return row[index].replace(/^"|"$/g, '').trim(); };
               const name = getValue(idx.fullName) || (getValue(idx.firstName) + ' ' + getValue(idx.lastName)).trim();
               if (!name) continue;
-
-              const company = getValue(idx.companyName);
-              const companyUrl = getValue(idx.companyUrl);
-              const role = getValue(idx.role) || 'Unbekannt';
-              const linkedin = getValue(idx.linkedIn);
-              
-              // Flexible Avatar Logic
-              let avatar = getValue(idx.img);
-              if (!avatar) {
-                  // Fallback: Generate generic avatar
-                  avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`;
-              }
-              
-              const summary = getValue(idx.summary);
-              const location = getValue(idx.location);
-              let notes = "";
-              if (location) notes += `Standort: ${location}\n\n`;
-              if (summary) notes += `Summary:\n${summary}`;
-
               const contactId = Math.random().toString(36).substr(2, 9);
-              
-              const newContact: Contact = {
+              let notes = "";
+              if (getValue(idx.location)) notes += `Standort: ${getValue(idx.location)}\n\n`;
+              if (getValue(idx.summary)) notes += `Summary:\n${getValue(idx.summary)}`;
+
+              newContacts.push({
                   id: contactId,
                   name,
-                  role,
-                  company,
-                  companyUrl, 
-                  email: getValue(idx.email) || '', 
-                  linkedin,
-                  avatar, 
+                  role: getValue(idx.role) || 'Unbekannt',
+                  company: getValue(idx.companyName),
+                  companyUrl: getValue(idx.companyUrl),
+                  email: getValue(idx.email) || '',
+                  linkedin: getValue(idx.linkedIn),
+                  avatar: getValue(idx.img) || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
                   lastContact: new Date().toISOString().split('T')[0],
                   notes
-              };
-
-              newContacts.push(newContact);
+              });
               
               newActivities.push({
                   id: Math.random().toString(36).substr(2, 9),
@@ -460,26 +425,16 @@ const App: React.FC = () => {
                   stageEnteredDate: new Date().toISOString().split('T')[0],
                   isPlaceholder: true
               });
-
               newContactsCount++;
           }
-
           for (const c of newContacts) await dataService.saveContact(c);
           for (const d of newDeals) await dataService.saveDeal(d);
           for (const a of newActivities) await dataService.saveActivity(a);
-
           setContacts(prev => [...newContacts, ...prev]);
           setDeals(prev => [...newDeals, ...prev]);
           setActivities(prev => [...newActivities, ...prev]);
-
-          alert(`${newContactsCount} Kontakte erfolgreich importiert und Pipelines angelegt.`);
-
-      } catch (e) {
-          console.error(e);
-          alert("Fehler beim Importieren der CSV Datei.");
-      } finally {
-          setIsLoading(false);
-      }
+          alert(`${newContactsCount} Kontakte erfolgreich importiert.`);
+      } catch (e) { console.error(e); alert("Fehler beim Importieren der CSV Datei."); } finally { setIsLoading(false); }
   };
 
   const handleImportData = async (data: BackupData) => {
@@ -489,62 +444,31 @@ const App: React.FC = () => {
           if (data.userProfile) await dataService.saveUserProfile(data.userProfile);
           if (data.productPresets) await dataService.saveProductPresets(data.productPresets);
           if (data.invoiceConfig) await dataService.saveInvoiceConfig(data.invoiceConfig);
-          if (data.emailTemplates && dataService.saveEmailTemplate) {
-               // Restore Templates (requires deleting old ones first ideally, but loop save works for simple restore)
-               for (const t of data.emailTemplates) await dataService.saveEmailTemplate(t);
-          }
+          if (data.emailTemplates && dataService.saveEmailTemplate) { for (const t of data.emailTemplates) await dataService.saveEmailTemplate(t); }
           if (data.theme) setTheme(data.theme);
-
-          if (data.contacts) {
-               localStorage.setItem('contacts', JSON.stringify(data.contacts)); 
-               setContacts(data.contacts);
-          }
-           if (data.deals) {
-              localStorage.setItem('deals', JSON.stringify(data.deals));
-              setDeals(data.deals);
-          }
-           if (data.tasks) {
-              localStorage.setItem('tasks', JSON.stringify(data.tasks));
-              setTasks(data.tasks);
-          }
-           if (data.invoices) {
-              localStorage.setItem('invoices', JSON.stringify(data.invoices));
-              setInvoices(data.invoices);
-          }
-           if (data.expenses) {
-              localStorage.setItem('expenses', JSON.stringify(data.expenses));
-              setExpenses(data.expenses);
-          }
-          if (data.activities) {
-              localStorage.setItem('activities', JSON.stringify(data.activities));
-              setActivities(data.activities);
-          }
-          
+          if (data.contacts) { localStorage.setItem('contacts', JSON.stringify(data.contacts)); setContacts(data.contacts); }
+           if (data.deals) { localStorage.setItem('deals', JSON.stringify(data.deals)); setDeals(data.deals); }
+           if (data.tasks) { localStorage.setItem('tasks', JSON.stringify(data.tasks)); setTasks(data.tasks); }
+           if (data.invoices) { localStorage.setItem('invoices', JSON.stringify(data.invoices)); setInvoices(data.invoices); }
+           if (data.expenses) { localStorage.setItem('expenses', JSON.stringify(data.expenses)); setExpenses(data.expenses); }
+          if (data.activities) { localStorage.setItem('activities', JSON.stringify(data.activities)); setActivities(data.activities); }
           window.location.reload(); 
-      } catch(e) {
-          console.error(e);
-          alert("Import fehlgeschlagen.");
-          setIsLoading(false);
-      }
+      } catch(e) { console.error(e); alert("Import fehlgeschlagen."); setIsLoading(false); }
   };
 
   const confirmDelete = async () => {
     if (!deleteIntent) return;
     try {
         if (deleteIntent.type === 'contact') {
-          const contactId = deleteIntent.id;
-          await dataService.deleteContact(contactId);
-          setContacts(prev => prev.filter(c => c.id !== contactId));
-          const dealsToDelete = deals.filter(d => d.contactId === contactId);
+          await dataService.deleteContact(deleteIntent.id);
+          setContacts(prev => prev.filter(c => c.id !== deleteIntent.id));
+          // Clean up related data
+          const dealsToDelete = deals.filter(d => d.contactId === deleteIntent.id);
           for (const d of dealsToDelete) await dataService.deleteDeal(d.id);
-          setDeals(prev => prev.filter(d => d.contactId !== contactId));
-          const tasksToDelete = tasks.filter(t => t.relatedEntityId === contactId);
+          setDeals(prev => prev.filter(d => d.contactId !== deleteIntent.id));
+          const tasksToDelete = tasks.filter(t => t.relatedEntityId === deleteIntent.id);
           for (const t of tasksToDelete) await dataService.deleteTask(t.id);
-          setTasks(prev => prev.filter(t => t.relatedEntityId !== contactId));
-          const actsToDelete = activities.filter(a => a.contactId === contactId);
-          for (const a of actsToDelete) await dataService.deleteActivity(a.id);
-          setActivities(prev => prev.filter(a => a.contactId !== contactId));
-
+          setTasks(prev => prev.filter(t => t.relatedEntityId !== deleteIntent.id));
         } else if (deleteIntent.type === 'deal') {
           await dataService.deleteDeal(deleteIntent.id);
           setDeals(prev => prev.filter(d => d.id !== deleteIntent.id));
@@ -561,12 +485,7 @@ const App: React.FC = () => {
           await dataService.deleteEmailTemplate(deleteIntent.id);
           setEmailTemplates(prev => prev.filter(t => t.id !== deleteIntent.id));
         }
-    } catch (e) {
-        console.error("Delete failed", e);
-        alert("Löschen fehlgeschlagen.");
-    } finally {
-        setDeleteIntent(null);
-    }
+    } catch (e) { console.error("Delete failed", e); alert("Löschen fehlgeschlagen."); } finally { setDeleteIntent(null); }
   };
 
   const handleNavigateToContacts = (filter: 'all' | 'recent', focusId?: string) => {
@@ -585,14 +504,29 @@ const App: React.FC = () => {
   };
   const handleNavigateToFinances = () => { setCurrentView('finances'); };
 
+  // --- RENDERING ---
+  
   if (isLoading || !userProfile || !invoiceConfig) {
       return (
-          <div className="flex h-screen w-full items-center justify-center bg-slate-50 dark:bg-slate-900">
+          <div className={`flex h-screen w-full items-center justify-center ${theme === 'dark' ? 'bg-slate-950' : 'bg-slate-50'}`}>
               <div className="flex flex-col items-center gap-4">
                   <Loader2 className="w-10 h-10 animate-spin text-indigo-600" />
-                  <p className="text-slate-500 font-medium">Lade CRM Daten...</p>
+                  <p className={`${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'} font-medium`}>Lade CRM Daten...</p>
               </div>
           </div>
+      );
+  }
+
+  // --- LOGIN CHECK ---
+  if (!isLoggedIn) {
+      return (
+          <LoginScreen 
+            onLogin={handleLogin} 
+            backendConfig={backendConfig}
+            onUpdateConfig={handleUpdateConfig}
+            isLoading={isLoginLoading}
+            theme={theme}
+          />
       );
   }
 
@@ -624,6 +558,7 @@ const App: React.FC = () => {
             onUpdateContact={handleUpdateContact}
             onDeleteContact={onRequestDeleteContact}
             onAddActivity={handleAddActivity}
+            onDeleteActivity={handleDeleteActivity}
             initialFilter={contactFilterMode}
             onClearFilter={() => setContactFilterMode('all')}
             focusedId={focusedContactId}
@@ -717,9 +652,9 @@ const App: React.FC = () => {
       <Sidebar 
         currentView={currentView} 
         onChangeView={handleChangeView} 
-        userProfile={isLoggedIn ? userProfile : null} 
+        userProfile={userProfile} 
         theme={theme}
-        onLogin={handleLogin}
+        onLogin={handleLogin} 
         onLogout={handleLogout}
       />
       <div className="flex-1 flex flex-col h-screen overflow-hidden relative">

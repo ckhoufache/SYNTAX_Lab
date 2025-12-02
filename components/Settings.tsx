@@ -430,491 +430,312 @@ export const Settings: React.FC<SettingsProps> = ({
           const uniqueAssets = [...new Set(assets)];
           console.log("Found assets:", uniqueAssets);
 
-          if (uniqueAssets.length === 0) {
-              // Maybe it's not a vite build or path is different.
-              // Warning only.
-              setUpdateStatus("Warnung: Keine Assets gefunden. Fahre fort...");
-          }
-
-          setUpdateStatus(`Lade ${uniqueAssets.length + 1} Dateien...`);
-
-          const filesToInstall = [];
+          // 3. Download all assets
+          const files = [];
           
-          // Add Index.html
-          filesToInstall.push({ name: 'index.html', content: indexHtml, type: 'root' });
+          // Add index.html
+          files.push({ name: 'index.html', content: indexHtml, type: 'root' });
 
-          // Fetch all assets
+          setUpdateStatus(`Lade ${uniqueAssets.length} Assets...`);
+          
           for (const asset of uniqueAssets) {
-               setUpdateStatus(`Lade Asset: ${asset}...`);
-               const assetRes = await fetch(`${baseUrl}/assets/${asset}`);
-               if (assetRes.ok) {
-                   const content = await assetRes.text();
-                   filesToInstall.push({ name: asset, content: content, type: 'asset' });
-               } else {
-                   console.warn(`Failed to fetch asset ${asset}`);
+               const assetUrl = `${baseUrl}/assets/${asset}`;
+               const resp = await fetch(assetUrl);
+               if (!resp.ok) console.warn("Failed to fetch asset:", asset);
+               else {
+                   const content = await resp.text(); 
+                   files.push({ name: asset, content, type: 'asset' });
                }
           }
 
-          setUpdateStatus('Installiere Update...');
-          
-          // Send to Electron
-          if (window.require) {
+          if (files.length > 0 && window.require) {
+              setUpdateStatus('Installiere Update...');
               const { ipcRenderer } = window.require('electron');
-              const result = await ipcRenderer.invoke('install-update', filesToInstall);
+              const result = await ipcRenderer.invoke('install-update', files);
               
               if (result.success) {
-                  setUpdateStatus('Update erfolgreich! Neustart...');
+                  setUpdateStatus('Update installiert! Neustart...');
                   setTimeout(() => {
                       ipcRenderer.invoke('restart-app');
-                  }, 1500);
+                  }, 2000);
               } else {
-                  throw new Error(result.error || "Unbekannter Fehler beim Schreiben");
+                  throw new Error(result.error);
               }
           } else {
-              throw new Error("Electron Umgebung nicht gefunden.");
+              alert("Keine Assets gefunden oder keine Electron Umgebung.");
+              setUpdateStatus('');
+              setIsUpdating(false);
           }
 
       } catch (e: any) {
           console.error(e);
-          setUpdateStatus(`Fehler: ${e.message}`);
+          alert(`Update Fehler: ${e.message}`);
+          setUpdateStatus('');
           setIsUpdating(false);
       }
   };
 
-  const handleResetUpdate = async () => {
-      if (confirm("Dies setzt die App auf die Originalversion zurück. Fortfahren?")) {
-          if (window.require) {
-              const { ipcRenderer } = window.require('electron');
-              await ipcRenderer.invoke('reset-update');
-              ipcRenderer.invoke('restart-app');
-          }
-      }
-  };
-
-  const handleSaveAll = () => {
-    if (backendForm.googleClientId) {
-        const cleanedId = backendForm.googleClientId.trim();
-        if (cleanedId !== backendForm.googleClientId) {
-            setBackendForm(prev => ({...prev, googleClientId: cleanedId}));
-        }
-    }
-    
-    // 1. Profile
-    onUpdateProfile(formData);
-    // 2. Theme
-    onUpdateTheme(currentTheme);
-    // 3. Presets
-    onUpdatePresets(localPresets);
-    // 4. Backend Config
-    onUpdateBackendConfig(backendForm);
-    // 5. Invoice Config
-    onUpdateInvoiceConfig(invConfigForm);
-    // 6. API Keys
-    if (geminiKey) localStorage.setItem('gemini_api_key', geminiKey);
-    else localStorage.removeItem('gemini_api_key');
-
-    // Show saved feedback
-    setShowSaved(true);
-    setTimeout(() => setShowSaved(false), 3000);
-  };
-
   return (
     <div className="flex-1 bg-slate-50 dark:bg-slate-950 h-screen overflow-y-auto flex flex-col relative">
-      <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-8 py-6 flex justify-between items-center shrink-0">
-        <div>
+      <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-8 py-6 shrink-0">
           <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Einstellungen</h1>
           <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Konfigurieren Sie Ihr CRM.</p>
-        </div>
-        <button 
-            onClick={handleSaveAll}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 shadow-lg shadow-indigo-200 dark:shadow-none transition-all hover:scale-105 active:scale-95"
-        >
-            {showSaved ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-            {showSaved ? 'Gespeichert!' : 'Einstellungen speichern'}
-        </button>
       </header>
-
-      <div className="p-8 pb-24 max-w-5xl mx-auto space-y-6">
-        
-        {/* SECTION: MEIN PROFIL */}
-        <SettingsSection title="Mein Profil" icon={User} isDark={isDark} description="Ihre persönlichen Daten und Anzeigeoptionen." defaultOpen={true}>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-6">
-                <div className="space-y-4">
-                    <div className="flex items-center gap-4">
-                        <img src={formData.avatar} alt="Avatar" className="w-16 h-16 rounded-full border-2 border-white shadow-sm object-cover" />
-                        <div className="flex-1">
-                            <label className={`text-xs font-semibold uppercase mb-1 block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Avatar URL</label>
-                            <input name="avatar" value={formData.avatar} onChange={handleChange} className={`w-full px-3 py-2 rounded-lg border text-sm transition-all outline-none focus:ring-2 focus:ring-indigo-500 ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200'}`} />
-                        </div>
-                    </div>
-                    <div>
-                        <label className={`text-xs font-semibold uppercase mb-1 block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Vorname</label>
-                        <input name="firstName" value={formData.firstName} onChange={handleChange} className={`w-full px-3 py-2 rounded-lg border text-sm transition-all outline-none focus:ring-2 focus:ring-indigo-500 ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200'}`} />
-                    </div>
-                    <div>
-                        <label className={`text-xs font-semibold uppercase mb-1 block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Nachname</label>
-                        <input name="lastName" value={formData.lastName} onChange={handleChange} className={`w-full px-3 py-2 rounded-lg border text-sm transition-all outline-none focus:ring-2 focus:ring-indigo-500 ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200'}`} />
-                    </div>
-                </div>
-                <div className="space-y-4">
-                    <div>
-                        <label className={`text-xs font-semibold uppercase mb-1 block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>E-Mail Adresse</label>
-                        <input name="email" value={formData.email} onChange={handleChange} className={`w-full px-3 py-2 rounded-lg border text-sm transition-all outline-none focus:ring-2 focus:ring-indigo-500 ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200'}`} />
-                    </div>
-                    <div>
-                        <label className={`text-xs font-semibold uppercase mb-1 block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Rolle</label>
-                        <input name="role" value={formData.role} onChange={handleChange} className={`w-full px-3 py-2 rounded-lg border text-sm transition-all outline-none focus:ring-2 focus:ring-indigo-500 ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200'}`} />
-                    </div>
-                    <div>
-                         <label className={`text-xs font-semibold uppercase mb-1 block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Design</label>
-                         <div className="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-1 w-fit">
-                            <button onClick={() => onUpdateTheme('light')} className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${currentTheme === 'light' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'}`}>Light</button>
-                            <button onClick={() => onUpdateTheme('dark')} className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${currentTheme === 'dark' ? 'bg-slate-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'}`}>Dark</button>
+      
+      <main className="p-8 space-y-6 pb-20 max-w-5xl mx-auto w-full">
+         {/* Profile Section */}
+         <SettingsSection title="Profil & Darstellung" icon={User} isDark={isDark} description="Persönliche Daten und Design">
+             <div className="p-6 space-y-6">
+                 <div className="flex items-center gap-6">
+                     <img src={formData.avatar} alt="Avatar" className="w-20 h-20 rounded-full object-cover ring-4 ring-slate-50 dark:ring-slate-800" />
+                     <div className="space-y-2 flex-1">
+                         <div className="grid grid-cols-2 gap-4">
+                             <div>
+                                 <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Vorname</label>
+                                 <input name="firstName" value={formData.firstName} onChange={handleChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" />
+                             </div>
+                             <div>
+                                 <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Nachname</label>
+                                 <input name="lastName" value={formData.lastName} onChange={handleChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" />
+                             </div>
                          </div>
-                    </div>
-                </div>
-            </div>
-        </SettingsSection>
-        
-        {/* SECTION: SYSTEM & VERBINDUNGEN */}
-        <SettingsSection title="System & Verbindungen" icon={HardDrive} isDark={isDark} description="Google Integration, API Keys und Backend-Konfiguration.">
-             {/* Google Integration */}
-             <div className="py-6 space-y-6">
-                <div className={`p-4 rounded-lg border ${isDark ? 'bg-slate-800/50 border-slate-700' : 'bg-blue-50 border-blue-100'}`}>
-                    <h3 className={`font-bold mb-2 flex items-center gap-2 ${isDark ? 'text-blue-400' : 'text-blue-800'}`}>
-                        <Globe className="w-4 h-4" /> Google Integration
-                    </h3>
-                    <p className={`text-sm mb-4 ${isDark ? 'text-slate-300' : 'text-blue-700'}`}>
-                        Verbinden Sie Ihren Google Account für Kalender-Sync und E-Mail Versand.
-                        {isPreviewEnv && <span className="block mt-1 font-bold text-red-500">Hinweis: In der Web-Preview funktioniert die Google API evtl. nicht korrekt aufgrund von Cross-Origin Policies. Nutzen Sie die Electron App.</span>}
-                    </p>
-                    <div className="space-y-3">
                          <div>
-                            <label className={`text-xs font-semibold uppercase mb-1 block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Google Client ID (OAuth 2.0)</label>
-                            <input 
-                                value={backendForm.googleClientId || ''} 
-                                onChange={(e) => setBackendForm({...backendForm, googleClientId: e.target.value})} 
-                                placeholder="z.B. 12345-abcde.apps.googleusercontent.com"
-                                className={`w-full px-3 py-2 rounded-lg border text-sm transition-all outline-none focus:ring-2 focus:ring-indigo-500 font-mono ${isDark ? 'bg-slate-900 border-slate-600 text-white' : 'bg-white border-slate-200'}`} 
-                            />
-                            <p className="text-[10px] text-slate-400 mt-1">Erforderlich für Login, Kalender & Mail. Zu finden in der Google Cloud Console.</p>
+                             <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">E-Mail</label>
+                             <input name="email" value={formData.email} onChange={handleChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" />
                          </div>
-                         <div className="flex gap-4 pt-2">
-                             <button 
-                                onClick={handleToggleCalendar}
-                                className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium border transition-all flex items-center justify-center gap-2 ${isCalendarConnected ? 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                             >
-                                 <Calendar className="w-4 h-4" /> {isConnecting === 'calendar' ? 'Verbinde...' : (isCalendarConnected ? 'Kalender verbunden' : 'Kalender verbinden')}
-                             </button>
-                             <button 
-                                onClick={handleToggleMail}
-                                className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium border transition-all flex items-center justify-center gap-2 ${isMailConnected ? 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                             >
-                                 <Mail className="w-4 h-4" /> {isConnecting === 'mail' ? 'Verbinde...' : (isMailConnected ? 'Gmail verbunden' : 'Gmail verbinden')}
-                             </button>
-                         </div>
-                    </div>
-                </div>
-
-                {/* AI Configuration */}
-                <div className={`p-4 rounded-lg border ${isDark ? 'bg-slate-800/50 border-slate-700' : 'bg-purple-50 border-purple-100'}`}>
-                    <h3 className={`font-bold mb-2 flex items-center gap-2 ${isDark ? 'text-purple-400' : 'text-purple-800'}`}>
-                        <Sparkles className="w-4 h-4" /> Künstliche Intelligenz (Gemini)
-                    </h3>
-                    <p className={`text-sm mb-4 ${isDark ? 'text-slate-300' : 'text-purple-700'}`}>
-                        Hinterlegen Sie Ihren API Key, um KI-Features wie das Daily Briefing zu nutzen.
-                    </p>
-                    <div>
-                        <label className={`text-xs font-semibold uppercase mb-1 block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Google Gemini API Key</label>
-                        <div className="flex gap-2">
-                            <input 
-                                type="password"
-                                value={geminiKey} 
-                                onChange={(e) => setGeminiKey(e.target.value)} 
-                                placeholder="AIzaSy..."
-                                className={`flex-1 px-3 py-2 rounded-lg border text-sm transition-all outline-none focus:ring-2 focus:ring-purple-500 font-mono ${isDark ? 'bg-slate-900 border-slate-600 text-white' : 'bg-white border-slate-200'}`} 
-                            />
-                        </div>
-                        <p className="text-[10px] text-slate-400 mt-1">Der Key wird lokal im Browser gespeichert.</p>
-                    </div>
-                </div>
-
-                {/* Backend Mode */}
-                <div>
-                     <label className={`text-xs font-semibold uppercase mb-1 block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Daten-Speicherort</label>
-                     <div className="grid grid-cols-2 gap-4">
-                        <div onClick={() => setBackendForm({...backendForm, mode: 'local'})} className={`cursor-pointer border rounded-xl p-4 transition-all ${backendForm.mode === 'local' ? 'ring-2 ring-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200' : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>
-                            <div className="flex items-center gap-2 mb-1 font-bold text-slate-700 dark:text-slate-200"><Laptop className="w-4 h-4"/> Lokal (Browser)</div>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">Daten werden im LocalStorage gespeichert. Keine externe Cloud nötig.</p>
-                        </div>
-                        <div onClick={() => setBackendForm({...backendForm, mode: 'api'})} className={`cursor-pointer border rounded-xl p-4 transition-all ${backendForm.mode === 'api' ? 'ring-2 ring-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200' : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>
-                            <div className="flex items-center gap-2 mb-1 font-bold text-slate-700 dark:text-slate-200"><Server className="w-4 h-4"/> Externes Backend</div>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">Verbindung zu einer REST API (z.B. Node.js/Express Server).</p>
-                        </div>
                      </div>
-                </div>
+                 </div>
+                 <div className="flex justify-end">
+                     <button onClick={() => { onUpdateProfile(formData); setShowSaved(true); setTimeout(() => setShowSaved(false), 2000); }} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-2">
+                         {showSaved ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />} Speichern
+                     </button>
+                 </div>
 
-                {/* API Config (if external) */}
-                {backendForm.mode === 'api' && (
-                    <div className="animate-in fade-in slide-in-from-top-4 space-y-4 pt-2">
-                        <div>
-                            <label className={`text-xs font-semibold uppercase mb-1 block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>API URL</label>
-                            <input value={backendForm.apiUrl || ''} onChange={(e) => setBackendForm({...backendForm, apiUrl: e.target.value})} placeholder="https://api.meincrm.de" className={`w-full px-3 py-2 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-indigo-500 ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200'}`} />
-                        </div>
-                        <div>
-                            <label className={`text-xs font-semibold uppercase mb-1 block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>API Token (Optional)</label>
-                            <input type="password" value={backendForm.apiToken || ''} onChange={(e) => setBackendForm({...backendForm, apiToken: e.target.value})} className={`w-full px-3 py-2 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-indigo-500 ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200'}`} />
-                        </div>
-                    </div>
-                )}
+                 <div className="border-t border-slate-100 dark:border-slate-800 pt-6">
+                     <label className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-3 block flex items-center gap-2"><Palette className="w-4 h-4"/> Design Modus</label>
+                     <div className="flex gap-4">
+                         <button onClick={() => onUpdateTheme('light')} className={`flex-1 py-3 border rounded-xl flex items-center justify-center gap-2 ${currentTheme === 'light' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 hover:bg-slate-50 text-slate-600'}`}>
+                             Hell
+                         </button>
+                         <button onClick={() => onUpdateTheme('dark')} className={`flex-1 py-3 border rounded-xl flex items-center justify-center gap-2 ${currentTheme === 'dark' ? 'border-indigo-600 bg-slate-800 text-white' : 'border-slate-200 hover:bg-slate-50 text-slate-600'}`}>
+                             Dunkel
+                         </button>
+                     </div>
+                 </div>
              </div>
-        </SettingsSection>
+         </SettingsSection>
 
-        {/* SECTION: BUCHHALTUNG */}
-        <SettingsSection title="Rechnungen & Buchhaltung" icon={FileText} isDark={isDark} description="Firmendaten, Bankverbindung und Layout für PDF-Rechnungen.">
-            <div className="py-6 space-y-6">
-                {/* Logo Upload */}
-                <div className="flex items-start gap-6">
-                     <div 
-                        onClick={() => logoInputRef.current?.click()}
-                        className={`w-32 h-32 rounded-lg border-2 border-dashed flex flex-col items-center justify-center cursor-pointer hover:bg-slate-50 transition-colors overflow-hidden relative ${isDark ? 'border-slate-700 hover:bg-slate-800' : 'border-slate-300'}`}
-                     >
-                        {invConfigForm.logoBase64 ? (
-                            <img src={invConfigForm.logoBase64} alt="Firmenlogo" className="w-full h-full object-contain p-2" />
-                        ) : (
-                            <>
-                                <ImageIcon className="w-8 h-8 text-slate-400 mb-2" />
-                                <span className="text-xs text-slate-500 text-center px-2">Logo hochladen</span>
-                            </>
-                        )}
-                        <input type="file" ref={logoInputRef} onChange={handleLogoUpload} className="hidden" accept="image/*" />
+         {/* Invoice Config */}
+         <SettingsSection title="Rechnungskonfiguration" icon={FileText} isDark={isDark} description="Firmendaten für PDF Rechnungen">
+             <div className="p-6 grid grid-cols-2 gap-4">
+                 <div className="col-span-2">
+                     <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Firmenlogo</label>
+                     <div className="mt-1 flex items-center gap-4">
+                         {invConfigForm.logoBase64 && <img src={invConfigForm.logoBase64} alt="Logo Preview" className="h-12 w-auto object-contain" />}
+                         <button onClick={() => logoInputRef.current?.click()} className="text-sm text-indigo-600 hover:underline">Logo hochladen...</button>
+                         <input ref={logoInputRef} type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
                      </div>
-                     <div className="flex-1 space-y-4">
-                        <div>
-                            <label className={`text-xs font-semibold uppercase mb-1 block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Firmenname</label>
-                            <input name="companyName" value={invConfigForm.companyName} onChange={handleInvConfigChange} className={`w-full px-3 py-2 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-indigo-500 ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200'}`} />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className={`text-xs font-semibold uppercase mb-1 block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Straße & Nr.</label>
-                                <input name="addressLine1" value={invConfigForm.addressLine1} onChange={handleInvConfigChange} className={`w-full px-3 py-2 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-indigo-500 ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200'}`} />
-                            </div>
-                            <div>
-                                <label className={`text-xs font-semibold uppercase mb-1 block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>PLZ & Ort</label>
-                                <input name="addressLine2" value={invConfigForm.addressLine2} onChange={handleInvConfigChange} className={`w-full px-3 py-2 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-indigo-500 ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200'}`} />
-                            </div>
-                        </div>
-                     </div>
-                </div>
-
-                <SubSection title="Bankverbindung & Steuer" isDark={isDark}>
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label className={`text-xs font-semibold uppercase mb-1 block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Bankname</label>
-                            <input name="bankName" value={invConfigForm.bankName} onChange={handleInvConfigChange} className={`w-full px-3 py-2 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-indigo-500 ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200'}`} />
-                        </div>
-                         <div>
-                            <label className={`text-xs font-semibold uppercase mb-1 block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Steuernummer / USt-ID</label>
-                            <input name="taxId" value={invConfigForm.taxId} onChange={handleInvConfigChange} className={`w-full px-3 py-2 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-indigo-500 ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200'}`} />
-                        </div>
-                        <div>
-                            <label className={`text-xs font-semibold uppercase mb-1 block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>IBAN</label>
-                            <input name="iban" value={invConfigForm.iban} onChange={handleInvConfigChange} className={`w-full px-3 py-2 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-indigo-500 ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200'}`} />
-                        </div>
-                        <div>
-                            <label className={`text-xs font-semibold uppercase mb-1 block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>BIC</label>
-                            <input name="bic" value={invConfigForm.bic} onChange={handleInvConfigChange} className={`w-full px-3 py-2 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-indigo-500 ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200'}`} />
-                        </div>
-                     </div>
-                </SubSection>
-
-                <SubSection title="Kontakt & Footer" isDark={isDark}>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                        <div>
-                            <label className={`text-xs font-semibold uppercase mb-1 block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>E-Mail (Rechnung)</label>
-                            <input name="email" value={invConfigForm.email} onChange={handleInvConfigChange} className={`w-full px-3 py-2 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-indigo-500 ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200'}`} />
-                        </div>
-                        <div>
-                            <label className={`text-xs font-semibold uppercase mb-1 block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Webseite</label>
-                            <input name="website" value={invConfigForm.website} onChange={handleInvConfigChange} className={`w-full px-3 py-2 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-indigo-500 ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200'}`} />
-                        </div>
+                 </div>
+                 <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Firmenname</label><input name="companyName" value={invConfigForm.companyName} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
+                 <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">E-Mail (Firma)</label><input name="email" value={invConfigForm.email} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
+                 <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Straße & Nr.</label><input name="addressLine1" value={invConfigForm.addressLine1} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
+                 <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">PLZ & Ort</label><input name="addressLine2" value={invConfigForm.addressLine2} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
+                 <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">IBAN</label><input name="iban" value={invConfigForm.iban} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
+                 <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">BIC</label><input name="bic" value={invConfigForm.bic} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
+                 <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Bankname</label><input name="bankName" value={invConfigForm.bankName} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
+                 <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Steuernummer</label><input name="taxId" value={invConfigForm.taxId} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
+                 <div className="col-span-2"><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Fußzeile (Text)</label><textarea name="footerText" value={invConfigForm.footerText || ''} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" rows={2} /></div>
+                 <div className="col-span-2 flex justify-end"><button onClick={() => { onUpdateInvoiceConfig(invConfigForm); alert('Gespeichert'); }} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">Speichern</button></div>
+             </div>
+         </SettingsSection>
+         
+         {/* Integrations */}
+         <SettingsSection title="Integrationen & API" icon={Globe} isDark={isDark} description="Google Services & KI Verbindung">
+             <div className="p-6 space-y-6">
+                 {/* Google Config */}
+                 <div>
+                    <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-2">Google Cloud Platform</h3>
+                    <div className="flex gap-2 mb-2">
+                        <input 
+                            type="text" 
+                            placeholder="Client ID eingeben" 
+                            value={backendForm.googleClientId || ''}
+                            onChange={(e) => setBackendForm({...backendForm, googleClientId: e.target.value})}
+                            className="flex-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                        />
+                        <button onClick={() => { onUpdateBackendConfig(backendForm); alert('Client ID gespeichert'); }} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium">Speichern</button>
                     </div>
-                    <div>
-                        <label className={`text-xs font-semibold uppercase mb-1 block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Fußzeile (Text)</label>
-                        <textarea name="footerText" value={invConfigForm.footerText} onChange={handleInvConfigChange} rows={3} className={`w-full px-3 py-2 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-indigo-500 ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200'}`} />
-                    </div>
-                </SubSection>
-            </div>
-        </SettingsSection>
-
-        {/* SECTION: VORLAGEN & PRESETS */}
-        <SettingsSection title="Vorlagen & Presets" icon={Package} isDark={isDark} description="E-Mail Templates und Produkt-Schnellwahl verwalten.">
-            <div className="py-6 space-y-6">
-                
-                {/* Product Presets */}
-                <div>
-                    <h3 className={`font-bold mb-3 flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-800'}`}>Produkt-Pakete (Pipeline)</h3>
-                    <div className="space-y-3">
-                        {localPresets.map(preset => (
-                            <div key={preset.id} className={`flex items-center justify-between p-3 rounded-lg border ${isDark ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-slate-200'}`}>
-                                {editingPresetId === preset.id ? (
-                                    <div className="flex-1 flex gap-2 items-center">
-                                        <input autoFocus value={editPresetTitle} onChange={e => setEditPresetTitle(e.target.value)} className={`flex-1 px-2 py-1 rounded text-sm border outline-none ${isDark ? 'bg-slate-700 border-slate-600 text-white' : 'bg-slate-50 border-slate-300'}`} />
-                                        <input type="number" value={editPresetValue} onChange={e => setEditPresetValue(e.target.value)} className={`w-24 px-2 py-1 rounded text-sm border outline-none ${isDark ? 'bg-slate-700 border-slate-600 text-white' : 'bg-slate-50 border-slate-300'}`} />
-                                        <button onClick={handleSaveEditPreset} className="p-1.5 bg-green-100 text-green-700 rounded hover:bg-green-200"><Check className="w-4 h-4"/></button>
-                                        <button onClick={handleCancelEditPreset} className="p-1.5 bg-slate-100 text-slate-600 rounded hover:bg-slate-200"><X className="w-4 h-4"/></button>
-                                    </div>
-                                ) : (
-                                    <>
-                                        <div>
-                                            <span className={`font-medium text-sm block ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{preset.title}</span>
-                                        </div>
-                                        <div className="flex items-center gap-4">
-                                            <span className="text-sm font-bold text-indigo-600">{preset.value} €</span>
-                                            <div className="flex gap-1">
-                                                <button onClick={() => handleStartEditPreset(preset)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded"><Pencil className="w-4 h-4" /></button>
-                                                <button onClick={() => handleDeletePreset(preset.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4" /></button>
-                                            </div>
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-                        ))}
-                        <div className="flex gap-2">
-                            <input 
-                                value={newPresetTitle} 
-                                onChange={(e) => setNewPresetTitle(e.target.value)} 
-                                placeholder="Neues Produkt / Paket..." 
-                                className={`flex-1 px-3 py-2 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-indigo-500 ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200'}`}
-                            />
-                            <input 
-                                type="number" 
-                                value={newPresetValue} 
-                                onChange={(e) => setNewPresetValue(e.target.value)} 
-                                placeholder="Betrag €" 
-                                className={`w-32 px-3 py-2 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-indigo-500 ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200'}`}
-                            />
-                            <button onClick={handleAddPreset} disabled={!newPresetTitle} className="bg-slate-800 hover:bg-slate-900 text-white px-3 py-2 rounded-lg disabled:opacity-50"><Plus className="w-5 h-5"/></button>
-                        </div>
-                    </div>
-                </div>
-                
-                <div className={`border-t my-6 ${isDark ? 'border-slate-800' : 'border-slate-100'}`}></div>
-
-                {/* Email Templates */}
-                <div>
-                     <div className="flex justify-between items-center mb-3">
-                         <h3 className={`font-bold flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-800'}`}>E-Mail Vorlagen</h3>
-                         <button onClick={() => openTemplateModal()} className="text-xs text-indigo-600 hover:underline flex items-center gap-1"><Plus className="w-3 h-3"/> Neu erstellen</button>
-                     </div>
-                     <div className="space-y-3">
-                        {emailTemplates.map(tpl => (
-                            <div key={tpl.id} className={`p-3 rounded-lg border flex justify-between items-center group ${isDark ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-slate-200'}`}>
+                    
+                    <div className="grid grid-cols-2 gap-4 mt-4">
+                        <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-4 flex justify-between items-center">
+                            <div className="flex items-center gap-3">
+                                <Calendar className={`w-5 h-5 ${isCalendarConnected ? 'text-green-500' : 'text-slate-400'}`} />
                                 <div>
-                                    <p className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{tpl.title}</p>
-                                    <p className="text-xs text-slate-500 truncate max-w-md">{tpl.subject}</p>
-                                </div>
-                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button onClick={() => openTemplateModal(tpl)} className="p-1.5 text-slate-400 hover:text-indigo-600 rounded"><Pencil className="w-4 h-4" /></button>
-                                    <button onClick={() => onDeleteTemplate(tpl.id)} className="p-1.5 text-slate-400 hover:text-red-600 rounded"><Trash2 className="w-4 h-4" /></button>
+                                    <p className="font-bold text-sm text-slate-700 dark:text-slate-200">Google Calendar</p>
+                                    <p className="text-xs text-slate-500">{isCalendarConnected ? 'Verbunden' : 'Nicht verbunden'}</p>
                                 </div>
                             </div>
-                        ))}
-                        {emailTemplates.length === 0 && <p className="text-sm text-slate-400 italic">Keine Vorlagen vorhanden.</p>}
-                     </div>
-                </div>
-
-            </div>
-        </SettingsSection>
-        
-        {/* SECTION: WARTUNG & UPDATES */}
-        <SettingsSection title="Wartung & Updates" icon={DownloadCloud} isDark={isDark} description="Backup, Restore und App-Updates." >
-             <div className="py-6 space-y-6">
-                
-                {/* Backup & Restore */}
-                <div>
-                    <h3 className={`font-bold mb-3 ${isDark ? 'text-white' : 'text-slate-800'}`}>Datenverwaltung</h3>
-                    <div className="flex gap-4">
-                        <button onClick={handleExport} className={`flex-1 py-3 px-4 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all ${isDark ? 'bg-slate-800 border-slate-700 hover:bg-slate-700 text-slate-300' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
-                            <Download className="w-6 h-6 text-indigo-500" />
-                            <span className="font-semibold text-sm">Backup erstellen (JSON)</span>
-                        </button>
-                        <button onClick={handleImportClick} className={`flex-1 py-3 px-4 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all ${isDark ? 'bg-slate-800 border-slate-700 hover:bg-slate-700 text-slate-300' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
-                            <Upload className="w-6 h-6 text-emerald-500" />
-                            <span className="font-semibold text-sm">Backup wiederherstellen</span>
-                        </button>
-                        <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept=".json" />
-                    </div>
-                </div>
-
-                <div className={`border-t ${isDark ? 'border-slate-800' : 'border-slate-100'}`}></div>
-
-                {/* App Update */}
-                <div>
-                    <h3 className={`font-bold mb-3 flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-800'}`}><RefreshCcw className="w-4 h-4" /> App Update</h3>
-                    <div className={`p-4 rounded-lg border ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
-                        <p className="text-xs text-slate-500 mb-2 uppercase font-bold">Update Server URL</p>
-                        <div className="flex gap-2 mb-3">
-                             <input 
-                                value={updateUrl} 
-                                onChange={(e) => setUpdateUrl(e.target.value)} 
-                                placeholder="http://localhost:8080" 
-                                className={`flex-1 px-3 py-2 rounded-lg border text-sm outline-none font-mono ${isDark ? 'bg-slate-800 border-slate-600 text-white' : 'bg-white border-slate-300'}`} 
-                             />
-                             <button onClick={handleCheckUpdate} disabled={isUpdating} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50 min-w-[100px]">
-                                {isUpdating ? <Loader2 className="w-4 h-4 animate-spin mx-auto"/> : 'Prüfen'}
-                             </button>
+                            <button onClick={handleToggleCalendar} disabled={isConnecting === 'calendar'} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${isCalendarConnected ? 'border-red-200 text-red-600 hover:bg-red-50' : 'border-indigo-200 text-indigo-600 hover:bg-indigo-50'}`}>
+                                {isConnecting === 'calendar' ? '...' : (isCalendarConnected ? 'Trennen' : 'Verbinden')}
+                            </button>
                         </div>
-                        {updateStatus && (
-                            <div className="text-xs font-mono p-2 bg-black/10 rounded text-slate-600 dark:text-slate-400 mb-3">
-                                {updateStatus}
-                            </div>
-                        )}
-                        <button onClick={handleResetUpdate} className="text-xs text-red-500 hover:underline">
-                            App zurücksetzen (Factory Reset)
-                        </button>
-                    </div>
-                </div>
-             </div>
-        </SettingsSection>
-        
-        {/* About */}
-        <div className="text-center pt-8 pb-4">
-             <p className="text-xs text-slate-400">SyntaxLabCRM v1.0.0 • Built with React & Electron</p>
-        </div>
 
-      </div>
+                        <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-4 flex justify-between items-center">
+                            <div className="flex items-center gap-3">
+                                <Mail className={`w-5 h-5 ${isMailConnected ? 'text-green-500' : 'text-slate-400'}`} />
+                                <div>
+                                    <p className="font-bold text-sm text-slate-700 dark:text-slate-200">Gmail</p>
+                                    <p className="text-xs text-slate-500">{isMailConnected ? 'Verbunden' : 'Nicht verbunden'}</p>
+                                </div>
+                            </div>
+                            <button onClick={handleToggleMail} disabled={isConnecting === 'mail'} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${isMailConnected ? 'border-red-200 text-red-600 hover:bg-red-50' : 'border-indigo-200 text-indigo-600 hover:bg-indigo-50'}`}>
+                                {isConnecting === 'mail' ? '...' : (isMailConnected ? 'Trennen' : 'Verbinden')}
+                            </button>
+                        </div>
+                    </div>
+                 </div>
+
+                 <div className="border-t border-slate-100 dark:border-slate-800 pt-6">
+                    <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-2 flex items-center gap-2"><Sparkles className="w-4 h-4 text-amber-500" /> Google Gemini AI</h3>
+                    <p className="text-xs text-slate-500 mb-2">Für tägliche Briefings und Smart Insights.</p>
+                    <div className="flex gap-2">
+                        <input 
+                            type="password" 
+                            placeholder="API Key (startet mit AIza...)" 
+                            value={geminiKey}
+                            onChange={(e) => setGeminiKey(e.target.value)}
+                            className="flex-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                        />
+                        <button onClick={() => { localStorage.setItem('gemini_api_key', geminiKey); alert('API Key gespeichert'); }} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium">Speichern</button>
+                    </div>
+                 </div>
+                 
+                 <div className="border-t border-slate-100 dark:border-slate-800 pt-6">
+                    <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-2 flex items-center gap-2"><Key className="w-4 h-4" /> App API Key</h3>
+                    <p className="text-xs text-slate-500 mb-2">Für externe Zugriffe auf dieses CRM.</p>
+                    <div className="flex gap-2">
+                         <div className="flex-1 px-3 py-2 bg-slate-100 dark:bg-slate-800 rounded-lg text-sm font-mono text-slate-600 dark:text-slate-300 truncate">
+                             {backendForm.apiKey || 'Kein Key generiert'}
+                         </div>
+                         <button onClick={copyApiKey} disabled={!backendForm.apiKey} className="p-2 text-slate-500 hover:text-indigo-600"><Copy className="w-4 h-4"/></button>
+                         <button onClick={() => { generateApiKey(); onUpdateBackendConfig({...backendForm, apiKey: backendForm.apiKey}); }} className="p-2 text-slate-500 hover:text-indigo-600"><RefreshCw className="w-4 h-4"/></button>
+                    </div>
+                 </div>
+             </div>
+         </SettingsSection>
+
+         {/* Product Presets */}
+         <SettingsSection title="Produkt Presets" icon={Package} isDark={isDark} description="Vorlagen für Deals">
+             <div className="p-6">
+                 <div className="space-y-2 mb-4">
+                     {localPresets.map(preset => (
+                         <div key={preset.id} className="flex items-center justify-between p-3 border rounded-lg bg-white dark:bg-slate-800 dark:border-slate-700">
+                             {editingPresetId === preset.id ? (
+                                 <div className="flex gap-2 flex-1 items-center">
+                                     <input value={editPresetTitle} onChange={e=>setEditPresetTitle(e.target.value)} className="flex-1 border p-1 rounded text-sm dark:bg-slate-700 dark:text-white" />
+                                     <input value={editPresetValue} onChange={e=>setEditPresetValue(e.target.value)} type="number" className="w-24 border p-1 rounded text-sm dark:bg-slate-700 dark:text-white" />
+                                     <button onClick={handleSaveEditPreset} className="text-green-600"><Check className="w-4 h-4"/></button>
+                                     <button onClick={handleCancelEditPreset} className="text-red-500"><X className="w-4 h-4"/></button>
+                                 </div>
+                             ) : (
+                                 <>
+                                     <div className="flex gap-4">
+                                         <span className="font-medium text-sm text-slate-800 dark:text-slate-200">{preset.title}</span>
+                                         <span className="text-sm text-slate-500">{preset.value} €</span>
+                                     </div>
+                                     <div className="flex gap-2">
+                                         <button onClick={() => handleStartEditPreset(preset)} className="text-slate-400 hover:text-indigo-600"><Pencil className="w-4 h-4"/></button>
+                                         <button onClick={() => handleDeletePreset(preset.id)} className="text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4"/></button>
+                                     </div>
+                                 </>
+                             )}
+                         </div>
+                     ))}
+                 </div>
+                 <div className="flex gap-2">
+                     <input placeholder="Neues Produkt" value={newPresetTitle} onChange={e=>setNewPresetTitle(e.target.value)} className="flex-1 px-3 py-2 border rounded-lg text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white" />
+                     <input placeholder="Preis" type="number" value={newPresetValue} onChange={e=>setNewPresetValue(e.target.value)} className="w-24 px-3 py-2 border rounded-lg text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white" />
+                     <button onClick={() => { handleAddPreset(); onUpdatePresets(localPresets); }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-sm"><Plus className="w-4 h-4" /></button>
+                 </div>
+             </div>
+         </SettingsSection>
+
+         {/* Email Templates */}
+         <SettingsSection title="E-Mail Vorlagen" icon={Mail} isDark={isDark} description="Templates für den Schnellzugriff">
+             <div className="p-6">
+                 <div className="space-y-2 mb-4">
+                     {emailTemplates.map(template => (
+                         <div key={template.id} className="flex items-center justify-between p-3 border rounded-lg bg-white dark:bg-slate-800 dark:border-slate-700">
+                             <div>
+                                 <p className="font-medium text-sm text-slate-800 dark:text-slate-200">{template.title}</p>
+                                 <p className="text-xs text-slate-500">{template.subject}</p>
+                             </div>
+                             <div className="flex gap-2">
+                                 <button onClick={() => openTemplateModal(template)} className="text-slate-400 hover:text-indigo-600"><Pencil className="w-4 h-4"/></button>
+                                 <button onClick={() => onDeleteTemplate(template.id)} className="text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4"/></button>
+                             </div>
+                         </div>
+                     ))}
+                 </div>
+                 <button onClick={() => openTemplateModal()} className="w-full py-2 border border-dashed border-slate-300 rounded-lg text-slate-500 hover:bg-slate-50 flex items-center justify-center gap-2 text-sm"><Plus className="w-4 h-4" /> Neue Vorlage erstellen</button>
+             </div>
+         </SettingsSection>
+
+         {/* Data Management */}
+         <SettingsSection title="Datenverwaltung" icon={Database} isDark={isDark} description="Backup und Wiederherstellung">
+             <div className="p-6">
+                 <div className="grid grid-cols-2 gap-4">
+                     <button onClick={handleExport} className="p-4 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 flex flex-col items-center gap-2 transition-colors">
+                         <DownloadCloud className="w-8 h-8 text-indigo-600" />
+                         <span className="font-bold text-sm text-slate-700 dark:text-slate-300">Daten exportieren</span>
+                         <span className="text-xs text-slate-500 text-center">Erstellt eine JSON Backup Datei</span>
+                     </button>
+                     <button onClick={handleImportClick} className="p-4 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 flex flex-col items-center gap-2 transition-colors">
+                         <Upload className="w-8 h-8 text-amber-600" />
+                         <span className="font-bold text-sm text-slate-700 dark:text-slate-300">Daten importieren</span>
+                         <span className="text-xs text-slate-500 text-center">Stellt Daten aus Backup wieder her</span>
+                     </button>
+                     <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept=".json" />
+                 </div>
+                 
+                 <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800">
+                     <h4 className="font-bold text-sm text-slate-800 dark:text-white mb-2 flex items-center gap-2"><RefreshCcw className="w-4 h-4" /> Software Update (Beta)</h4>
+                     <p className="text-xs text-slate-500 mb-3">Laden Sie Updates von einem lokalen Server oder einer URL.</p>
+                     <div className="flex gap-2">
+                         <input 
+                             placeholder="http://localhost:8080 oder URL" 
+                             value={updateUrl} 
+                             onChange={(e) => setUpdateUrl(e.target.value)} 
+                             className="flex-1 px-3 py-2 border rounded-lg text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                         />
+                         <button 
+                            onClick={handleCheckUpdate} 
+                            disabled={isUpdating}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
+                         >
+                             {isUpdating ? <Loader2 className="w-4 h-4 animate-spin"/> : 'Update laden'}
+                         </button>
+                     </div>
+                     {updateStatus && <p className="text-xs text-indigo-600 mt-2 font-mono">{updateStatus}</p>}
+                 </div>
+             </div>
+         </SettingsSection>
+      </main>
 
       {/* Template Modal */}
       {isTemplateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-            <div className={`bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col ${isDark ? 'bg-slate-800 text-white' : ''}`}>
-                <div className={`px-6 py-4 border-b flex justify-between items-center ${isDark ? 'border-slate-700 bg-slate-900' : 'bg-slate-50 border-slate-100'}`}>
-                    <h2 className="font-bold">{editingTemplateId ? 'Vorlage bearbeiten' : 'Neue Vorlage'}</h2>
-                    <button onClick={() => setIsTemplateModalOpen(false)}><X className="w-5 h-5" /></button>
-                </div>
-                <form onSubmit={saveTemplate} className="p-6 space-y-4">
-                    <div className="space-y-1">
-                        <label className="text-xs font-semibold uppercase opacity-70">Titel (Intern)</label>
-                        <input required value={templateForm.title} onChange={e => setTemplateForm({...templateForm, title: e.target.value})} className={`w-full px-3 py-2 rounded border outline-none ${isDark ? 'bg-slate-700 border-slate-600' : 'border-slate-200'}`} placeholder="z.B. Erstkontakt" />
-                    </div>
-                    <div className="space-y-1">
-                        <label className="text-xs font-semibold uppercase opacity-70">Betreff</label>
-                        <input required value={templateForm.subject} onChange={e => setTemplateForm({...templateForm, subject: e.target.value})} className={`w-full px-3 py-2 rounded border outline-none ${isDark ? 'bg-slate-700 border-slate-600' : 'border-slate-200'}`} placeholder="Betreff der E-Mail" />
-                    </div>
-                    <div className="space-y-1">
-                        <label className="text-xs font-semibold uppercase opacity-70">Text</label>
-                        <textarea required value={templateForm.body} onChange={e => setTemplateForm({...templateForm, body: e.target.value})} rows={6} className={`w-full px-3 py-2 rounded border outline-none ${isDark ? 'bg-slate-700 border-slate-600' : 'border-slate-200'}`} placeholder="Hallo {name}..." />
-                        <p className="text-[10px] opacity-50">Platzhalter: {"{name}"}</p>
-                    </div>
-                    <div className="flex justify-end pt-2">
-                        <button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded font-medium">Speichern</button>
-                    </div>
-                </form>
-            </div>
-        </div>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden">
+                  <div className="px-6 py-4 border-b bg-slate-50 flex justify-between"><h2 className="font-bold">E-Mail Vorlage</h2><button onClick={() => setIsTemplateModalOpen(false)}><X className="w-5"/></button></div>
+                  <form onSubmit={saveTemplate} className="p-6 space-y-4">
+                      <div><label className="text-xs font-bold uppercase text-slate-500">Titel</label><input required value={templateForm.title} onChange={e=>setTemplateForm({...templateForm, title:e.target.value})} className="w-full border p-2 rounded mt-1" placeholder="z.B. Angebot Follow-Up" /></div>
+                      <div><label className="text-xs font-bold uppercase text-slate-500">Betreff</label><input required value={templateForm.subject} onChange={e=>setTemplateForm({...templateForm, subject:e.target.value})} className="w-full border p-2 rounded mt-1" /></div>
+                      <div><label className="text-xs font-bold uppercase text-slate-500">Text (Platzhalter: {'{name}'})</label><textarea required value={templateForm.body} onChange={e=>setTemplateForm({...templateForm, body:e.target.value})} className="w-full border p-2 rounded mt-1" rows={6} /></div>
+                      <div className="flex justify-end pt-2"><button type="submit" className="bg-indigo-600 text-white px-4 py-2 rounded text-sm font-medium">Speichern</button></div>
+                  </form>
+              </div>
+          </div>
       )}
-
     </div>
   );
 };

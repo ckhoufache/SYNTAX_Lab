@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { Plus, X, Trash2, CheckCircle2, AlertTriangle, Info, Calendar, Download, Upload, Filter, PieChart as PieChartIcon, Clock, TrendingUp, TrendingDown, PiggyBank, Printer, Paperclip } from 'lucide-react';
+import { Plus, X, Trash2, CheckCircle2, AlertTriangle, Info, Calendar, Download, Upload, Filter, PieChart as PieChartIcon, Clock, TrendingUp, TrendingDown, PiggyBank, Printer, Paperclip, Pencil } from 'lucide-react';
 import { Invoice, Contact, Expense, InvoiceConfig, Activity } from '../types';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
@@ -200,26 +200,46 @@ export const Finances: React.FC<FinancesProps> = ({
     };
 
     // --- PRINT ---
-    const handlePrintPreview = (invoice: Invoice) => {
+    const handleDirectDownload = (e: React.MouseEvent, invoice: Invoice) => {
+        e.stopPropagation();
         setPrintInvoice(invoice);
+        // Wait for state update then trigger print logic
+        setTimeout(() => executePrint(true), 100);
+    };
+
+    const executePrint = (autoPrint = false) => {
+        // We use the hidden preview logic but just for this action
+        if (!printInvoice && !autoPrint) return; 
+        
+        // Temporarily render content hidden to grab HTML
+        setPrintInvoice(prev => prev || printInvoice); 
         setIsPrintModalOpen(true);
     };
 
-    const executePrint = () => {
+    // Use effect to auto print once modal opens if triggered by download button
+    React.useEffect(() => {
+        if (isPrintModalOpen && printInvoice) {
+            // Optional: Auto trigger print dialog if desired flow, 
+            // but opening the modal with the big button is often better UX.
+            // keeping it as modal preview to ensure user sees what they download.
+        }
+    }, [isPrintModalOpen, printInvoice]);
+
+
+    const triggerBrowserPrint = () => {
         const content = document.getElementById('printable-invoice');
         if (!content) return;
         
-        // Quick & Dirty Print approach using a new window
         const pri = window.open('', '', 'height=800,width=800');
         if (pri) {
             pri.document.write('<html><head><title>Rechnung</title>');
-            pri.document.write('<script src="https://cdn.tailwindcss.com"></script>'); // Re-inject Tailwind
+            pri.document.write('<script src="https://cdn.tailwindcss.com"></script>'); 
             pri.document.write('</head><body >');
             pri.document.write(content.innerHTML);
             pri.document.write('</body></html>');
             pri.document.close();
             pri.focus();
-            setTimeout(() => { pri.print(); pri.close(); }, 500); // Timeout to allow CSS to load
+            setTimeout(() => { pri.print(); pri.close(); }, 500); 
         }
     };
 
@@ -378,7 +398,10 @@ export const Finances: React.FC<FinancesProps> = ({
                                         <tr 
                                             key={inv.id} 
                                             className="hover:bg-slate-50 group cursor-pointer"
-                                            onClick={() => handlePrintPreview(inv)}
+                                            onClick={() => {
+                                                setPrintInvoice(inv);
+                                                setIsPrintModalOpen(true);
+                                            }}
                                         >
                                             <td className="px-6 py-4 text-sm font-medium text-slate-900">{inv.invoiceNumber}</td>
                                             <td className="px-6 py-4 text-sm text-slate-700">{inv.date}</td>
@@ -394,10 +417,10 @@ export const Finances: React.FC<FinancesProps> = ({
                                                 </button>
                                             </td>
                                             <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
-                                                <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100">
-                                                    <button onClick={() => handlePrintPreview(inv)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded" title="Drucken/PDF"><Printer className="w-4 h-4"/></button>
-                                                    <button onClick={() => handleOpenEditInvoice(inv)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded"><Info className="w-4 h-4"/></button>
-                                                    <button onClick={() => onDeleteInvoice(inv.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4"/></button>
+                                                <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <button onClick={(e) => handleDirectDownload(e, inv)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded" title="Als PDF speichern"><Download className="w-4 h-4"/></button>
+                                                    <button onClick={() => handleOpenEditInvoice(inv)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded" title="Bearbeiten"><Pencil className="w-4 h-4"/></button>
+                                                    <button onClick={() => onDeleteInvoice(inv.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded" title="Löschen"><Trash2 className="w-4 h-4"/></button>
                                                 </div>
                                             </td>
                                         </tr>
@@ -528,13 +551,13 @@ export const Finances: React.FC<FinancesProps> = ({
 
             {/* PRINT MODAL (A4 PREVIEW) */}
             {isPrintModalOpen && printInvoice && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4">
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
                     <div className="bg-slate-200 w-full h-full max-w-4xl rounded-xl flex flex-col overflow-hidden">
                         <div className="bg-white p-4 border-b flex justify-between items-center">
-                            <h2 className="font-bold text-slate-800">Druckvorschau</h2>
+                            <h2 className="font-bold text-slate-800">Rechnungsvorschau</h2>
                             <div className="flex gap-2">
-                                <button onClick={executePrint} className="bg-indigo-600 text-white px-4 py-2 rounded flex items-center gap-2 text-sm font-medium hover:bg-indigo-700">
-                                    <Printer className="w-4 h-4" /> Drucken / PDF
+                                <button onClick={triggerBrowserPrint} className="bg-indigo-600 text-white px-4 py-2 rounded flex items-center gap-2 text-sm font-medium hover:bg-indigo-700">
+                                    <Printer className="w-4 h-4" /> PDF / Drucken
                                 </button>
                                 <button onClick={()=>setIsPrintModalOpen(false)} className="bg-slate-100 text-slate-600 px-4 py-2 rounded text-sm font-medium hover:bg-slate-200">Schließen</button>
                             </div>
@@ -546,7 +569,7 @@ export const Finances: React.FC<FinancesProps> = ({
                                 <div className="flex justify-between items-start mb-12">
                                     <div>
                                         {invoiceConfig.logoBase64 ? (
-                                            <img src={invoiceConfig.logoBase64} alt="Logo" className="h-16 object-contain mb-4" />
+                                            <img src={invoiceConfig.logoBase64} alt="Logo" className="max-h-32 w-auto object-contain mb-4" />
                                         ) : (
                                             <h1 className="text-3xl font-bold text-slate-800 mb-2">{invoiceConfig.companyName}</h1>
                                         )}

@@ -190,6 +190,27 @@ export const Dashboard: React.FC<DashboardProps> = ({
           });
       });
 
+      // New: Check for Leads > 3 Days
+      const staleLeads = deals.filter(d => {
+          if (d.stage !== DealStage.LEAD) return false;
+          if (!d.stageEnteredDate) return false;
+          const entered = new Date(d.stageEnteredDate);
+          entered.setHours(0,0,0,0);
+          const diffTime = Math.abs(today.getTime() - entered.getTime());
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+          return diffDays > 3;
+      });
+
+      staleLeads.forEach(d => {
+           list.push({
+              id: `lead-stale-${d.id}`,
+              title: `Lead wartet (>3 Tage): ${d.title}`,
+              type: 'warning',
+              time: 'Handlungsbedarf',
+              onClick: () => onNavigateToPipeline([DealStage.LEAD], d.id)
+          });
+      });
+
       const negotiationDeals = deals.filter(d => d.stage === DealStage.NEGOTIATION);
       negotiationDeals.forEach(d => {
           list.push({
@@ -354,7 +375,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       <div className="max-h-[300px] overflow-y-auto">
                           {notifications.map(n => (
                               <div key={n.id} onClick={() => handleNotificationClick(n.id, n.onClick)} className="p-3 hover:bg-slate-50 dark:hover:bg-slate-700 border-b dark:border-slate-700 cursor-pointer flex gap-3">
-                                  <div><p className="text-sm font-medium dark:text-slate-200">{n.title}</p><p className="text-xs text-slate-500 dark:text-slate-400">{n.time}</p></div>
+                                  <div>
+                                      <p className={`text-sm font-medium ${n.type === 'warning' ? 'text-orange-600 dark:text-orange-400' : n.type === 'alert' ? 'text-red-600 dark:text-red-400' : 'text-slate-800 dark:text-slate-200'}`}>{n.title}</p>
+                                      <p className="text-xs text-slate-500 dark:text-slate-400">{n.time}</p>
+                                  </div>
                               </div>
                           ))}
                           {notifications.length === 0 && <div className="p-8 text-center text-slate-400 text-sm">Keine neuen Nachrichten.</div>}

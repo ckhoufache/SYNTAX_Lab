@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, Users, KanbanSquare, Settings, LogOut, Hexagon, ClipboardList, Banknote, LogIn, AlertCircle } from 'lucide-react';
+import React from 'react';
+import { LayoutDashboard, Users, KanbanSquare, Settings, LogOut, Hexagon, ClipboardList, Banknote } from 'lucide-react';
 import { ViewState, UserProfile, Theme } from '../types';
 
 interface SidebarProps {
@@ -12,24 +12,8 @@ interface SidebarProps {
   onLogout: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, userProfile, theme, onLogin, onLogout }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, userProfile, theme, onLogout }) => {
   const isDark = theme === 'dark';
-  // Check if config exists to enable login
-  const [hasConfig, setHasConfig] = useState(false);
-
-  useEffect(() => {
-      const checkConfig = () => {
-          const config = localStorage.getItem('backend_config');
-          if (config) {
-              const parsed = JSON.parse(config);
-              setHasConfig(!!parsed.googleClientId);
-          }
-      };
-      checkConfig();
-      // Poll slightly to check for config updates if user goes to settings
-      const interval = setInterval(checkConfig, 2000);
-      return () => clearInterval(interval);
-  }, []);
   
   const navItemClass = (view: ViewState) => 
     `flex items-center gap-3 px-4 py-3 mx-2 rounded-lg cursor-pointer transition-colors duration-200 ${
@@ -103,7 +87,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, use
 
       {/* Footer (Auth) */}
       <div className={`p-4 border-t ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
-        {userProfile ? (
+        {userProfile && (
             <>
                 <div 
                     onClick={onLogout}
@@ -129,24 +113,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, use
                     </div>
                 </div>
             </>
-        ) : (
-            hasConfig ? (
-                <button 
-                    onClick={onLogin}
-                    className="w-full bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-3 rounded-lg flex items-center justify-center gap-2 transition-all shadow-sm font-medium"
-                >
-                    <img src="https://www.google.com/favicon.ico" alt="G" className="w-4 h-4" />
-                    Mit Google anmelden
-                </button>
-            ) : (
-                <div onClick={() => onChangeView('settings')} className="w-full bg-slate-50 border border-slate-200 text-slate-500 px-4 py-3 rounded-lg flex flex-col items-center justify-center gap-1 cursor-pointer hover:bg-slate-100">
-                    <div className="flex items-center gap-2 font-medium">
-                        <AlertCircle className="w-4 h-4 text-amber-500" />
-                        <span>Setup erforderlich</span>
-                    </div>
-                    <span className="text-xs text-center">Für Login bitte Google ID in Einstellungen hinterlegen</span>
-                </div>
-            )
         )}
       </div>
     </aside>
