@@ -13,7 +13,7 @@ import { ViewState, Contact, Deal, UserProfile, Theme, Task, DealStage, ProductP
 import { DataServiceFactory, IDataService } from './services/dataService';
 import { Loader2, RefreshCw } from 'lucide-react';
 
-const App: React.FC = () => {
+export const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewState>('dashboard');
   
   // --- BACKEND CONFIGURATION ---
@@ -708,5 +708,3 @@ const App: React.FC = () => {
     </div>
   );
 };
-
-export default App;

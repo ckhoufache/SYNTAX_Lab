@@ -1,3 +1,4 @@
+
 import { app, BrowserWindow, shell, ipcMain } from 'electron';
 import path from 'path';
 import express from 'express';
@@ -21,20 +22,16 @@ const hotUpdatePath = path.join(userDataPath, 'hot_update');
 function startLocalServer() {
   const serverApp = express();
   
-  // LOGIK FÜR HOT-UPDATES:
-  // Wir prüfen, ob eine index.html im Update-Ordner existiert.
-  // Wenn ja, bedienen wir Dateien ZUERST von dort.
+  // LOGIK FÜR HOT-UPDATES
   const updateIndex = path.join(hotUpdatePath, 'index.html');
   const hasUpdate = fs.existsSync(updateIndex);
 
   if (hasUpdate) {
       console.log('Serving from Hot Update folder:', hotUpdatePath);
-      // Statische Dateien aus dem Update-Ordner priorisieren
       serverApp.use(express.static(hotUpdatePath));
   }
 
-  // Fallback: Statische Dateien aus dem internen 'dist' Ordner
-  // (Wichtig für Assets, die sich nicht geändert haben oder wenn kein Update da ist)
+  // Fallback
   console.log('Serving fallback from internal dist folder');
   serverApp.use(express.static(path.join(__dirname, 'dist')));
   
@@ -47,7 +44,10 @@ function startLocalServer() {
   });
 
   server = serverApp.listen(INTERNAL_PORT, () => {
-    console.log(`Interner App-Server läuft auf ${APP_URL} (Update aktiv: ${hasUpdate})`);
+    console.log(`--------------------------------------------------`);
+    console.log(`Interner App-Server läuft auf ${APP_URL}`);
+    console.log(`WICHTIG: Fügen Sie '${APP_URL}' zu den "Authorized JavaScript origins" in der Google Cloud Console hinzu.`);
+    console.log(`--------------------------------------------------`);
   });
 }
 
@@ -60,7 +60,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
-      webSecurity: false // Erlaubt Zugriff auf lokale Ressourcen für Updates
+      webSecurity: false 
     },
     autoHideMenuBar: true,
   });
@@ -76,9 +76,21 @@ function createWindow() {
   }
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.includes('accounts.google.com') || url.includes('googleusercontent.com')) {
+    // Liste der erlaubten Domains für Google OAuth
+    const allowedDomains = [
+        'accounts.google.com', 
+        'googleusercontent.com', 
+        'oauth2.googleapis.com', 
+        'mail.google.com',
+        'www.googleapis.com'
+    ];
+    
+    // Prüfen ob die URL zu Google gehört (für Login Popups)
+    if (allowedDomains.some(domain => url.includes(domain))) {
         return { action: 'allow' };
     }
+    
+    // Externe Links im Standard-Browser öffnen
     if (url.startsWith('http')) {
       shell.openExternal(url);
       return { action: 'deny' };
@@ -99,20 +111,16 @@ ipcMain.handle('get-app-version', () => {
 
 ipcMain.handle('install-update', async (event, files) => {
   try {
-    // Ordner erstellen falls nicht existent
     if (!fs.existsSync(hotUpdatePath)) {
       fs.mkdirSync(hotUpdatePath, { recursive: true });
     }
     
-    // Assets Ordner erstellen
     const assetsPath = path.join(hotUpdatePath, 'assets');
     if (!fs.existsSync(assetsPath)) {
       fs.mkdirSync(assetsPath, { recursive: true });
     }
 
-    // Dateien schreiben
     for (const file of files) {
-      // Sicherheitscheck: Verhindert Pfad-Traversal
       const safeName = path.basename(file.name); 
       let targetPath;
       
@@ -122,7 +130,6 @@ ipcMain.handle('install-update', async (event, files) => {
           targetPath = path.join(hotUpdatePath, safeName);
       }
 
-      // Base64 decoding für binäre Daten (falls nötig) oder direkter String write
       if (file.content) {
           fs.writeFileSync(targetPath, file.content, 'utf-8');
       }
@@ -151,24 +158,21 @@ ipcMain.handle('restart-app', () => {
   app.exit();
 });
 
-// --- NEU: PDF GENERATOR ---
 ipcMain.handle('generate-pdf', async (event, htmlContent) => {
     let pdfWindow = new BrowserWindow({ show: false, width: 800, height: 1200 });
     try {
-        // Load HTML content
         await pdfWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
         
-        // Generate PDF
         const pdfData = await pdfWindow.webContents.printToPDF({
             printBackground: true,
             pageSize: 'A4',
-            margins: { top: 0, bottom: 0, left: 0, right: 0 } // CSS handles margins
+            margins: { top: 0, bottom: 0, left: 0, right: 0 }
         });
         
         pdfWindow.close();
         pdfWindow = null;
         
-        return pdfData; // Returns Buffer (Uint8Array)
+        return pdfData; 
     } catch (error) {
         if (pdfWindow) pdfWindow.close();
         console.error('PDF Generation failed:', error);

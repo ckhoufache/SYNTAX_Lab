@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { Hexagon, Globe, ArrowRight, Settings, Check, AlertCircle, LayoutDashboard } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Hexagon, Globe, ArrowRight, Settings, Check, AlertCircle, LayoutDashboard, WifiOff } from 'lucide-react';
 import { BackendConfig, Theme } from '../types';
 
 interface LoginScreenProps {
@@ -20,8 +20,20 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 }) => {
   const [showConfig, setShowConfig] = useState(!backendConfig.googleClientId);
   const [clientId, setClientId] = useState(backendConfig.googleClientId || '');
+  const [googleReady, setGoogleReady] = useState(false);
   
   const isDark = theme === 'dark';
+
+  useEffect(() => {
+    const checkGoogle = () => {
+        if (window.google && window.google.accounts) {
+            setGoogleReady(true);
+        }
+    };
+    checkGoogle();
+    const interval = setInterval(checkGoogle, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleSaveConfig = (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,10 +66,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             {/* View 1: Login Button (if Config exists) */}
             {!showConfig && (
                 <div className="p-8 flex flex-col gap-4">
+                    {!googleReady && (
+                        <div className="bg-red-50 text-red-600 p-3 rounded-lg text-xs flex items-center gap-2 mb-2 border border-red-100">
+                            <WifiOff className="w-4 h-4" />
+                            <span>Keine Verbindung zu Google. Prüfen Sie das Internet.</span>
+                        </div>
+                    )}
+                
                     <button 
                         onClick={onLogin}
-                        disabled={isLoading}
-                        className="w-full bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium py-3 px-4 rounded-xl flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-[0.98] shadow-sm disabled:opacity-70 disabled:pointer-events-none"
+                        disabled={isLoading || !googleReady}
+                        className="w-full bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium py-3 px-4 rounded-xl flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-[0.98] shadow-sm disabled:opacity-70 disabled:pointer-events-none disabled:grayscale"
                     >
                         {isLoading ? (
                             <span className="w-5 h-5 border-2 border-slate-400 border-t-indigo-600 rounded-full animate-spin"></span>
@@ -66,6 +85,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                         )}
                         <span>{isLoading ? 'Melde an...' : 'Mit Google anmelden'}</span>
                     </button>
+                    
+                    {!googleReady && (
+                        <p className="text-[10px] text-center text-slate-400">
+                            Hinweis: Für den ersten Login wird eine Internetverbindung benötigt.
+                        </p>
+                    )}
 
                     <div className="relative my-2">
                         <div className="absolute inset-0 flex items-center"><div className={`w-full border-t ${isDark ? 'border-slate-800' : 'border-slate-100'}`}></div></div>
@@ -90,6 +115,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     </div>
                     <p className={`text-xs mb-4 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                         Um Google Login zu nutzen, benötigen Sie eine Client ID aus der Google Cloud Console.
+                        <br/><br/>
+                        <strong className="text-indigo-500">Wichtig für Desktop:</strong> Fügen Sie <code>http://localhost:3000</code> zu den "Authorized Origins" hinzu.
                     </p>
                     <form onSubmit={handleSaveConfig} className="space-y-4">
                         <div>

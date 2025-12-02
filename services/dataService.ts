@@ -543,11 +543,44 @@ class LocalDataService implements IDataService {
     async updateEmailTemplate(t: any) { const l = this.cache.emailTemplates||[]; this.set('emailTemplates','emailTemplates',l.map(x=>x.id===t.id?t:x)); return t; }
     async deleteEmailTemplate(id: any) { const l = this.cache.emailTemplates||[]; this.set('emailTemplates','emailTemplates',l.filter(x=>x.id!==id)); }
 
-    // --- GOOGLE AUTH & INTEGRATION RESTORED ---
+    // --- GOOGLE AUTH & INTEGRATION RESTORED & HARDENED ---
     
+    private async ensureGoogleScriptLoaded(): Promise<boolean> {
+        // Prüfe ob das OAuth2 Objekt bereits existiert
+        if (window.google && window.google.accounts && window.google.accounts.oauth2) return true;
+
+        // Falls ein altes Skript existiert aber nicht funktioniert hat, entfernen
+        const existingScript = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
+        if (existingScript) {
+            existingScript.remove();
+        }
+
+        // Skript neu injizieren
+        const script = document.createElement('script');
+        script.src = "https://accounts.google.com/gsi/client";
+        script.async = true;
+        script.defer = true;
+        document.head.appendChild(script);
+
+        // Aktives Polling bis zu 10 Sekunden
+        let attempts = 0;
+        while (attempts < 20) {
+            if (window.google && window.google.accounts && window.google.accounts.oauth2) return true;
+            await new Promise(resolve => setTimeout(resolve, 500));
+            attempts++;
+        }
+        return false;
+    }
+
     async connectGoogle(service: 'calendar' | 'mail', clientId?: string): Promise<boolean> {
         if (!clientId) {
             alert("Bitte geben Sie zuerst eine Google Client ID in den Einstellungen ein.");
+            return false;
+        }
+        
+        const ready = await this.ensureGoogleScriptLoaded();
+        if (!ready) {
+            alert("Google Dienste sind momentan nicht erreichbar. Prüfen Sie Ihre Internetverbindung.");
             return false;
         }
         
@@ -604,12 +637,31 @@ class LocalDataService implements IDataService {
             return null;
         }
 
+        if (!navigator.onLine) {
+            alert("Keine Internetverbindung. Login nicht möglich.");
+            return null;
+        }
+
+        const ready = await this.ensureGoogleScriptLoaded();
+        if (!ready) {
+            alert("Google Sign-In Skript konnte nicht geladen werden. Bitte prüfen Sie Ihre Verbindung oder Firewall.");
+            return null;
+        }
+
         return new Promise((resolve) => {
+            // Timeout-Schutz gegen hängenden Lade-Status (60 Sekunden)
+            const timeoutId = setTimeout(() => {
+                console.warn("Google Login timed out.");
+                alert("Anmeldung abgebrochen: Zeitüberschreitung. Wurde das Popup geschlossen oder blockiert?");
+                resolve(null);
+            }, 60000);
+
             try {
                 const client = window.google.accounts.oauth2.initTokenClient({
                     client_id: this.googleClientId,
                     scope: 'https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
                     callback: async (tokenResponse: any) => {
+                        clearTimeout(timeoutId); // Erfolg, Timeout löschen
                         if (tokenResponse && tokenResponse.access_token) {
                             this.accessToken = tokenResponse.access_token;
                             localStorage.setItem('google_access_token', tokenResponse.access_token);
@@ -619,6 +671,7 @@ class LocalDataService implements IDataService {
                                 const res = await fetch('https://www.googleapis.com/oauth2/v1/userinfo?alt=json', {
                                     headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
                                 });
+                                if (!res.ok) throw new Error("UserInfo Request Failed");
                                 const data = await res.json();
                                 
                                 const profile: UserProfile = {
@@ -633,6 +686,7 @@ class LocalDataService implements IDataService {
                                 resolve(profile);
                             } catch (e) {
                                 console.error("Error fetching user info", e);
+                                alert("Fehler beim Abrufen der Profildaten.");
                                 resolve(null);
                             }
                         } else {
@@ -642,8 +696,9 @@ class LocalDataService implements IDataService {
                 });
                 client.requestAccessToken();
             } catch (e) {
+                clearTimeout(timeoutId);
                 console.error("Google Auth Error", e);
-                alert("Google Auth konnte nicht initialisiert werden. Prüfen Sie Ihre Internetverbindung.");
+                alert("Google Auth konnte nicht initialisiert werden. Bitte Popup-Blocker prüfen.");
                 resolve(null);
             }
         });
