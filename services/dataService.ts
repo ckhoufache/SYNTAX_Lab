@@ -1,6 +1,7 @@
 
+
 import { Contact, Deal, Task, UserProfile, ProductPreset, Theme, BackendConfig, BackendMode, BackupData, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate, EmailAttachment, DealStage } from '../types';
-import { mockContacts, mockDeals, mockTasks, mockInvoices, mockExpenses } from './mockData';
+// Mock Data imports removed for clean start
 
 // Declare Google Types globally for TS
 declare global {
@@ -340,19 +341,12 @@ class LocalDataService implements IDataService {
     }
     
     async init(): Promise<void> {
-        // Load everything into cache at startup
-        // Ensure mock data exists if storage is empty
-        if (!localStorage.getItem('contacts')) {
-             const enrichedMockContacts = mockContacts.map(c => ({
-                 ...c,
-                 type: (c.id === '3' || c.id === '4') ? 'customer' : 'lead' // Simple mock logic
-             }));
-             localStorage.setItem('contacts', JSON.stringify(enrichedMockContacts));
-        }
-        if (!localStorage.getItem('deals')) localStorage.setItem('deals', JSON.stringify(mockDeals));
-        if (!localStorage.getItem('tasks')) localStorage.setItem('tasks', JSON.stringify(mockTasks));
-        if (!localStorage.getItem('invoices')) localStorage.setItem('invoices', JSON.stringify(mockInvoices));
-        if (!localStorage.getItem('expenses')) localStorage.setItem('expenses', JSON.stringify(mockExpenses));
+        // CLEAN START: Initialize with empty arrays if not present
+        if (!localStorage.getItem('contacts')) localStorage.setItem('contacts', JSON.stringify([]));
+        if (!localStorage.getItem('deals')) localStorage.setItem('deals', JSON.stringify([]));
+        if (!localStorage.getItem('tasks')) localStorage.setItem('tasks', JSON.stringify([]));
+        if (!localStorage.getItem('invoices')) localStorage.setItem('invoices', JSON.stringify([]));
+        if (!localStorage.getItem('expenses')) localStorage.setItem('expenses', JSON.stringify([]));
         if (!localStorage.getItem('activities')) localStorage.setItem('activities', JSON.stringify([]));
         if (!localStorage.getItem('emailTemplates')) localStorage.setItem('emailTemplates', JSON.stringify([]));
 
@@ -365,16 +359,14 @@ class LocalDataService implements IDataService {
         this.cache.emailTemplates = this.getFromStorage<EmailTemplate[]>('emailTemplates', []);
         
         this.cache.userProfile = this.getFromStorage<UserProfile>('userProfile', {
-            firstName: 'Max',
-            lastName: 'Mustermann',
-            email: 'max@syntaxlab.de',
-            role: 'Admin',
-            avatar: 'https://ui-avatars.com/api/?name=Max+Mustermann&background=random'
+            firstName: 'Admin',
+            lastName: 'User',
+            email: 'admin@local.test',
+            role: 'Administrator',
+            avatar: 'https://ui-avatars.com/api/?name=Admin&background=random'
         });
-        this.cache.productPresets = this.getFromStorage<ProductPreset[]>('productPresets', [
-            { id: 'beta', title: 'Beta Version', value: 500, isSubscription: false },
-            { id: 'release', title: 'Release Version', value: 1500, isSubscription: true }
-        ]);
+        
+        this.cache.productPresets = this.getFromStorage<ProductPreset[]>('productPresets', []);
         
         // Initialize Default Config with Professional Templates
         this.cache.invoiceConfig = this.getFromStorage<InvoiceConfig>('invoiceConfig', {
@@ -821,13 +813,13 @@ Buchhaltung
     }
 
     // Generische Funktion für OAuth Request
-    async connectGoogle(service: 'calendar' | 'mail', clientIdOverride?: string): Promise<boolean> {
+    async connectGoogle(service: 'calendar' | 'mail', clientId?: string): Promise<boolean> {
         // Wenn bereits ein globaler Token existiert (durch Login), nutzen wir diesen
         if (this.accessToken) {
              localStorage.setItem(`google_${service}_connected`, 'true');
              return true;
         }
-        return this.requestGoogleScopes(service === 'calendar' ? 'https://www.googleapis.com/auth/calendar.events' : 'https://www.googleapis.com/auth/gmail.send', clientIdOverride);
+        return this.requestGoogleScopes(service === 'calendar' ? 'https://www.googleapis.com/auth/calendar.events' : 'https://www.googleapis.com/auth/gmail.send', clientId);
     }
     
     // Globale Login Funktion (Holt alle Rechte auf einmal)

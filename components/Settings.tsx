@@ -366,10 +366,6 @@ export const Settings: React.FC<SettingsProps> = ({
       if (storedKey) setGeminiKey(storedKey);
   }, []);
 
-  // NOTE: Removed useEffect that auto-synced invConfigForm from props.
-  // This prevents the form from resetting while the user is typing if the parent component re-renders.
-  // The form is initialized via useState(invoiceConfig) which gets the fresh prop when the Settings component mounts.
-
   useEffect(() => {
     const loadIntegrations = async () => {
         const cal = await dataService.getIntegrationStatus('calendar');
@@ -491,6 +487,7 @@ export const Settings: React.FC<SettingsProps> = ({
           : p
       );
       setLocalPresets(updatedPresets);
+      onUpdatePresets(updatedPresets); // IMPORTANT: Propagate changes to parent/DB
       handleCancelEditPreset();
   };
   
