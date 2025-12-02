@@ -21,17 +21,33 @@ const hotUpdatePath = path.join(userDataPath, 'hot_update');
 function startLocalServer() {
   const serverApp = express();
   
-  // FIX: Wir löschen beim Start einmalig den Hot-Update Ordner, falls vorhanden,
-  // um sicherzustellen, dass nach einem EXE-Rebuild auch wirklich die neue Version läuft.
-  console.log('Force serving from internal dist folder');
+  // LOGIK FÜR HOT-UPDATES:
+  // Wir prüfen, ob eine index.html im Update-Ordner existiert.
+  // Wenn ja, bedienen wir Dateien ZUERST von dort.
+  const updateIndex = path.join(hotUpdatePath, 'index.html');
+  const hasUpdate = fs.existsSync(updateIndex);
+
+  if (hasUpdate) {
+      console.log('Serving from Hot Update folder:', hotUpdatePath);
+      // Statische Dateien aus dem Update-Ordner priorisieren
+      serverApp.use(express.static(hotUpdatePath));
+  }
+
+  // Fallback: Statische Dateien aus dem internen 'dist' Ordner
+  // (Wichtig für Assets, die sich nicht geändert haben oder wenn kein Update da ist)
+  console.log('Serving fallback from internal dist folder');
   serverApp.use(express.static(path.join(__dirname, 'dist')));
   
   serverApp.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+    if (hasUpdate) {
+        res.sendFile(updateIndex);
+    } else {
+        res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+    }
   });
 
   server = serverApp.listen(INTERNAL_PORT, () => {
-    console.log(`Interner App-Server läuft auf ${APP_URL}`);
+    console.log(`Interner App-Server läuft auf ${APP_URL} (Update aktiv: ${hasUpdate})`);
   });
 }
 
