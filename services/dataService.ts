@@ -1,5 +1,5 @@
 
-import { Contact, Deal, Task, UserProfile, ProductPreset, Theme, BackendConfig, BackendMode, BackupData, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate } from '../types';
+import { Contact, Deal, Task, UserProfile, ProductPreset, Theme, BackendConfig, BackendMode, BackupData, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate, EmailAttachment } from '../types';
 import { mockContacts, mockDeals, mockTasks, mockInvoices, mockExpenses } from './mockData';
 
 // Declare Google Types globally for TS
@@ -78,7 +78,7 @@ export interface IDataService {
     logout(): Promise<void>;
     
     // Actions
-    sendMail(to: string, subject: string, body: string): Promise<boolean>;
+    sendMail(to: string, subject: string, body: string, attachments?: EmailAttachment[]): Promise<boolean>;
     
     // Automation
     processDueRetainers(): Promise<{ updatedContacts: Contact[], newInvoices: Invoice[], newActivities: Activity[] }>;
@@ -172,8 +172,27 @@ class LocalDataService implements IDataService {
             footerText: 'Vielen Dank für Ihren Auftrag.',
             taxRule: 'small_business',
             emailSettings: {
-                invoiceAttachPdf: true,
-                welcomeSendAutomatically: false
+                welcome: {
+                    subject: 'Willkommen bei uns!',
+                    body: 'Hallo {name},\n\nschön, dass du an Bord bist. Anbei findest du wichtige Unterlagen.\n\nViele Grüße,\nDas Team',
+                    attachments: [],
+                    enabled: false
+                },
+                invoice: {
+                    subject: 'Ihre Rechnung {nr}',
+                    body: 'Hallo {name},\n\nanbei erhalten Sie Ihre Rechnung zur Prüfung und Begleichung.\n\nMit freundlichen Grüßen',
+                    attachments: []
+                },
+                offer: {
+                    subject: 'Ihr Angebot',
+                    body: 'Hallo {name},\n\nwie besprochen senden wir Ihnen hiermit unser Angebot.\n\nBeste Grüße',
+                    attachments: []
+                },
+                reminder: {
+                    subject: 'Zahlungserinnerung: Rechnung {nr}',
+                    body: 'Hallo {name},\n\nleider konnten wir noch keinen Zahlungseingang feststellen.\n\nBitte prüfen Sie dies.',
+                    attachments: []
+                }
             }
         });
 
@@ -676,21 +695,76 @@ class LocalDataService implements IDataService {
         } catch (e) { console.error(e); }
     }
 
-    async sendMail(to: string, subject: string, body: string): Promise<boolean> {
+    // --- MAIL SENDING WITH ATTACHMENT SUPPORT ---
+    async sendMail(to: string, subject: string, body: string, attachments: EmailAttachment[] = []): Promise<boolean> {
         if (!this.accessToken) { alert("Keine Verbindung zu Google."); return false; }
+        
+        // Simple Multipart Construction for Gmail API
+        const boundary = "foo_bar_baz";
         const utf8Subject = `=?utf-8?B?${btoa(unescape(encodeURIComponent(subject)))}?=`;
-        const messageParts = [ `To: ${to}`, `Subject: ${utf8Subject}`, "Content-Type: text/plain; charset=utf-8", "MIME-Version: 1.0", "", body ];
+        
+        const headers = [
+            `To: ${to}`,
+            `Subject: ${utf8Subject}`,
+            "MIME-Version: 1.0",
+            `Content-Type: multipart/mixed; boundary="${boundary}"`
+        ];
+
+        let messageParts = [
+            ...headers,
+            "",
+            `--${boundary}`,
+            "Content-Type: text/plain; charset=utf-8",
+            "Content-Transfer-Encoding: 7bit",
+            "",
+            body,
+            ""
+        ];
+
+        // Process attachments
+        if (attachments && attachments.length > 0) {
+            for (const att of attachments) {
+                // Remove data URL prefix if present (data:image/png;base64,...)
+                const base64Data = att.data.split(',')[1] || att.data;
+                
+                messageParts = [
+                    ...messageParts,
+                    `--${boundary}`,
+                    `Content-Type: ${att.type}`,
+                    "Content-Transfer-Encoding: base64",
+                    `Content-Disposition: attachment; filename="${att.name}"`,
+                    "",
+                    base64Data,
+                    ""
+                ];
+            }
+        }
+
+        messageParts.push(`--${boundary}--`);
+
         const message = messageParts.join('\n');
+        
+        // Base64URL encode the whole message
         const encodedMessage = btoa(unescape(encodeURIComponent(message))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        
         try {
             const response = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${this.accessToken}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ raw: encodedMessage })
             });
-            if (!response.ok) { const err = await response.json(); alert(`Fehler: ${err.error?.message}`); return false; }
+            if (!response.ok) { 
+                const err = await response.json(); 
+                console.error(err);
+                alert(`Fehler beim Senden: ${err.error?.message}`); 
+                return false; 
+            }
             return true;
-        } catch (e) { alert("Netzwerkfehler."); return false; }
+        } catch (e) { 
+            console.error(e);
+            alert("Netzwerkfehler beim Senden."); 
+            return false; 
+        }
     }
 
     // --- AUTOMATION: RETAINER CHECK ---

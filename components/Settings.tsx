@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle, Key, RefreshCw, Copy, FileText, Image as ImageIcon, Briefcase, Settings as SettingsIcon, HardDrive, Users, DownloadCloud, RefreshCcw, Sparkles, Sliders, Link, Paperclip, Star } from 'lucide-react';
-import { UserProfile, Theme, ProductPreset, Contact, Deal, Task, BackupData, BackendConfig, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate } from '../types';
+import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle, Key, RefreshCw, Copy, FileText, Image as ImageIcon, Briefcase, Settings as SettingsIcon, HardDrive, Users, DownloadCloud, RefreshCcw, Sparkles, Sliders, Link, Paperclip, Star, Paperclip as PaperclipIcon } from 'lucide-react';
+import { UserProfile, Theme, ProductPreset, Contact, Deal, Task, BackupData, BackendConfig, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate, EmailAttachment, EmailAutomationConfig } from '../types';
 import { IDataService } from '../services/dataService';
 
 // Fix for Electron's window.require
@@ -131,6 +131,96 @@ const SubSection = ({
     );
 };
 
+// --- Reusable Email Config Component ---
+const EmailConfigurator = ({
+    config,
+    onChange,
+    isDark,
+    label
+}: {
+    config: EmailAutomationConfig;
+    onChange: (newConfig: EmailAutomationConfig) => void;
+    isDark: boolean;
+    label: string;
+}) => {
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        if (file.size > 500 * 1024) { // 500KB limit for safety in localStorage
+            alert("Die Datei ist zu groß (max 500KB für gespeicherte Vorlagen-Anhänge).");
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const base64 = event.target?.result as string;
+            const newAtt: EmailAttachment = {
+                name: file.name,
+                data: base64,
+                type: file.type,
+                size: file.size
+            };
+            onChange({ ...config, attachments: [...(config.attachments || []), newAtt] });
+        };
+        reader.readAsDataURL(file);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
+    const removeAttachment = (index: number) => {
+        const newAtts = [...(config.attachments || [])];
+        newAtts.splice(index, 1);
+        onChange({ ...config, attachments: newAtts });
+    };
+
+    return (
+        <div className="space-y-4">
+             <div>
+                <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400 block mb-1">Betreff</label>
+                <input 
+                    value={config.subject || ''} 
+                    onChange={(e) => onChange({...config, subject: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                    placeholder={`Betreff für ${label}`}
+                />
+            </div>
+            <div>
+                <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400 block mb-1">Nachrichtentext</label>
+                <textarea 
+                    value={config.body || ''} 
+                    onChange={(e) => onChange({...config, body: e.target.value})}
+                    rows={6}
+                    className="w-full px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                    placeholder={`Hallo {name},\n\n...`}
+                />
+                <p className="text-[10px] text-slate-400 mt-1">Platzhalter: {'{name}'} = Kundenname, {'{nr}'} = Rechnungsnummer</p>
+            </div>
+            
+            <div>
+                <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400 block mb-2">Standard-Anhänge</label>
+                <div className="flex flex-wrap gap-2 mb-2">
+                    {config.attachments && config.attachments.map((att, idx) => (
+                        <div key={idx} className="flex items-center gap-2 bg-slate-100 dark:bg-slate-700 px-3 py-1.5 rounded-lg text-sm">
+                            <PaperclipIcon className="w-3.5 h-3.5 text-slate-500" />
+                            <span className="dark:text-white truncate max-w-[150px]">{att.name}</span>
+                            <button onClick={() => removeAttachment(idx)} className="text-slate-400 hover:text-red-500"><X className="w-3.5 h-3.5"/></button>
+                        </div>
+                    ))}
+                </div>
+                <div className="flex gap-2">
+                    <button onClick={() => fileInputRef.current?.click()} className="text-xs flex items-center gap-1 text-indigo-600 hover:bg-indigo-50 px-2 py-1 rounded transition-colors">
+                        <Upload className="w-3.5 h-3.5" /> Datei hochladen
+                    </button>
+                    <input ref={fileInputRef} type="file" onChange={handleUpload} className="hidden" />
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
 export const Settings: React.FC<SettingsProps> = ({ 
   userProfile, 
   onUpdateProfile, 
@@ -255,12 +345,12 @@ export const Settings: React.FC<SettingsProps> = ({
       setInvConfigForm(prev => ({ ...prev, [name]: value }));
   };
   
-  const handleEmailSettingsChange = (key: string, value: any) => {
+  const handleEmailConfigChange = (type: keyof import('../types').EmailSettings, newConfig: EmailAutomationConfig) => {
       setInvConfigForm(prev => ({
           ...prev,
           emailSettings: {
-              ...prev.emailSettings,
-              [key]: value
+              ...(prev.emailSettings || {} as any),
+              [type]: newConfig
           }
       }));
   };
@@ -719,15 +809,15 @@ export const Settings: React.FC<SettingsProps> = ({
                      </div>
                  </SubSection>
 
-                 {/* Email Vorlagen */}
+                 {/* Email Vorlagen (Allgemein) */}
                  <SubSection
-                     title="E-Mail Vorlagen"
+                     title="Allgemeine Textbausteine"
                      isDark={isDark}
                      isOpen={activeSubSection === 'config_email'}
                      onToggle={() => toggleSubSection('config_email')}
                  >
                      <div className="py-2">
-                         <p className="text-xs text-slate-500 mb-3">Erstellen und bearbeiten Sie hier Textvorlagen für Ihre E-Mails.</p>
+                         <p className="text-xs text-slate-500 mb-3">Zusätzliche Vorlagen für manuelle E-Mails (nicht automatisiert).</p>
                         <div className="space-y-2 mb-4">
                             {emailTemplates.map(template => (
                                 <div key={template.id} className="flex items-center justify-between p-3 border rounded-lg bg-white dark:bg-slate-800 dark:border-slate-700 hover:border-indigo-300 transition-colors">
@@ -741,109 +831,78 @@ export const Settings: React.FC<SettingsProps> = ({
                                     </div>
                                 </div>
                             ))}
-                            {emailTemplates.length === 0 && <p className="text-sm text-slate-400 text-center py-4 italic">Keine Vorlagen vorhanden.</p>}
+                            {emailTemplates.length === 0 && <p className="text-sm text-slate-400 text-center py-4 italic">Keine manuellen Vorlagen vorhanden.</p>}
                         </div>
                         <button onClick={() => openTemplateModal()} className="w-full py-2 border border-dashed border-slate-300 rounded-lg text-slate-500 hover:bg-slate-50 flex items-center justify-center gap-2 text-sm"><Plus className="w-4 h-4" /> Neue Vorlage erstellen</button>
                      </div>
                  </SubSection>
                  
-                 {/* Email Versand & Automation (NEU) */}
+                 {/* Email Versand & Automation (OVERHAUL) */}
                  <SubSection
                      title="E-Mail Versand & Automation"
                      isDark={isDark}
                      isOpen={activeSubSection === 'config_email_automation'}
                      onToggle={() => toggleSubSection('config_email_automation')}
                  >
-                     <div className="py-2 space-y-6">
+                     <div className="py-2 space-y-8">
                         {/* Welcome Mail Section */}
-                        <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-lg border dark:border-slate-700">
-                             <h4 className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-3 flex items-center gap-2"><Star className="w-4 h-4 text-yellow-500" /> Willkommens-E-Mail (Deal gewonnen)</h4>
-                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                 <div>
-                                     <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400 mb-1 block">Standard-Vorlage</label>
-                                     <select 
-                                        value={invConfigForm.emailSettings?.welcomeTemplateId || ''}
-                                        onChange={(e) => handleEmailSettingsChange('welcomeTemplateId', e.target.value)}
-                                        className="w-full px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white"
-                                     >
-                                         <option value="">-- Keine Vorlage --</option>
-                                         {emailTemplates.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
-                                     </select>
-                                 </div>
-                                 <div className="flex items-end">
-                                      <label className="flex items-center gap-2 cursor-pointer p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg w-full transition-colors">
-                                         <input 
-                                            type="checkbox"
-                                            checked={invConfigForm.emailSettings?.welcomeSendAutomatically || false}
-                                            onChange={(e) => handleEmailSettingsChange('welcomeSendAutomatically', e.target.checked)}
-                                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4"
-                                         />
-                                         <span className="text-sm dark:text-slate-300 flex items-center gap-2">Automatisch senden bei Status "Gewonnen"</span>
-                                      </label>
-                                 </div>
+                        <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-lg border dark:border-slate-700">
+                             <div className="flex justify-between items-start mb-4">
+                                <h4 className="text-sm font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2"><Star className="w-4 h-4 text-yellow-500" /> Willkommens-E-Mail</h4>
+                                <label className="flex items-center gap-2 cursor-pointer bg-white dark:bg-slate-700 border dark:border-slate-600 px-3 py-1.5 rounded-full shadow-sm">
+                                    <input 
+                                    type="checkbox"
+                                    checked={invConfigForm.emailSettings?.welcome?.enabled || false}
+                                    onChange={(e) => handleEmailConfigChange('welcome', { ...(invConfigForm.emailSettings?.welcome || {} as any), enabled: e.target.checked })}
+                                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4"
+                                    />
+                                    <span className="text-xs font-medium dark:text-slate-300">Automatisch senden (Deal Gewonnen)</span>
+                                </label>
                              </div>
+                             
+                             <EmailConfigurator 
+                                config={invConfigForm.emailSettings?.welcome || { subject: '', body: '', attachments: [] }}
+                                onChange={(newConfig) => handleEmailConfigChange('welcome', { ...newConfig, enabled: invConfigForm.emailSettings?.welcome?.enabled })}
+                                isDark={isDark}
+                                label="Willkommens-Mail"
+                             />
                         </div>
 
-                        <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-lg border dark:border-slate-700">
-                             <h4 className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-3 flex items-center gap-2"><Mail className="w-4 h-4 text-indigo-600" /> Rechnungsversand</h4>
-                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                 <div>
-                                     <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400 mb-1 block">Standard-Vorlage</label>
-                                     <select 
-                                        value={invConfigForm.emailSettings?.invoiceTemplateId || ''}
-                                        onChange={(e) => handleEmailSettingsChange('invoiceTemplateId', e.target.value)}
-                                        className="w-full px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white"
-                                     >
-                                         <option value="">-- Keine Vorlage --</option>
-                                         {emailTemplates.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
-                                     </select>
-                                 </div>
-                                 <div className="flex items-end">
-                                      <label className="flex items-center gap-2 cursor-pointer p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg w-full transition-colors">
-                                         <input 
-                                            type="checkbox"
-                                            checked={invConfigForm.emailSettings?.invoiceAttachPdf || false}
-                                            onChange={(e) => handleEmailSettingsChange('invoiceAttachPdf', e.target.checked)}
-                                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4"
-                                         />
-                                         <span className="text-sm dark:text-slate-300 flex items-center gap-2"><Paperclip className="w-3.5 h-3.5"/> Rechnung als PDF anhängen</span>
-                                      </label>
-                                 </div>
-                             </div>
+                        {/* Invoice Mail Section */}
+                        <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-lg border dark:border-slate-700">
+                             <h4 className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-4 flex items-center gap-2"><Mail className="w-4 h-4 text-indigo-600" /> Rechnungsversand</h4>
+                             <EmailConfigurator 
+                                config={invConfigForm.emailSettings?.invoice || { subject: '', body: '', attachments: [] }}
+                                onChange={(newConfig) => handleEmailConfigChange('invoice', newConfig)}
+                                isDark={isDark}
+                                label="Rechnung"
+                             />
                         </div>
 
-                        <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-lg border dark:border-slate-700">
-                             <h4 className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-3 flex items-center gap-2"><Briefcase className="w-4 h-4 text-amber-600" /> Angebotsversand</h4>
-                             <div>
-                                 <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400 mb-1 block">Standard-Vorlage für Angebote</label>
-                                 <select 
-                                    value={invConfigForm.emailSettings?.offerTemplateId || ''}
-                                    onChange={(e) => handleEmailSettingsChange('offerTemplateId', e.target.value)}
-                                    className="w-full px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white"
-                                 >
-                                     <option value="">-- Keine Vorlage --</option>
-                                     {emailTemplates.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
-                                 </select>
-                             </div>
+                        {/* Offer Mail Section */}
+                        <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-lg border dark:border-slate-700">
+                             <h4 className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-4 flex items-center gap-2"><Briefcase className="w-4 h-4 text-amber-600" /> Angebotsversand</h4>
+                             <EmailConfigurator 
+                                config={invConfigForm.emailSettings?.offer || { subject: '', body: '', attachments: [] }}
+                                onChange={(newConfig) => handleEmailConfigChange('offer', newConfig)}
+                                isDark={isDark}
+                                label="Angebot"
+                             />
                         </div>
 
-                        <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-lg border dark:border-slate-700">
-                             <h4 className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-3 flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-red-600" /> Mahnwesen</h4>
-                             <div>
-                                 <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400 mb-1 block">Standard-Vorlage für Mahnungen</label>
-                                 <select 
-                                    value={invConfigForm.emailSettings?.reminderTemplateId || ''}
-                                    onChange={(e) => handleEmailSettingsChange('reminderTemplateId', e.target.value)}
-                                    className="w-full px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white"
-                                 >
-                                     <option value="">-- Keine Vorlage --</option>
-                                     {emailTemplates.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
-                                 </select>
-                             </div>
+                        {/* Reminder Mail Section */}
+                        <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-lg border dark:border-slate-700">
+                             <h4 className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-4 flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-red-600" /> Mahnwesen (Erinnerung)</h4>
+                             <EmailConfigurator 
+                                config={invConfigForm.emailSettings?.reminder || { subject: '', body: '', attachments: [] }}
+                                onChange={(newConfig) => handleEmailConfigChange('reminder', newConfig)}
+                                isDark={isDark}
+                                label="Mahnung"
+                             />
                         </div>
 
-                        <div className="flex justify-end">
-                             <button onClick={() => { onUpdateInvoiceConfig(invConfigForm); alert('E-Mail Einstellungen gespeichert'); }} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">Speichern</button>
+                        <div className="flex justify-end sticky bottom-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur p-4 border-t dark:border-slate-800 -mx-6 -mb-6">
+                             <button onClick={() => { onUpdateInvoiceConfig(invConfigForm); alert('Automatisierungs-Einstellungen gespeichert'); }} className="bg-indigo-600 text-white px-6 py-2.5 rounded-lg text-sm font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200/50 transition-all transform hover:scale-105">Einstellungen Speichern</button>
                         </div>
                      </div>
                  </SubSection>

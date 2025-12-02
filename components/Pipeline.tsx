@@ -152,11 +152,11 @@ export const Pipeline: React.FC<PipelineProps> = ({
             isPaid: false
         });
 
-        // 2. Auto Welcome Email
-        if (invoiceConfig && invoiceConfig.emailSettings?.welcomeSendAutomatically && invoiceConfig.emailSettings.welcomeTemplateId && contact && contact.email) {
-             const template = emailTemplates.find(t => t.id === invoiceConfig.emailSettings!.welcomeTemplateId);
+        // 2. Auto Welcome Email (UPDATED to use new Config Structure)
+        if (invoiceConfig && invoiceConfig.emailSettings?.welcome?.enabled && contact && contact.email) {
+             const welcomeConfig = invoiceConfig.emailSettings.welcome;
              
-             if (template) {
+             if (welcomeConfig.subject && welcomeConfig.body) {
                  // Check Google Connection Logic (Local Implementation)
                  const isGoogleMailConnected = localStorage.getItem('google_mail_connected') === 'true';
                  const storedConfig = localStorage.getItem('backend_config');
@@ -164,16 +164,16 @@ export const Pipeline: React.FC<PipelineProps> = ({
                  
                  if (isGoogleMailConnected) {
                      const service = DataServiceFactory.create(config);
-                     const body = template.body.replace('{name}', contact.name.split(' ')[0]);
+                     const body = welcomeConfig.body.replace('{name}', contact.name.split(' ')[0]);
                      
-                     // Send non-blocking
-                     service.sendMail(contact.email, template.subject, body).then(success => {
+                     // Send non-blocking with attachments
+                     service.sendMail(contact.email, welcomeConfig.subject, body, welcomeConfig.attachments).then(success => {
                          if (success) {
                              onAddActivity({
                                 id: Math.random().toString(36).substr(2, 9),
                                 contactId: contact.id,
                                 type: 'email',
-                                content: `Automatische Willkommens-Mail gesendet (${template.title})`,
+                                content: `Automatische Willkommens-Mail gesendet (${welcomeConfig.attachments?.length ? 'mit Anhängen' : 'ohne Anhänge'})`,
                                 date: new Date().toISOString().split('T')[0],
                                 timestamp: new Date().toISOString()
                             });

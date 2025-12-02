@@ -124,14 +124,27 @@ export interface Expense {
   contactName?: string; // NEU: Cache Name
 }
 
+// NEW: Attachment Structure for Email Settings
+export interface EmailAttachment {
+    name: string;
+    data: string; // Base64
+    type: string; // MIME type
+    size: number;
+}
+
+// NEW: Automation Config Structure per Type
+export interface EmailAutomationConfig {
+    subject: string;
+    body: string;
+    attachments: EmailAttachment[];
+    enabled?: boolean; // Only relevant for auto-triggers like Welcome
+}
+
 export interface EmailSettings {
-    invoiceTemplateId?: string;
-    invoiceAttachPdf?: boolean;
-    reminderTemplateId?: string;
-    offerTemplateId?: string;
-    // NEU: Welcome Mail Automation
-    welcomeTemplateId?: string;
-    welcomeSendAutomatically?: boolean;
+    welcome: EmailAutomationConfig;
+    invoice: EmailAutomationConfig;
+    offer: EmailAutomationConfig;
+    reminder: EmailAutomationConfig;
 }
 
 export interface InvoiceConfig {
@@ -147,7 +160,7 @@ export interface InvoiceConfig {
   logoBase64?: string;
   footerText?: string;
   taxRule?: 'small_business' | 'standard'; // NEU: Steuermodus
-  emailSettings?: EmailSettings; // NEU: E-Mail Automation
+  emailSettings?: EmailSettings; // NEU: Strukturiertes E-Mail Setting
 }
 
 export interface EmailTemplate {
