@@ -447,12 +447,12 @@ class LocalDataService implements IDataService {
         
         if (rows.length < 2) throw new Error("CSV Datei scheint leer zu sein oder hat keine Daten.");
 
-        // 2. Identify Headers (Normalize keys to handle slight variations if needed)
-        const headers = rows[0].map(h => h.trim());
+        // 2. Identify Headers (Normalize keys to handle slight variations and case insensitivity)
+        const headers = rows[0].map(h => h.trim().toLowerCase());
         
         // Helper to get value by header name safely
         const getValue = (row: string[], headerName: string): string => {
-            const index = headers.indexOf(headerName);
+            const index = headers.indexOf(headerName.toLowerCase());
             if (index === -1) return '';
             return row[index] ? row[index].trim() : '';
         };
@@ -466,10 +466,10 @@ class LocalDataService implements IDataService {
             const row = rows[i];
             if (row.length === 0 || (row.length === 1 && !row[0])) continue;
 
-            // Mapping Logic based on provided snippet
+            // Mapping Logic supporting both English and German headers
             const fullName = getValue(row, 'Name') || getValue(row, 'fullName');
-            const firstName = getValue(row, 'First Name') || getValue(row, 'firstName');
-            const lastName = getValue(row, 'Last Name') || getValue(row, 'lastName');
+            const firstName = getValue(row, 'First Name') || getValue(row, 'firstName') || getValue(row, 'Vorname');
+            const lastName = getValue(row, 'Last Name') || getValue(row, 'lastName') || getValue(row, 'Nachname');
             
             // Name Fallback Logic
             let name = fullName;
@@ -477,25 +477,29 @@ class LocalDataService implements IDataService {
             if (!name && firstName) name = firstName;
             if (!name) name = 'Unbekannt';
 
+            const company = getValue(row, 'Company') || getValue(row, 'companyName') || getValue(row, 'Firma');
+
             // Filter out junk rows (sometimes export tools add empty or meta rows)
-            if (name === 'Unbekannt' && !getValue(row, 'Company')) continue;
+            if (name === 'Unbekannt' && !company) continue;
 
             // Notes aggregation
             const summary = getValue(row, 'summary');
             const desc = getValue(row, 'Description');
             const subTitle = getValue(row, 'Sub Title');
             const location = getValue(row, 'Location');
+            const icebreaker = getValue(row, 'Icebreaker');
             
             let notesParts = [];
             if (summary) notesParts.push(summary);
             if (desc) notesParts.push(desc);
+            if (icebreaker) notesParts.push(`Icebreaker: ${icebreaker}`);
             if (subTitle) notesParts.push(`Sub-Title: ${subTitle}`);
             if (location) notesParts.push(`Standort: ${location}`);
 
             const newContact: Contact = {
                 id: crypto.randomUUID(),
                 name: name,
-                company: getValue(row, 'Company') || getValue(row, 'companyName'),
+                company: company,
                 role: getValue(row, 'Job Title') || getValue(row, 'title') || getValue(row, 'Position'),
                 companyUrl: getValue(row, 'regularCompanyUrl') || getValue(row, 'companyUrl'),
                 email: getValue(row, 'Email Address') || getValue(row, 'Email'), 
