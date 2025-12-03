@@ -21,26 +21,27 @@ const hotUpdatePath = path.join(userDataPath, 'hot_update');
 function startLocalServer() {
   const serverApp = express();
 
-  // WICHTIG: Hot-Update Ordner löschen, um "Sticky Old Version" Probleme zu beheben
+  // FIX: Wir löschen den Ordner NICHT mehr.
+  // Stattdessen prüfen wir, ob ein Update existiert, und bedienen Dateien bevorzugt von dort.
+  
   if (fs.existsSync(hotUpdatePath)) {
-      console.log('Entferne veralteten Update-Cache...');
-      try {
-        fs.rmSync(hotUpdatePath, { recursive: true, force: true });
-      } catch(e) {
-        console.error("Konnte Cache nicht löschen:", e);
-      }
+      console.log('Serving updates from hot_update folder');
+      // Express schaut zuerst hier nach Dateien (z.B. index.html, assets/...)
+      serverApp.use(express.static(hotUpdatePath));
   }
 
-  // SECURITY HEADERS REMOVED:
-  // Die Header für COOP/COEP wurden entfernt, da sie das Laden von Tailwind CSS (CDN) blockieren.
-  // Ohne Google Login Popup benötigen wir diese strikte Isolation nicht mehr.
-  
-  // Nur noch statische Dateien aus dem dist Ordner (frischer Build)
-  console.log('Serving from internal dist folder');
+  // Fallback: Wenn Datei nicht im Update-Ordner ist (oder kein Update existiert),
+  // nimm die Datei aus der eingebauten App (dist Ordner).
+  console.log('Serving fallback from internal dist folder');
   serverApp.use(express.static(path.join(__dirname, 'dist')));
   
   serverApp.get('*', (req, res) => {
-      res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+      // Auch beim SPA-Fallback: Zuerst im Update-Ordner schauen
+      if (fs.existsSync(path.join(hotUpdatePath, 'index.html'))) {
+          res.sendFile(path.join(hotUpdatePath, 'index.html'));
+      } else {
+          res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+      }
   });
 
   server = serverApp.listen(INTERNAL_PORT, () => {
@@ -52,7 +53,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
-    title: "SyntaxLabCRM v1.0.3",
+    title: "SyntaxLabCRM v1.0.4",
     icon: path.join(__dirname, 'dist/favicon.ico'),
     webPreferences: {
       nodeIntegration: true,
@@ -100,7 +101,7 @@ ipcMain.handle('open-dev-tools', () => {
     }
 });
 
-// Update Handler (bleibt für zukünftige Updates)
+// Update Handler
 ipcMain.handle('install-update', async (event, files) => {
   try {
     if (!fs.existsSync(hotUpdatePath)) {
