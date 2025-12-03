@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Search, Filter, MoreHorizontal, Mail, Phone, Plus, Linkedin, X, FileText, Pencil, Trash, Trash2, Clock, Check, Send, Briefcase, Banknote, Calendar, Building, Globe, Upload, ArrowUpDown, ArrowUp, ArrowDown, TrendingUp, TrendingDown, Percent, Zap } from 'lucide-react';
+import { Search, Filter, MoreHorizontal, Mail, Phone, Plus, Linkedin, X, FileText, Pencil, Trash, Trash2, Clock, Check, Send, Briefcase, Banknote, Calendar, Building, Globe, Upload, ArrowUpDown, ArrowUp, ArrowDown, TrendingUp, TrendingDown, Percent, Zap, History } from 'lucide-react';
 import { Contact, Activity, ActivityType, EmailTemplate, Invoice, Expense, ContactType } from '../types';
 import { DataServiceFactory } from '../services/dataService'; 
 
@@ -97,17 +97,36 @@ export const Contacts: React.FC<ContactsProps> = ({
     retainerInterval: 'monthly'
   });
 
-  const quickActivityOptions = [
+  // Updated Static Options
+  const staticQuickActivityOptions = [
+      "LinkedIn-Kontaktanfrage gesendet",
+      "Kontaktanfrage angenommen",
       "Voicemail hinterlassen",
       "Erreicht - Follow-up vereinbart",
       "Angebot nachgefasst",
       "Vor-Ort Termin wahrgenommen",
-      "LinkedIn Nachricht gesendet",
-      "Xing Kontaktanfrage gesendet",
       "Kunde hat zurückgerufen",
       "Rechnung reklamiert",
       "Support-Fall gelöst"
   ];
+
+  // Dynamic Options (Top 5 used descriptions that are NOT in static list)
+  const frequentActivityOptions = useMemo(() => {
+      const counts: Record<string, number> = {};
+      activities.forEach(a => {
+          // Normalize (trim) to avoid duplicates
+          const content = a.content.trim();
+          if (content) {
+              counts[content] = (counts[content] || 0) + 1;
+          }
+      });
+
+      return Object.entries(counts)
+          .sort((a, b) => b[1] - a[1]) // Sort descending by count
+          .map(entry => entry[0]) // Get content string
+          .filter(opt => !staticQuickActivityOptions.includes(opt) && !opt.startsWith('System:')) // Filter out static and system msgs
+          .slice(0, 5); // Top 5
+  }, [activities]);
 
   // HELPER: Explicitly close and reset form to avoid state ghosting
   const handleCloseModal = () => {
@@ -354,6 +373,13 @@ export const Contacts: React.FC<ContactsProps> = ({
           new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
       );
   };
+  
+  // Helper to get Latest Activity for Table
+  const getLastActivity = (contactId: string) => {
+      const relevant = activities.filter(a => a.contactId === contactId);
+      if (!relevant.length) return null;
+      return relevant.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+  };
 
   // --- FINANCIAL CALCULATION HELPER ---
   const getProfitability = (contactId: string) => {
@@ -576,6 +602,7 @@ export const Contacts: React.FC<ContactsProps> = ({
                 >
                     <div className="flex items-center">Firma {renderSortIcon('company')}</div>
                 </th>
+                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200">Letzte Aktivität</th>
                 <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200">Quick-Notiz</th>
                 <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 text-right">Aktionen</th>
               </tr>
@@ -623,6 +650,20 @@ export const Contacts: React.FC<ContactsProps> = ({
                           )}
                       </div>
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                      {(() => {
+                          const lastAct = getLastActivity(contact.id);
+                          if (!lastAct) return <span className="text-xs text-slate-300 italic">-</span>;
+                          return (
+                              <div className="flex flex-col">
+                                  <span className="text-xs font-semibold text-slate-600 flex items-center gap-1">
+                                      {lastAct.date === new Date().toISOString().split('T')[0] ? 'Heute' : lastAct.date.split('-').reverse().slice(0,2).join('.')} 
+                                  </span>
+                                  <span className="text-[10px] text-slate-400 truncate max-w-[120px]">{lastAct.content}</span>
+                              </div>
+                          );
+                      })()}
+                  </td>
                   <td className="px-6 py-4">
                     {editingNoteId === contact.id ? (
                       <input 
@@ -661,7 +702,7 @@ export const Contacts: React.FC<ContactsProps> = ({
                   </td>
                 </tr>
               )) : (
-                  <tr><td colSpan={6} className="px-6 py-12 text-center text-slate-400 text-sm">{focusedId ? "Der gesuchte Kontakt wurde nicht gefunden." : initialFilter === 'recent' ? "Keine neuen Kontakte in den letzten 7 Tagen gefunden." : hasActiveFilters ? "Keine Kontakte für die gewählten Filter gefunden." : "Keine Kontakte in dieser Liste gefunden."}</td></tr>
+                  <tr><td colSpan={7} className="px-6 py-12 text-center text-slate-400 text-sm">{focusedId ? "Der gesuchte Kontakt wurde nicht gefunden." : initialFilter === 'recent' ? "Keine neuen Kontakte in den letzten 7 Tagen gefunden." : hasActiveFilters ? "Keine Kontakte für die gewählten Filter gefunden." : "Keine Kontakte in dieser Liste gefunden."}</td></tr>
               )}
             </tbody>
           </table>
@@ -832,9 +873,10 @@ export const Contacts: React.FC<ContactsProps> = ({
                                         
                                         {/* Quick Select Dropdown */}
                                         {isActivityQuickSelectOpen && (
-                                            <div className="absolute top-full right-0 mt-1 w-64 bg-white rounded-lg shadow-xl border border-slate-100 z-50 animate-in fade-in zoom-in duration-100">
+                                            <div className="absolute top-full right-0 mt-1 w-72 bg-white rounded-lg shadow-xl border border-slate-100 z-50 animate-in fade-in zoom-in duration-100 max-h-64 overflow-y-auto">
                                                 <div className="p-1">
-                                                    {quickActivityOptions.map((option, i) => (
+                                                    <div className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Standard</div>
+                                                    {staticQuickActivityOptions.map((option, i) => (
                                                         <button 
                                                             key={i}
                                                             onClick={() => {
@@ -846,6 +888,26 @@ export const Contacts: React.FC<ContactsProps> = ({
                                                             {option}
                                                         </button>
                                                     ))}
+                                                    
+                                                    {frequentActivityOptions.length > 0 && (
+                                                        <>
+                                                            <div className="px-3 py-1 mt-2 text-[10px] font-bold text-indigo-400 uppercase tracking-wider border-t border-slate-50 flex items-center gap-1">
+                                                                <History className="w-3 h-3" /> Häufig verwendet
+                                                            </div>
+                                                            {frequentActivityOptions.map((option, i) => (
+                                                                <button 
+                                                                    key={`freq-${i}`}
+                                                                    onClick={() => {
+                                                                        setNewActivityContent(option);
+                                                                        setIsActivityQuickSelectOpen(false);
+                                                                    }}
+                                                                    className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 text-indigo-700 rounded-md font-medium"
+                                                                >
+                                                                    {option}
+                                                                </button>
+                                                            ))}
+                                                        </>
+                                                    )}
                                                 </div>
                                             </div>
                                         )}

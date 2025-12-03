@@ -1,3 +1,4 @@
+
 // ... existing imports ...
 import { Contact, Deal, Task, UserProfile, ProductPreset, Theme, BackendConfig, BackendMode, BackupData, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate, EmailAttachment, DealStage } from '../types';
 
@@ -465,29 +466,42 @@ class LocalDataService implements IDataService {
             const row = rows[i];
             if (row.length === 0 || (row.length === 1 && !row[0])) continue;
 
-            // Mapping Logic based on user's file format
-            const fullName = getValue(row, 'fullName');
-            const firstName = getValue(row, 'firstName');
-            const lastName = getValue(row, 'lastName');
+            // Mapping Logic based on provided snippet
+            const fullName = getValue(row, 'Name') || getValue(row, 'fullName');
+            const firstName = getValue(row, 'First Name') || getValue(row, 'firstName');
+            const lastName = getValue(row, 'Last Name') || getValue(row, 'lastName');
             
-            // Name Fallback
+            // Name Fallback Logic
             let name = fullName;
             if (!name && firstName && lastName) name = `${firstName} ${lastName}`;
+            if (!name && firstName) name = firstName;
             if (!name) name = 'Unbekannt';
 
             // Filter out junk rows (sometimes export tools add empty or meta rows)
-            if (name === 'Unbekannt' && !getValue(row, 'companyName')) continue;
+            if (name === 'Unbekannt' && !getValue(row, 'Company')) continue;
+
+            // Notes aggregation
+            const summary = getValue(row, 'summary');
+            const desc = getValue(row, 'Description');
+            const subTitle = getValue(row, 'Sub Title');
+            const location = getValue(row, 'Location');
+            
+            let notesParts = [];
+            if (summary) notesParts.push(summary);
+            if (desc) notesParts.push(desc);
+            if (subTitle) notesParts.push(`Sub-Title: ${subTitle}`);
+            if (location) notesParts.push(`Standort: ${location}`);
 
             const newContact: Contact = {
                 id: crypto.randomUUID(),
                 name: name,
-                company: getValue(row, 'companyName'),
-                role: getValue(row, 'title'),
+                company: getValue(row, 'Company') || getValue(row, 'companyName'),
+                role: getValue(row, 'Job Title') || getValue(row, 'title') || getValue(row, 'Position'),
                 companyUrl: getValue(row, 'regularCompanyUrl') || getValue(row, 'companyUrl'),
-                email: '', // Not in provided CSV
-                linkedin: getValue(row, 'profileUrl') || getValue(row, 'linkedInProfileUrl'),
+                email: getValue(row, 'Email Address') || getValue(row, 'Email'), 
+                linkedin: getValue(row, 'Profile URL') || getValue(row, 'linkedInProfileUrl') || getValue(row, 'Link'),
                 avatar: getValue(row, 'profileImageUrl'),
-                notes: getValue(row, 'summary'), // Summary into notes
+                notes: notesParts.join('\n\n'), 
                 lastContact: new Date().toISOString().split('T')[0],
                 type: 'lead'
             };
