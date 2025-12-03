@@ -11,6 +11,9 @@ const __dirname = path.dirname(__filename);
 const INTERNAL_PORT = 3000;
 const APP_URL = `http://localhost:${INTERNAL_PORT}`;
 
+// User Agent Spoofing für Google Auth (täuscht echten Chrome vor)
+const GOOGLE_AUTH_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+
 let mainWindow;
 let server;
 
@@ -53,19 +56,18 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
-    title: "SyntaxLabCRM v1.0.4",
+    title: "SyntaxLabCRM v1.0.5",
     icon: path.join(__dirname, 'dist/favicon.ico'),
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
-      webSecurity: false,
+      webSecurity: false, // Wichtig für lokale CORS Probleme beim Laden von Ressourcen
       allowRunningInsecureContent: true 
     },
     autoHideMenuBar: false, 
   });
 
-  const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
-  mainWindow.webContents.setUserAgent(userAgent);
+  mainWindow.webContents.setUserAgent(GOOGLE_AUTH_USER_AGENT);
 
   const isDev = !app.isPackaged && process.env.NODE_ENV === 'development';
 
@@ -77,13 +79,45 @@ function createWindow() {
     mainWindow.loadURL(APP_URL);
   }
 
+  // Fenster-Handler für Popups
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    // Erlaube externe Links im Standardbrowser
+    // 1. Google Auth Popups: MÜSSEN in der App bleiben (allow)
+    // Damit das 'window.opener' Event feuern kann.
+    if (url.startsWith('https://accounts.google.com') || url.includes('google.com/signin')) {
+      return { 
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          autoHideMenuBar: true,
+          width: 600,
+          height: 700,
+          center: true,
+          // Wichtig: Das Popup braucht ähnliche Rechte, aber wir wollen sicherstellen,
+          // dass der User-Agent auch hier greift.
+          webPreferences: {
+             nodeIntegration: false,
+             contextIsolation: true,
+             enableRemoteModule: false
+          }
+        }
+      };
+    }
+    
+    // 2. Alle anderen externen Links (z.B. LinkedIn Profile): Im Standard-Browser öffnen
     if (url.startsWith('http')) {
       shell.openExternal(url);
       return { action: 'deny' };
     }
+    
     return { action: 'allow' };
+  });
+
+  // Event Listener für neu erstellte Fenster (z.B. das Google Popup)
+  // Wir müssen sicherstellen, dass auch das Popup den gefälschten User-Agent nutzt,
+  // sonst blockiert Google den Zugriff ("Browser nicht sicher").
+  mainWindow.webContents.on('did-create-window', (childWindow, details) => {
+      childWindow.webContents.setUserAgent(GOOGLE_AUTH_USER_AGENT);
+      // Optional: Menüleiste auch im Popup ausblenden
+      childWindow.setMenuBarVisibility(false);
   });
 
   mainWindow.on('closed', () => {
