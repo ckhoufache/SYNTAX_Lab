@@ -1,4 +1,3 @@
-
 import { app, BrowserWindow, shell, ipcMain } from 'electron';
 import path from 'path';
 import express from 'express';
@@ -15,39 +14,37 @@ const APP_URL = `http://localhost:${INTERNAL_PORT}`;
 let mainWindow;
 let server;
 
-// HOT UPDATE PFAD: Hier speichern wir Updates
+// HOT UPDATE PFAD
 const userDataPath = app.getPath('userData');
 const hotUpdatePath = path.join(userDataPath, 'hot_update');
 
 function startLocalServer() {
   const serverApp = express();
-  
-  // LOGIK FÜR HOT-UPDATES
-  const updateIndex = path.join(hotUpdatePath, 'index.html');
-  const hasUpdate = fs.existsSync(updateIndex);
 
-  if (hasUpdate) {
-      console.log('Serving from Hot Update folder:', hotUpdatePath);
-      serverApp.use(express.static(hotUpdatePath));
+  // WICHTIG: Hot-Update Ordner löschen, um "Sticky Old Version" Probleme zu beheben
+  if (fs.existsSync(hotUpdatePath)) {
+      console.log('Entferne veralteten Update-Cache...');
+      try {
+        fs.rmSync(hotUpdatePath, { recursive: true, force: true });
+      } catch(e) {
+        console.error("Konnte Cache nicht löschen:", e);
+      }
   }
 
-  // Fallback
-  console.log('Serving fallback from internal dist folder');
+  // SECURITY HEADERS REMOVED:
+  // Die Header für COOP/COEP wurden entfernt, da sie das Laden von Tailwind CSS (CDN) blockieren.
+  // Ohne Google Login Popup benötigen wir diese strikte Isolation nicht mehr.
+  
+  // Nur noch statische Dateien aus dem dist Ordner (frischer Build)
+  console.log('Serving from internal dist folder');
   serverApp.use(express.static(path.join(__dirname, 'dist')));
   
   serverApp.get('*', (req, res) => {
-    if (hasUpdate) {
-        res.sendFile(updateIndex);
-    } else {
-        res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-    }
+      res.sendFile(path.join(__dirname, 'dist', 'index.html'));
   });
 
   server = serverApp.listen(INTERNAL_PORT, () => {
-    console.log(`--------------------------------------------------`);
-    console.log(`Interner App-Server läuft auf ${APP_URL}`);
-    console.log(`WICHTIG: Fügen Sie '${APP_URL}' zu den "Authorized JavaScript origins" in der Google Cloud Console hinzu.`);
-    console.log(`--------------------------------------------------`);
+    console.log(`Internal server running at ${APP_URL}`);
   });
 }
 
@@ -55,15 +52,19 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
-    title: "SyntaxLabCRM",
+    title: "SyntaxLabCRM v1.0.3",
     icon: path.join(__dirname, 'dist/favicon.ico'),
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
-      webSecurity: false 
+      webSecurity: false,
+      allowRunningInsecureContent: true 
     },
-    autoHideMenuBar: true,
+    autoHideMenuBar: false, 
   });
+
+  const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+  mainWindow.webContents.setUserAgent(userAgent);
 
   const isDev = !app.isPackaged && process.env.NODE_ENV === 'development';
 
@@ -76,21 +77,7 @@ function createWindow() {
   }
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    // Liste der erlaubten Domains für Google OAuth
-    const allowedDomains = [
-        'accounts.google.com', 
-        'googleusercontent.com', 
-        'oauth2.googleapis.com', 
-        'mail.google.com',
-        'www.googleapis.com'
-    ];
-    
-    // Prüfen ob die URL zu Google gehört (für Login Popups)
-    if (allowedDomains.some(domain => url.includes(domain))) {
-        return { action: 'allow' };
-    }
-    
-    // Externe Links im Standard-Browser öffnen
+    // Erlaube externe Links im Standardbrowser
     if (url.startsWith('http')) {
       shell.openExternal(url);
       return { action: 'deny' };
@@ -103,12 +90,17 @@ function createWindow() {
   });
 }
 
-// --- IPC HANDLER FÜR UPDATES ---
-
 ipcMain.handle('get-app-version', () => {
   return app.getVersion();
 });
 
+ipcMain.handle('open-dev-tools', () => {
+    if (mainWindow) {
+        mainWindow.webContents.openDevTools();
+    }
+});
+
+// Update Handler (bleibt für zukünftige Updates)
 ipcMain.handle('install-update', async (event, files) => {
   try {
     if (!fs.existsSync(hotUpdatePath)) {
@@ -142,17 +134,6 @@ ipcMain.handle('install-update', async (event, files) => {
   }
 });
 
-ipcMain.handle('reset-update', async () => {
-    try {
-        if (fs.existsSync(hotUpdatePath)) {
-            fs.rmSync(hotUpdatePath, { recursive: true, force: true });
-        }
-        return { success: true };
-    } catch (error) {
-        return { success: false, error: error.message };
-    }
-});
-
 ipcMain.handle('restart-app', () => {
   app.relaunch();
   app.exit();
@@ -175,7 +156,6 @@ ipcMain.handle('generate-pdf', async (event, htmlContent) => {
         return pdfData; 
     } catch (error) {
         if (pdfWindow) pdfWindow.close();
-        console.error('PDF Generation failed:', error);
         throw error;
     }
 });

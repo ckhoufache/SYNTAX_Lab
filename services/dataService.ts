@@ -1,4 +1,3 @@
-
 // ... existing imports ...
 import { Contact, Deal, Task, UserProfile, ProductPreset, Theme, BackendConfig, BackendMode, BackupData, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate, EmailAttachment, DealStage } from '../types';
 
@@ -102,7 +101,6 @@ const DEFAULT_PDF_TEMPLATE = `<!DOCTYPE html>
                 <td class="py-4 px-4 text-right text-gray-600">{netAmount}</td>
                 <td class="py-4 px-4 text-right text-slate-800 font-medium">{netAmount}</td>
             </tr>
-            <!-- Platzhalter für weitere Zeilen -->
         </tbody>
     </table>
 
@@ -208,7 +206,6 @@ export const compileInvoiceTemplate = (invoice: Invoice, config: InvoiceConfig) 
     return template;
 };
 
-// ... existing interface ...
 export interface IDataService {
     init(): Promise<void>;
     getContacts(): Promise<Contact[]>;
@@ -236,7 +233,7 @@ export interface IDataService {
     saveExpense(expense: Expense): Promise<Expense>;
     updateExpense(expense: Expense): Promise<Expense>;
     deleteExpense(id: string): Promise<void>;
-    getUserProfile(): Promise<UserProfile>;
+    getUserProfile(): Promise<UserProfile | null>;
     saveUserProfile(profile: UserProfile): Promise<UserProfile>;
     getProductPresets(): Promise<ProductPreset[]>;
     saveProductPresets(presets: ProductPreset[]): Promise<ProductPreset[]>;
@@ -249,8 +246,6 @@ export interface IDataService {
     connectGoogle(service: 'calendar' | 'mail', clientId?: string): Promise<boolean>;
     disconnectGoogle(service: 'calendar' | 'mail'): Promise<boolean>;
     getIntegrationStatus(service: 'calendar' | 'mail'): Promise<boolean>;
-    loginWithGoogle(): Promise<UserProfile | null>;
-    logout(): Promise<void>;
     sendMail(to: string, subject: string, body: string, attachments?: EmailAttachment[]): Promise<boolean>;
     processDueRetainers(): Promise<{ updatedContacts: Contact[], newInvoices: Invoice[], newActivities: Activity[] }>;
     checkAndInstallUpdate(url: string, statusCallback?: (status: string) => void): Promise<boolean>;
@@ -258,14 +253,10 @@ export interface IDataService {
     wipeAllData(): Promise<void>;
 }
 
-// ... LocalDataService implementation ...
 class LocalDataService implements IDataService {
-    // ... props ...
     private googleClientId?: string;
     private accessToken: string | null = null;
-    private isPreviewEnv: boolean = false;
     
-    // ... cache ...
     private cache: {
         contacts: Contact[] | null;
         activities: Activity[] | null;
@@ -290,19 +281,11 @@ class LocalDataService implements IDataService {
         emailTemplates: null
     };
 
-    private isSyncing: boolean = false;
-
     constructor(googleClientId?: string) {
         this.googleClientId = googleClientId;
         this.accessToken = localStorage.getItem('google_access_token');
-        try {
-            if (window.location.protocol === 'blob:' || window.parent !== window) {
-                this.isPreviewEnv = true;
-            }
-        } catch(e) { this.isPreviewEnv = true; }
     }
     
-    // ... init method ...
     async init(): Promise<void> {
         if (!localStorage.getItem('contacts')) localStorage.setItem('contacts', JSON.stringify([]));
         if (!localStorage.getItem('deals')) localStorage.setItem('deals', JSON.stringify([]));
@@ -319,16 +302,22 @@ class LocalDataService implements IDataService {
         this.cache.invoices = this.getFromStorage<Invoice[]>('invoices', []);
         this.cache.expenses = this.getFromStorage<Expense[]>('expenses', []);
         this.cache.emailTemplates = this.getFromStorage<EmailTemplate[]>('emailTemplates', []);
-        
-        this.cache.userProfile = this.getFromStorage<UserProfile>('userProfile', {
-            firstName: 'Benutzer',
-            lastName: '',
-            email: '',
-            role: 'Admin',
-            avatar: 'https://ui-avatars.com/api/?name=Admin&background=random'
-        });
-        
         this.cache.productPresets = this.getFromStorage<ProductPreset[]>('productPresets', []);
+        
+        // ENSURE LOCAL USER PROFILE EXISTS IMMEDIATELY
+        // This is crucial for local-first mode to bypass login checks
+        let profile = this.getFromStorage<UserProfile | null>('userProfile', null);
+        if (!profile) {
+            profile = {
+                firstName: "Benutzer",
+                lastName: "",
+                email: "",
+                role: "Admin",
+                avatar: "https://ui-avatars.com/api/?name=User&background=6366f1&color=fff"
+            };
+            this.saveUserProfile(profile);
+        }
+        this.cache.userProfile = profile;
         
         this.cache.invoiceConfig = this.getFromStorage<InvoiceConfig>('invoiceConfig', {
             companyName: '[Firmenname]',
@@ -369,15 +358,11 @@ class LocalDataService implements IDataService {
         try {
             localStorage.setItem(storageKey, JSON.stringify(data));
         } catch (error: any) {
-            if (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
-                 alert("Speicherlimit erreicht! Das Bild ist zu groß für den lokalen Browserspeicher. Änderungen konnten nicht permanent gespeichert werden.");
-            } else {
-                console.error("Storage Error", error);
-            }
+             console.error("Storage Error", error);
         }
     }
 
-    // ... CRUD Methods (Keep existing) ...
+    // ... CRUD Methods ...
     async getContacts(): Promise<Contact[]> { return this.cache.contacts || []; }
     async saveContact(contact: Contact): Promise<Contact> {
         const list = this.cache.contacts || [];
@@ -397,7 +382,6 @@ class LocalDataService implements IDataService {
         this.set('contacts', 'contacts', newList);
     }
     
-    // ... (All other simple CRUD methods for deals, tasks, activities, etc. remain the same as previous) ...
     async importContactsFromCSV(csvText: string): Promise<{ contacts: Contact[], deals: Deal[], activities: Activity[] }> {
         const lines = csvText.split('\n');
         const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
@@ -405,7 +389,6 @@ class LocalDataService implements IDataService {
         const deals: Deal[] = [];
         const activities: Activity[] = [];
 
-        // Helper to find index
         const idx = (name: string) => headers.findIndex(h => h.includes(name));
 
         for (let i = 1; i < lines.length; i++) {
@@ -431,7 +414,6 @@ class LocalDataService implements IDataService {
             };
             contacts.push(newContact);
             
-            // Create Ghost Deal
             const deal: Deal = {
                 id: crypto.randomUUID(),
                 title: 'Neuer Lead (Import)',
@@ -444,7 +426,6 @@ class LocalDataService implements IDataService {
             };
             deals.push(deal);
 
-            // Log Activity
             activities.push({
                 id: crypto.randomUUID(),
                 contactId: newContact.id,
@@ -455,7 +436,6 @@ class LocalDataService implements IDataService {
             });
         }
         
-        // Save to cache
         this.set('contacts', 'contacts', [...contacts, ...(this.cache.contacts || [])]);
         this.set('deals', 'deals', [...deals, ...(this.cache.deals || [])]);
         this.set('activities', 'activities', [...activities, ...(this.cache.activities || [])]);
@@ -463,7 +443,6 @@ class LocalDataService implements IDataService {
         return { contacts, deals, activities };
     }
     
-    // ... Implement missing CRUDs for compilation ...
     async getActivities() { return this.cache.activities || []; }
     async saveActivity(a: any) { const l = this.cache.activities||[]; this.set('activities','activities',[a,...l]); return a; }
     async deleteActivity(id: any) { const l = this.cache.activities||[]; this.set('activities','activities',l.filter(x=>x.id!==id)); }
@@ -532,7 +511,7 @@ class LocalDataService implements IDataService {
     async saveExpense(e: any) { const l = this.cache.expenses||[]; this.set('expenses','expenses',[e,...l]); return e; }
     async updateExpense(e: any) { const l = this.cache.expenses||[]; this.set('expenses','expenses',l.map(x=>x.id===e.id?e:x)); return e; }
     async deleteExpense(id: any) { const l = this.cache.expenses||[]; this.set('expenses','expenses',l.filter(x=>x.id!==id)); }
-    async getUserProfile() { return this.cache.userProfile!; }
+    async getUserProfile() { return this.cache.userProfile; } 
     async saveUserProfile(p: any) { this.set('userProfile','userProfile',p); return p; }
     async getProductPresets() { return this.cache.productPresets || []; }
     async saveProductPresets(p: any) { this.set('productPresets','productPresets',p); return p; }
@@ -543,26 +522,22 @@ class LocalDataService implements IDataService {
     async updateEmailTemplate(t: any) { const l = this.cache.emailTemplates||[]; this.set('emailTemplates','emailTemplates',l.map(x=>x.id===t.id?t:x)); return t; }
     async deleteEmailTemplate(id: any) { const l = this.cache.emailTemplates||[]; this.set('emailTemplates','emailTemplates',l.filter(x=>x.id!==id)); }
 
-    // --- GOOGLE AUTH & INTEGRATION RESTORED & HARDENED ---
+    // --- GOOGLE AUTH & INTEGRATION ---
     
     private async ensureGoogleScriptLoaded(): Promise<boolean> {
-        // Prüfe ob das OAuth2 Objekt bereits existiert
-        if (window.google && window.google.accounts && window.google.accounts.oauth2) return true;
-
-        // Falls ein altes Skript existiert aber nicht funktioniert hat, entfernen
-        const existingScript = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
-        if (existingScript) {
-            existingScript.remove();
+        if (window.google && window.google.accounts && window.google.accounts.oauth2) {
+             return true;
         }
 
-        // Skript neu injizieren
+        const existingScript = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
+        if (existingScript) existingScript.remove();
+
         const script = document.createElement('script');
         script.src = "https://accounts.google.com/gsi/client";
         script.async = true;
         script.defer = true;
         document.head.appendChild(script);
 
-        // Aktives Polling bis zu 10 Sekunden
         let attempts = 0;
         while (attempts < 20) {
             if (window.google && window.google.accounts && window.google.accounts.oauth2) return true;
@@ -586,14 +561,11 @@ class LocalDataService implements IDataService {
         
         return new Promise((resolve) => {
             try {
-                // Initialize Token Client for Incremental Authorization
                 const client = window.google.accounts.oauth2.initTokenClient({
                     client_id: clientId,
                     scope: service === 'calendar' ? 'https://www.googleapis.com/auth/calendar.events' : 'https://www.googleapis.com/auth/gmail.send',
                     callback: (tokenResponse: any) => {
                         if (tokenResponse && tokenResponse.access_token) {
-                            // Merge scopes
-                            const currentToken = localStorage.getItem('google_access_token');
                             this.accessToken = tokenResponse.access_token;
                             localStorage.setItem('google_access_token', tokenResponse.access_token);
                             localStorage.setItem(`google_${service}_connected`, 'true');
@@ -614,6 +586,7 @@ class LocalDataService implements IDataService {
 
     async disconnectGoogle(service: 'calendar' | 'mail'): Promise<boolean> {
         localStorage.removeItem(`google_${service}_connected`);
+        // We only clear the token if NO services are connected anymore
         if (!localStorage.getItem('google_calendar_connected') && !localStorage.getItem('google_mail_connected')) {
             const token = localStorage.getItem('google_access_token');
             if (token && window.google) {
@@ -631,85 +604,6 @@ class LocalDataService implements IDataService {
         return localStorage.getItem(`google_${service}_connected`) === 'true';
     }
 
-    async loginWithGoogle(): Promise<UserProfile | null> {
-        if (!this.googleClientId) {
-            alert("Google Client ID fehlt in den Einstellungen (Backend Config).");
-            return null;
-        }
-
-        if (!navigator.onLine) {
-            alert("Keine Internetverbindung. Login nicht möglich.");
-            return null;
-        }
-
-        const ready = await this.ensureGoogleScriptLoaded();
-        if (!ready) {
-            alert("Google Sign-In Skript konnte nicht geladen werden. Bitte prüfen Sie Ihre Verbindung oder Firewall.");
-            return null;
-        }
-
-        return new Promise((resolve) => {
-            // Timeout-Schutz gegen hängenden Lade-Status (60 Sekunden)
-            const timeoutId = setTimeout(() => {
-                console.warn("Google Login timed out.");
-                alert("Anmeldung abgebrochen: Zeitüberschreitung. Wurde das Popup geschlossen oder blockiert?");
-                resolve(null);
-            }, 60000);
-
-            try {
-                const client = window.google.accounts.oauth2.initTokenClient({
-                    client_id: this.googleClientId,
-                    scope: 'https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
-                    callback: async (tokenResponse: any) => {
-                        clearTimeout(timeoutId); // Erfolg, Timeout löschen
-                        if (tokenResponse && tokenResponse.access_token) {
-                            this.accessToken = tokenResponse.access_token;
-                            localStorage.setItem('google_access_token', tokenResponse.access_token);
-                            
-                            // Fetch User Info
-                            try {
-                                const res = await fetch('https://www.googleapis.com/oauth2/v1/userinfo?alt=json', {
-                                    headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
-                                });
-                                if (!res.ok) throw new Error("UserInfo Request Failed");
-                                const data = await res.json();
-                                
-                                const profile: UserProfile = {
-                                    firstName: data.given_name || 'User',
-                                    lastName: data.family_name || '',
-                                    email: data.email,
-                                    role: 'Admin',
-                                    avatar: data.picture || ''
-                                };
-                                
-                                this.saveUserProfile(profile);
-                                resolve(profile);
-                            } catch (e) {
-                                console.error("Error fetching user info", e);
-                                alert("Fehler beim Abrufen der Profildaten.");
-                                resolve(null);
-                            }
-                        } else {
-                            resolve(null);
-                        }
-                    },
-                });
-                client.requestAccessToken();
-            } catch (e) {
-                clearTimeout(timeoutId);
-                console.error("Google Auth Error", e);
-                alert("Google Auth konnte nicht initialisiert werden. Bitte Popup-Blocker prüfen.");
-                resolve(null);
-            }
-        });
-    }
-
-    async logout(): Promise<void> {
-        this.accessToken = null;
-        localStorage.removeItem('google_access_token');
-        // We keep local data, just remove auth token
-    }
-
     async sendMail(to: string, subject: string, body: string, attachments: EmailAttachment[] = []): Promise<boolean> {
         const token = localStorage.getItem('google_access_token');
         if (!token) {
@@ -718,34 +612,25 @@ class LocalDataService implements IDataService {
         }
 
         try {
-            // MIME Message Construction
             const boundary = "foo_bar_baz";
             const nl = "\r\n";
-            
-            // Helper for UTF-8 Base64 Encoding
             const encodeUTF8Base64 = (str: string) => {
                 return btoa(unescape(encodeURIComponent(str)));
             };
             
             let message = "";
-            
-            // Headers
             message += `To: ${to}${nl}`;
-            // Correct encoding for UTF-8 Subject (Umlaute/Emojis)
             message += `Subject: =?utf-8?B?${encodeUTF8Base64(subject)}?=${nl}`;
             message += `MIME-Version: 1.0${nl}`;
             message += `Content-Type: multipart/mixed; boundary="${boundary}"${nl}${nl}`;
             
-            // Body Part
             message += `--${boundary}${nl}`;
             message += `Content-Type: text/plain; charset="UTF-8"${nl}`;
             message += `Content-Transfer-Encoding: base64${nl}${nl}`;
-            // Encode body to Base64 to ensure all characters are preserved safely
             message += `${encodeUTF8Base64(body)}${nl}${nl}`;
             
-            // Attachments Parts
             for (const att of attachments) {
-                const base64Data = att.data.split(',')[1]; // Remove data URL prefix
+                const base64Data = att.data.split(',')[1];
                 message += `--${boundary}${nl}`;
                 message += `Content-Type: ${att.type}; name="${att.name}"${nl}`;
                 message += `Content-Disposition: attachment; filename="${att.name}"${nl}`;
@@ -776,7 +661,6 @@ class LocalDataService implements IDataService {
         }
     }
 
-    // ... Automation ...
     async processDueRetainers(): Promise<{ updatedContacts: Contact[], newInvoices: Invoice[], newActivities: Activity[] }> {
         const contacts = await this.getContacts();
         const invoices = await this.getInvoices();
@@ -821,7 +705,7 @@ class LocalDataService implements IDataService {
             await this.saveInvoice(inv);
 
             let nextDate = new Date(contact.retainerNextBilling!);
-            nextDate.setMonth(nextDate.getMonth() + 1); // Simplification for brevity
+            nextDate.setMonth(nextDate.getMonth() + 1);
 
             const updatedContact = { ...contact, retainerNextBilling: nextDate.toISOString().split('T')[0] };
             updatedContacts.push(updatedContact);
@@ -842,48 +726,19 @@ class LocalDataService implements IDataService {
         return { updatedContacts, newInvoices, newActivities };
     }
 
-    // --- UPDATED: SYSTEM UPDATE LOGIC ---
     async checkAndInstallUpdate(url: string, statusCallback?: (status: string) => void): Promise<boolean> {
         try {
             if (statusCallback) statusCallback("Prüfe Version...");
-            
-            // 1. Fetch Remote
             const response = await fetch(`${url}/index.html?t=${Date.now()}`, { cache: 'no-store' });
             if (!response.ok) throw new Error("Update-Server nicht erreichbar");
             const remoteHtml = await response.text();
-
-            // 2. Fetch Local
             const localResponse = await fetch('/index.html');
             const localHtml = await localResponse.text();
 
-            // 3. STRICT Equality Check (First Line of Defense)
-            if (remoteHtml.trim() === localHtml.trim()) {
-                console.log("Update check: Exact match found. No update.");
-                return false;
-            }
-
-            // 4. Asset Hash Comparison (Secondary Check)
-            const extractAssets = (html: string) => {
-                const scriptMatch = html.match(/index-([a-zA-Z0-9]+)\.js/);
-                const cssMatch = html.match(/index-([a-zA-Z0-9]+)\.css/);
-                return {
-                    jsHash: scriptMatch ? scriptMatch[1] : null,
-                    cssHash: cssMatch ? cssMatch[1] : null
-                };
-            };
-            const localAssets = extractAssets(localHtml);
-            const remoteAssets = extractAssets(remoteHtml);
-
-            if (localAssets.jsHash && remoteAssets.jsHash && 
-                localAssets.jsHash === remoteAssets.jsHash && 
-                localAssets.cssHash === remoteAssets.cssHash) {
-                console.log("Update check: Hashes match. No update.");
-                return false;
-            }
+            if (remoteHtml.trim() === localHtml.trim()) return false;
 
             if (statusCallback) statusCallback("Neue Version gefunden. Lade herunter...");
 
-             // 5. Parse Assets from Remote HTML
             const assetFiles: string[] = [];
             const assetRegex = /["'](?:[^"']+\/)?assets\/([^"']+)["']/g;
             let match;
@@ -891,7 +746,6 @@ class LocalDataService implements IDataService {
                 if (!assetFiles.includes(match[1])) assetFiles.push(match[1]);
             }
 
-            // 6. Download Assets
             const downloadedFiles = [];
             downloadedFiles.push({ name: 'index.html', content: remoteHtml, type: 'root' });
 
@@ -903,7 +757,6 @@ class LocalDataService implements IDataService {
                 downloadedFiles.push({ name: fileName, content: content, type: 'asset' });
             }
 
-            // 7. Install via Electron IPC
             if (window.require) {
                 const { ipcRenderer } = window.require('electron');
                 if (statusCallback) statusCallback("Installiere...");

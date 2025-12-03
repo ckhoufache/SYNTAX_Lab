@@ -355,9 +355,9 @@ export const Settings: React.FC<SettingsProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => setFormData(userProfile), [userProfile]);
-  useEffect(() => setLocalPresets(productPresets), [productPresets]);
-  useEffect(() => setBackendForm(backendConfig), [backendConfig]);
+  useEffect(() => { setFormData(userProfile); }, [userProfile]);
+  useEffect(() => { setLocalPresets(productPresets); }, [productPresets]);
+  useEffect(() => { setBackendForm(backendConfig); }, [backendConfig]);
   
   useEffect(() => {
       const storedKey = localStorage.getItem('gemini_api_key');
@@ -451,13 +451,21 @@ export const Settings: React.FC<SettingsProps> = ({
           value: parseFloat(newPresetValue),
           isSubscription: newPresetIsSub
       };
-      setLocalPresets([...localPresets, newPreset]);
+      // FIX: create new array and set BOTH local state and parent prop immediately
+      const newArray = [...localPresets, newPreset];
+      setLocalPresets(newArray);
+      onUpdatePresets(newArray);
+      
       setNewPresetTitle('');
       setNewPresetValue('');
       setNewPresetIsSub(false);
   };
 
-  const handleDeletePreset = (id: string) => { setLocalPresets(localPresets.filter(p => p.id !== id)); };
+  const handleDeletePreset = (id: string) => { 
+      const newArray = localPresets.filter(p => p.id !== id);
+      setLocalPresets(newArray);
+      onUpdatePresets(newArray);
+  };
 
   const handleStartEditPreset = (preset: ProductPreset) => {
       setEditingPresetId(preset.id);
@@ -822,7 +830,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                     />
                                     <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Ist Abo / Wiederkehrend</span>
                                 </label>
-                                <button onClick={() => { handleAddPreset(); onUpdatePresets(localPresets); }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-sm flex items-center gap-1">
+                                <button onClick={handleAddPreset} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-sm flex items-center gap-1">
                                     <Plus className="w-3 h-3" /> Hinzufügen
                                 </button>
                             </div>

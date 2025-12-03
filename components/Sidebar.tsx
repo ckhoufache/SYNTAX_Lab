@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { LayoutDashboard, Users, KanbanSquare, Settings, LogOut, Hexagon, ClipboardList, Banknote } from 'lucide-react';
+import { LayoutDashboard, Users, KanbanSquare, Settings, Hexagon, ClipboardList, Banknote } from 'lucide-react';
 import { ViewState, UserProfile, Theme } from '../types';
 
 interface SidebarProps {
@@ -8,12 +8,10 @@ interface SidebarProps {
   onChangeView: (view: ViewState) => void;
   userProfile: UserProfile | null;
   theme: Theme;
-  onLogin: () => void;
-  onLogout: () => void;
 }
 
 // Optimization: Use React.memo to prevent re-renders when parent state changes but props remain equal
-export const Sidebar: React.FC<SidebarProps> = React.memo(({ currentView, onChangeView, userProfile, theme, onLogout }) => {
+export const Sidebar: React.FC<SidebarProps> = React.memo(({ currentView, onChangeView, userProfile, theme }) => {
   const isDark = theme === 'dark';
   
   const navItemClass = (view: ViewState) => 
@@ -86,34 +84,22 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({ currentView, onChan
         </div>
       </nav>
 
-      {/* Footer (Auth) */}
+      {/* Footer (Profile Display) */}
       <div className={`p-4 border-t ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
         {userProfile && (
-            <>
-                <div 
-                    onClick={onLogout}
-                    className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors mb-2 rounded-lg ${
-                        isDark ? 'text-slate-400 hover:bg-slate-800 hover:text-red-400' : 'text-slate-500 hover:bg-slate-100 hover:text-red-600'
-                    }`}
-                >
-                    <LogOut className="w-5 h-5" />
-                    <span className="font-medium">Abmelden</span>
+            <div className="px-4 flex items-center gap-3">
+                <img 
+                    src={userProfile.avatar} 
+                    alt="User" 
+                    className={`w-9 h-9 rounded-full ring-2 object-cover ${isDark ? 'ring-slate-700' : 'ring-slate-100'}`}
+                />
+                <div className="flex flex-col min-w-0">
+                    <span className={`text-sm font-semibold truncate ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+                        {userProfile.firstName} {userProfile.lastName}
+                    </span>
+                    <span className="text-xs text-slate-400 truncate">{userProfile.email}</span>
                 </div>
-                
-                <div className="px-4 flex items-center gap-3">
-                    <img 
-                        src={userProfile.avatar} 
-                        alt="User" 
-                        className={`w-9 h-9 rounded-full ring-2 object-cover ${isDark ? 'ring-slate-700' : 'ring-slate-100'}`}
-                    />
-                    <div className="flex flex-col min-w-0">
-                        <span className={`text-sm font-semibold truncate ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
-                            {userProfile.firstName} {userProfile.lastName}
-                        </span>
-                        <span className="text-xs text-slate-400 truncate">{userProfile.email}</span>
-                    </div>
-                </div>
-            </>
+            </div>
         )}
       </div>
     </aside>
