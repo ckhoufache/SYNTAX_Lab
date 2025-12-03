@@ -382,38 +382,124 @@ class LocalDataService implements IDataService {
         this.set('contacts', 'contacts', newList);
     }
     
+    // --- ROBUST CSV PARSING ---
+    private parseCSV(text: string): string[][] {
+        const arr: string[][] = [];
+        let quote = false;  // 'true' means we're inside a quoted field
+        let col = 0;
+        let row = 0;
+        let c = "";
+        
+        // Initialize 2D array
+        arr[row] = [];
+        arr[row][col] = "";
+
+        for (let i = 0; i < text.length; i++) {
+            c = text[i];
+            
+            // Handle Quote
+            if (c === '"') {
+                if (quote && text[i+1] === '"') {
+                    // Double quote inside quote = escaped quote
+                    arr[row][col] += '"';
+                    i++; 
+                } else {
+                    // Toggle quote status
+                    quote = !quote;
+                }
+            } 
+            // Handle Comma (only if not in quote)
+            else if (c === ',' && !quote) {
+                col++;
+                arr[row][col] = "";
+            } 
+            // Handle Newline (only if not in quote)
+            else if ((c === '\r' || c === '\n') && !quote) {
+                // Handle Windows line ending \r\n
+                if (c === '\r' && text[i+1] === '\n') i++;
+                
+                // Only move to next row if current row is not empty (ignoring trailing newlines)
+                if (arr[row].some(cell => cell.length > 0) || col > 0) {
+                    row++;
+                    col = 0;
+                    arr[row] = [];
+                    arr[row][col] = "";
+                }
+            } 
+            // Normal character
+            else {
+                arr[row][col] += c;
+            }
+        }
+        
+        // Clean up empty trailing row if present
+        if(arr.length > 0 && arr[arr.length-1].length === 1 && arr[arr.length-1][0] === "") {
+            arr.pop();
+        }
+        
+        return arr;
+    }
+
     async importContactsFromCSV(csvText: string): Promise<{ contacts: Contact[], deals: Deal[], activities: Activity[] }> {
-        const lines = csvText.split('\n');
-        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+        // 1. Parse CSV correctly handling quotes and newlines
+        const rows = this.parseCSV(csvText);
+        
+        if (rows.length < 2) throw new Error("CSV Datei scheint leer zu sein oder hat keine Daten.");
+
+        // 2. Identify Headers (Normalize keys to handle slight variations if needed)
+        const headers = rows[0].map(h => h.trim());
+        
+        // Helper to get value by header name safely
+        const getValue = (row: string[], headerName: string): string => {
+            const index = headers.indexOf(headerName);
+            if (index === -1) return '';
+            return row[index] ? row[index].trim() : '';
+        };
+
         const contacts: Contact[] = [];
         const deals: Deal[] = [];
         const activities: Activity[] = [];
 
-        const idx = (name: string) => headers.findIndex(h => h.includes(name));
+        // 3. Process Rows
+        for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            if (row.length === 0 || (row.length === 1 && !row[0])) continue;
 
-        for (let i = 1; i < lines.length; i++) {
-            if (!lines[i].trim()) continue;
-            const cols = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+            // Mapping Logic based on user's file format
+            const fullName = getValue(row, 'fullName');
+            const firstName = getValue(row, 'firstName');
+            const lastName = getValue(row, 'lastName');
             
-            const name = cols[idx('name')] || cols[idx('vorname')] || 'Unbekannt';
-            const email = cols[idx('email')] || '';
-            const company = cols[idx('firma')] || cols[idx('company')] || '';
-            
-            if (name === 'Unbekannt' && !email && !company) continue;
+            // Name Fallback
+            let name = fullName;
+            if (!name && firstName && lastName) name = `${firstName} ${lastName}`;
+            if (!name) name = 'Unbekannt';
+
+            // Filter out junk rows (sometimes export tools add empty or meta rows)
+            if (name === 'Unbekannt' && !getValue(row, 'companyName')) continue;
 
             const newContact: Contact = {
                 id: crypto.randomUUID(),
-                name,
-                email,
-                company,
-                role: cols[idx('role')] || cols[idx('position')] || '',
-                avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
+                name: name,
+                company: getValue(row, 'companyName'),
+                role: getValue(row, 'title'),
+                companyUrl: getValue(row, 'regularCompanyUrl') || getValue(row, 'companyUrl'),
+                email: '', // Not in provided CSV
+                linkedin: getValue(row, 'profileUrl') || getValue(row, 'linkedInProfileUrl'),
+                avatar: getValue(row, 'profileImageUrl'),
+                notes: getValue(row, 'summary'), // Summary into notes
                 lastContact: new Date().toISOString().split('T')[0],
-                notes: 'Importiert aus CSV',
                 type: 'lead'
             };
+
+            // Avatar Fallback if empty or broken URL
+            if (!newContact.avatar || newContact.avatar.length < 10) {
+                 newContact.avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`;
+            }
+
             contacts.push(newContact);
             
+            // Create Ghost Deal
             const deal: Deal = {
                 id: crypto.randomUUID(),
                 title: 'Neuer Lead (Import)',
