@@ -1,5 +1,4 @@
 
-// ... existing imports ...
 import { Contact, Deal, Task, UserProfile, ProductPreset, Theme, BackendConfig, BackendMode, BackupData, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate, EmailAttachment, DealStage } from '../types';
 
 // Declare Google Types globally for TS
@@ -213,7 +212,7 @@ export interface IDataService {
     saveContact(contact: Contact): Promise<Contact>;
     updateContact(contact: Contact): Promise<Contact>;
     deleteContact(id: string): Promise<void>;
-    importContactsFromCSV(csvText: string): Promise<{ contacts: Contact[], deals: Deal[], activities: Activity[] }>;
+    importContactsFromCSV(csvText: string): Promise<{ contacts: Contact[], deals: Deal[], activities: Activity[], skippedCount: number }>;
     getActivities(): Promise<Activity[]>;
     saveActivity(activity: Activity): Promise<Activity>;
     deleteActivity(id: string): Promise<void>;
@@ -305,8 +304,6 @@ class LocalDataService implements IDataService {
         this.cache.emailTemplates = this.getFromStorage<EmailTemplate[]>('emailTemplates', []);
         this.cache.productPresets = this.getFromStorage<ProductPreset[]>('productPresets', []);
         
-        // ENSURE LOCAL USER PROFILE EXISTS IMMEDIATELY
-        // This is crucial for local-first mode to bypass login checks
         let profile = this.getFromStorage<UserProfile | null>('userProfile', null);
         if (!profile) {
             profile = {
@@ -363,7 +360,7 @@ class LocalDataService implements IDataService {
         }
     }
 
-    // ... CRUD Methods ...
+    // --- CRUD Contacts ---
     async getContacts(): Promise<Contact[]> { return this.cache.contacts || []; }
     async saveContact(contact: Contact): Promise<Contact> {
         const list = this.cache.contacts || [];
@@ -381,6 +378,305 @@ class LocalDataService implements IDataService {
         const list = this.cache.contacts || [];
         const newList = list.filter(c => c.id !== id);
         this.set('contacts', 'contacts', newList);
+    }
+
+    // --- CRUD Activities ---
+    async getActivities(): Promise<Activity[]> { return this.cache.activities || []; }
+    async saveActivity(a: Activity): Promise<Activity> { 
+        const l = this.cache.activities || []; 
+        this.set('activities','activities',[a,...l]); 
+        return a; 
+    }
+    async deleteActivity(id: string): Promise<void> {
+        const list = this.cache.activities || [];
+        const newList = list.filter(a => a.id !== id);
+        this.set('activities', 'activities', newList);
+    }
+
+    // --- CRUD Deals ---
+    async getDeals(): Promise<Deal[]> { return this.cache.deals || []; }
+    async saveDeal(deal: Deal): Promise<Deal> {
+        const list = this.cache.deals || [];
+        this.set('deals', 'deals', [deal, ...list]);
+        return deal;
+    }
+    async updateDeal(deal: Deal): Promise<Deal> {
+        const list = this.cache.deals || [];
+        const newList = list.map(d => d.id === deal.id ? deal : d);
+        this.set('deals', 'deals', newList);
+        return deal;
+    }
+    async deleteDeal(id: string): Promise<void> {
+        const list = this.cache.deals || [];
+        const newList = list.filter(d => d.id !== id);
+        this.set('deals', 'deals', newList);
+    }
+
+    // --- CRUD Tasks ---
+    async getTasks(): Promise<Task[]> { return this.cache.tasks || []; }
+    async saveTask(task: Task): Promise<Task> {
+        const list = this.cache.tasks || [];
+        this.set('tasks', 'tasks', [task, ...list]);
+        return task;
+    }
+    async updateTask(task: Task): Promise<Task> {
+        const list = this.cache.tasks || [];
+        const newList = list.map(t => t.id === task.id ? task : t);
+        this.set('tasks', 'tasks', newList);
+        return task;
+    }
+    async deleteTask(id: string): Promise<void> {
+        const list = this.cache.tasks || [];
+        const newList = list.filter(t => t.id !== id);
+        this.set('tasks', 'tasks', newList);
+    }
+
+    // --- CRUD Invoices ---
+    async getInvoices(): Promise<Invoice[]> { return this.cache.invoices || []; }
+    async saveInvoice(invoice: Invoice): Promise<Invoice> {
+        const list = this.cache.invoices || [];
+        this.set('invoices', 'invoices', [invoice, ...list]);
+        return invoice;
+    }
+    async updateInvoice(invoice: Invoice): Promise<Invoice> {
+        const list = this.cache.invoices || [];
+        const newList = list.map(i => i.id === invoice.id ? invoice : i);
+        this.set('invoices', 'invoices', newList);
+        return invoice;
+    }
+    async deleteInvoice(id: string): Promise<void> {
+        const list = this.cache.invoices || [];
+        const newList = list.filter(i => i.id !== id);
+        this.set('invoices', 'invoices', newList);
+    }
+    async cancelInvoice(id: string): Promise<{ creditNote: Invoice, updatedOriginal: Invoice, activity: Activity }> {
+        const invoice = (this.cache.invoices || []).find(i => i.id === id);
+        if (!invoice) throw new Error("Rechnung nicht gefunden");
+
+        const creditNote: Invoice = {
+            ...invoice,
+            id: crypto.randomUUID(),
+            invoiceNumber: `STORNO-${invoice.invoiceNumber}`,
+            amount: -invoice.amount,
+            description: `Storno für ${invoice.invoiceNumber}`,
+            date: new Date().toISOString().split('T')[0],
+            isCancelled: true,
+            relatedInvoiceId: invoice.id
+        };
+
+        const updatedOriginal: Invoice = { ...invoice, isCancelled: true, isPaid: true };
+        
+        await this.updateInvoice(updatedOriginal);
+        await this.saveInvoice(creditNote);
+        
+        const activity: Activity = {
+             id: crypto.randomUUID(),
+             contactId: invoice.contactId,
+             type: 'system_invoice',
+             content: `Rechnung ${invoice.invoiceNumber} storniert.`,
+             date: new Date().toISOString().split('T')[0],
+             timestamp: new Date().toISOString()
+        };
+        await this.saveActivity(activity);
+
+        return { creditNote, updatedOriginal, activity };
+    }
+
+    // --- CRUD Expenses ---
+    async getExpenses(): Promise<Expense[]> { return this.cache.expenses || []; }
+    async saveExpense(expense: Expense): Promise<Expense> {
+        const list = this.cache.expenses || [];
+        this.set('expenses', 'expenses', [expense, ...list]);
+        return expense;
+    }
+    async updateExpense(expense: Expense): Promise<Expense> {
+        const list = this.cache.expenses || [];
+        const newList = list.map(e => e.id === expense.id ? expense : e);
+        this.set('expenses', 'expenses', newList);
+        return expense;
+    }
+    async deleteExpense(id: string): Promise<void> {
+        const list = this.cache.expenses || [];
+        const newList = list.filter(e => e.id !== id);
+        this.set('expenses', 'expenses', newList);
+    }
+
+    // --- User Profile & Config ---
+    async getUserProfile(): Promise<UserProfile | null> { return this.cache.userProfile; }
+    async saveUserProfile(profile: UserProfile): Promise<UserProfile> {
+        this.set('userProfile', 'userProfile', profile);
+        return profile;
+    }
+
+    async getProductPresets(): Promise<ProductPreset[]> { return this.cache.productPresets || []; }
+    async saveProductPresets(presets: ProductPreset[]): Promise<ProductPreset[]> {
+        this.set('productPresets', 'productPresets', presets);
+        return presets;
+    }
+
+    async getInvoiceConfig(): Promise<InvoiceConfig> { 
+        // Force type assertion as we ensure it's loaded in init()
+        return this.cache.invoiceConfig as InvoiceConfig; 
+    }
+    async saveInvoiceConfig(config: InvoiceConfig): Promise<InvoiceConfig> {
+        this.set('invoiceConfig', 'invoiceConfig', config);
+        return config;
+    }
+
+    // --- Email Templates ---
+    async getEmailTemplates(): Promise<EmailTemplate[]> { return this.cache.emailTemplates || []; }
+    async saveEmailTemplate(template: EmailTemplate): Promise<EmailTemplate> {
+        const list = this.cache.emailTemplates || [];
+        this.set('emailTemplates', 'emailTemplates', [template, ...list]);
+        return template;
+    }
+    async updateEmailTemplate(template: EmailTemplate): Promise<EmailTemplate> {
+        const list = this.cache.emailTemplates || [];
+        const newList = list.map(t => t.id === template.id ? template : t);
+        this.set('emailTemplates', 'emailTemplates', newList);
+        return template;
+    }
+    async deleteEmailTemplate(id: string): Promise<void> {
+        const list = this.cache.emailTemplates || [];
+        const newList = list.filter(t => t.id !== id);
+        this.set('emailTemplates', 'emailTemplates', newList);
+    }
+
+    // --- Integration Mocks / Logic ---
+    async connectGoogle(service: 'calendar' | 'mail', clientId?: string): Promise<boolean> {
+        // In a real app, you would handle OAuth flow here.
+        // For local simulation, we just store a flag.
+        localStorage.setItem(`google_${service}_connected`, 'true');
+        return true;
+    }
+    async disconnectGoogle(service: 'calendar' | 'mail'): Promise<boolean> {
+        localStorage.removeItem(`google_${service}_connected`);
+        return false;
+    }
+    async getIntegrationStatus(service: 'calendar' | 'mail'): Promise<boolean> {
+        return localStorage.getItem(`google_${service}_connected`) === 'true';
+    }
+
+    async sendMail(to: string, subject: string, body: string, attachments?: EmailAttachment[]): Promise<boolean> {
+        const connected = await this.getIntegrationStatus('mail');
+        if (connected) {
+             console.log(`[Mock Send] Email to ${to} with subject "${subject}" (Attachments: ${attachments?.length || 0})`);
+             // Here we would call the Google Gmail API
+             return true; 
+        } else {
+             // If not connected, we can't send via API.
+             // But UI handles mailto: links for user interaction.
+             console.warn("Mail not connected, cannot background send.");
+             return false;
+        }
+    }
+
+    async processDueRetainers(): Promise<{ updatedContacts: Contact[], newInvoices: Invoice[], newActivities: Activity[] }> {
+        const contacts = this.cache.contacts || [];
+        const updatedContacts: Contact[] = [];
+        const newInvoices: Invoice[] = [];
+        const newActivities: Activity[] = [];
+        const today = new Date();
+        const todayStr = today.toISOString().split('T')[0];
+
+        // Helper to get next date
+        const getNextDate = (dateStr: string, interval: 'monthly' | 'quarterly' | 'yearly') => {
+            const d = new Date(dateStr);
+            if(interval === 'monthly') d.setMonth(d.getMonth() + 1);
+            if(interval === 'quarterly') d.setMonth(d.getMonth() + 3);
+            if(interval === 'yearly') d.setFullYear(d.getFullYear() + 1);
+            return d.toISOString().split('T')[0];
+        };
+
+        for (const contact of contacts) {
+            if (contact.retainerActive && contact.retainerAmount && contact.retainerNextBilling) {
+                if (contact.retainerNextBilling <= todayStr) {
+                    // Generate Invoice
+                    const inv: Invoice = {
+                        id: crypto.randomUUID(),
+                        invoiceNumber: `RET-${Date.now()}-${Math.floor(Math.random()*100)}`,
+                        description: `Retainer ${contact.retainerInterval} (${contact.retainerNextBilling})`,
+                        amount: contact.retainerAmount,
+                        date: todayStr,
+                        contactId: contact.id,
+                        contactName: contact.name,
+                        isPaid: false
+                    };
+                    newInvoices.push(inv);
+                    await this.saveInvoice(inv);
+
+                    // Update Contact
+                    const updatedContact = { 
+                        ...contact, 
+                        retainerNextBilling: getNextDate(contact.retainerNextBilling, contact.retainerInterval || 'monthly') 
+                    };
+                    updatedContacts.push(updatedContact);
+                    await this.updateContact(updatedContact);
+
+                    // Activity
+                    const act: Activity = {
+                        id: crypto.randomUUID(),
+                        contactId: contact.id,
+                        type: 'system_invoice',
+                        content: `Retainer-Rechnung erstellt: ${inv.invoiceNumber}`,
+                        date: todayStr,
+                        timestamp: new Date().toISOString()
+                    };
+                    newActivities.push(act);
+                    await this.saveActivity(act);
+                }
+            }
+        }
+        
+        // Refresh cache references for mass updates handled above
+        if (updatedContacts.length > 0) {
+            const currentC = this.cache.contacts || [];
+            this.set('contacts', 'contacts', currentC.map(c => updatedContacts.find(u => u.id === c.id) || c));
+        }
+
+        return { updatedContacts, newInvoices, newActivities };
+    }
+
+    async checkAndInstallUpdate(url: string, statusCallback?: (status: string) => void): Promise<boolean> {
+        // Mock Implementation for Electron Update check
+        if (window.require) {
+             statusCallback?.("Verbinde mit Update-Server...");
+             // Simulate network delay
+             await new Promise(r => setTimeout(r, 1000));
+             statusCallback?.("Prüfe Version...");
+             return false; // No update in mock
+        }
+        return false;
+    }
+
+    async generatePdf(htmlContent: string): Promise<string> {
+        if (window.require) {
+            try {
+                const { ipcRenderer } = window.require('electron');
+                const buffer = await ipcRenderer.invoke('generate-pdf', htmlContent);
+                // Convert buffer to base64
+                // Electron returns Uint8Array/Buffer
+                let binary = '';
+                const bytes = new Uint8Array(buffer);
+                const len = bytes.byteLength;
+                for (let i = 0; i < len; i++) {
+                    binary += String.fromCharCode(bytes[i]);
+                }
+                return window.btoa(binary);
+            } catch (e) {
+                console.error("Electron PDF Gen Error", e);
+                throw e;
+            }
+        } else {
+            // Browser Fallback (not possible to generate real PDF securely in client without libraries like jsPDF)
+            // We throw error or return empty to handle in UI
+            throw new Error("PDF Generierung nur in der Desktop-App verfügbar.");
+        }
+    }
+
+    async wipeAllData(): Promise<void> {
+        localStorage.clear();
+        window.location.reload();
     }
     
     // --- ROBUST CSV PARSING ---
@@ -441,7 +737,7 @@ class LocalDataService implements IDataService {
         return arr;
     }
 
-    async importContactsFromCSV(csvText: string): Promise<{ contacts: Contact[], deals: Deal[], activities: Activity[] }> {
+    async importContactsFromCSV(csvText: string): Promise<{ contacts: Contact[], deals: Deal[], activities: Activity[], skippedCount: number }> {
         // 1. Parse CSV correctly handling quotes and newlines
         const rows = this.parseCSV(csvText);
         
@@ -460,6 +756,9 @@ class LocalDataService implements IDataService {
         const contacts: Contact[] = [];
         const deals: Deal[] = [];
         const activities: Activity[] = [];
+        let skippedCount = 0;
+
+        const existingContacts = this.cache.contacts || [];
 
         // 3. Process Rows
         for (let i = 1; i < rows.length; i++) {
@@ -478,9 +777,32 @@ class LocalDataService implements IDataService {
             if (!name) name = 'Unbekannt';
 
             const company = getValue(row, 'Company') || getValue(row, 'companyName') || getValue(row, 'Firma');
+            const email = getValue(row, 'Email Address') || getValue(row, 'Email');
+            const linkedin = getValue(row, 'Profile URL') || getValue(row, 'linkedInProfileUrl') || getValue(row, 'Link');
 
             // Filter out junk rows (sometimes export tools add empty or meta rows)
             if (name === 'Unbekannt' && !company) continue;
+
+            // --- DUPLICATE CHECK ---
+            const isDuplicate = existingContacts.some(c => {
+                const sameEmail = email && c.email && email.toLowerCase() === c.email.toLowerCase();
+                const sameLinkedin = linkedin && c.linkedin && linkedin.toLowerCase() === c.linkedin.toLowerCase();
+                const sameNameAndCompany = name && company && c.name.toLowerCase() === name.toLowerCase() && c.company.toLowerCase() === company.toLowerCase();
+                return sameEmail || sameLinkedin || sameNameAndCompany;
+            });
+
+            const isDuplicateInBatch = contacts.some(c => {
+                const sameEmail = email && c.email && email.toLowerCase() === c.email.toLowerCase();
+                const sameLinkedin = linkedin && c.linkedin && linkedin.toLowerCase() === c.linkedin.toLowerCase();
+                const sameNameAndCompany = name && company && c.name.toLowerCase() === name.toLowerCase() && c.company.toLowerCase() === company.toLowerCase();
+                return sameEmail || sameLinkedin || sameNameAndCompany;
+            });
+
+            if (isDuplicate || isDuplicateInBatch) {
+                skippedCount++;
+                continue;
+            }
+            // --- END DUPLICATE CHECK ---
 
             // Notes aggregation
             const summary = getValue(row, 'summary');
@@ -502,8 +824,8 @@ class LocalDataService implements IDataService {
                 company: company,
                 role: getValue(row, 'Job Title') || getValue(row, 'title') || getValue(row, 'Position'),
                 companyUrl: getValue(row, 'regularCompanyUrl') || getValue(row, 'companyUrl'),
-                email: getValue(row, 'Email Address') || getValue(row, 'Email'), 
-                linkedin: getValue(row, 'Profile URL') || getValue(row, 'linkedInProfileUrl') || getValue(row, 'Link'),
+                email: email, 
+                linkedin: linkedin,
                 avatar: getValue(row, 'profileImageUrl'),
                 notes: notesParts.join('\n\n'), 
                 lastContact: new Date().toISOString().split('T')[0],
@@ -544,373 +866,12 @@ class LocalDataService implements IDataService {
         this.set('deals', 'deals', [...deals, ...(this.cache.deals || [])]);
         this.set('activities', 'activities', [...activities, ...(this.cache.activities || [])]);
 
-        return { contacts, deals, activities };
-    }
-    
-    async getActivities() { return this.cache.activities || []; }
-    async saveActivity(a: any) { const l = this.cache.activities||[]; this.set('activities','activities',[a,...l]); return a; }
-    async deleteActivity(id: any) { const l = this.cache.activities||[]; this.set('activities','activities',l.filter(x=>x.id!==id)); }
-    async getDeals() { return this.cache.deals || []; }
-    async saveDeal(d: any) { const l = this.cache.deals||[]; this.set('deals','deals',[d,...l]); return d; }
-    async updateDeal(d: any) { const l = this.cache.deals||[]; this.set('deals','deals',l.map(x=>x.id===d.id?d:x)); return d; }
-    async deleteDeal(id: any) { const l = this.cache.deals||[]; this.set('deals','deals',l.filter(x=>x.id!==id)); }
-    async getTasks() { return this.cache.tasks || []; }
-    async saveTask(t: any) { const l = this.cache.tasks||[]; this.set('tasks','tasks',[t,...l]); return t; }
-    async updateTask(t: any) { const l = this.cache.tasks||[]; this.set('tasks','tasks',l.map(x=>x.id===t.id?t:x)); return t; }
-    async deleteTask(id: any) { const l = this.cache.tasks||[]; this.set('tasks','tasks',l.filter(x=>x.id!==id)); }
-    async getInvoices() { return this.cache.invoices || []; }
-    async saveInvoice(i: any) { const l = this.cache.invoices||[]; this.set('invoices','invoices',[i,...l]); return i; }
-    async updateInvoice(i: any) { const l = this.cache.invoices||[]; this.set('invoices','invoices',l.map(x=>x.id===i.id?i:x)); return i; }
-    async deleteInvoice(id: any) { const l = this.cache.invoices||[]; this.set('invoices','invoices',l.filter(x=>x.id!==id)); }
-    
-    async cancelInvoice(id: string): Promise<{ creditNote: Invoice, updatedOriginal: Invoice, activity: Activity }> {
-        const invoices = await this.getInvoices();
-        const original = invoices.find(i => i.id === id);
-        if (!original) throw new Error("Rechnung nicht gefunden");
-        if (original.isCancelled) throw new Error("Bereits storniert");
-        
-        let maxNum = 100;
-        invoices.forEach(i => {
-             const parts = i.invoiceNumber.split('-');
-             if (parts.length > 1) {
-                 const n = parseInt(parts[1]);
-                 if (!isNaN(n) && n > maxNum) maxNum = n;
-             }
-        });
-        const nextNum = `2025-${maxNum + 1}`;
-
-        const creditNote: Invoice = {
-            id: crypto.randomUUID(),
-            invoiceNumber: nextNum,
-            description: `Storno zu Rechnung ${original.invoiceNumber}`,
-            date: new Date().toISOString().split('T')[0],
-            contactId: original.contactId,
-            contactName: original.contactName,
-            amount: -Math.abs(Number(original.amount)),
-            isPaid: true,
-            paidDate: new Date().toISOString().split('T')[0],
-            relatedInvoiceId: original.id
-        };
-
-        const updatedOriginal = { ...original, isCancelled: true, relatedInvoiceId: creditNote.id };
-        
-        await this.saveInvoice(creditNote);
-        await this.updateInvoice(updatedOriginal);
-        
-        const activity: Activity = {
-            id: crypto.randomUUID(),
-            contactId: original.contactId,
-            type: 'system_invoice',
-            content: `Rechnung ${original.invoiceNumber} storniert durch Stornorechnung ${creditNote.invoiceNumber}`,
-            date: new Date().toISOString().split('T')[0],
-            timestamp: new Date().toISOString(),
-            relatedId: creditNote.id
-        };
-        await this.saveActivity(activity);
-
-        return { creditNote, updatedOriginal, activity };
-    }
-
-    async getExpenses() { return this.cache.expenses || []; }
-    async saveExpense(e: any) { const l = this.cache.expenses||[]; this.set('expenses','expenses',[e,...l]); return e; }
-    async updateExpense(e: any) { const l = this.cache.expenses||[]; this.set('expenses','expenses',l.map(x=>x.id===e.id?e:x)); return e; }
-    async deleteExpense(id: any) { const l = this.cache.expenses||[]; this.set('expenses','expenses',l.filter(x=>x.id!==id)); }
-    async getUserProfile() { return this.cache.userProfile; } 
-    async saveUserProfile(p: any) { this.set('userProfile','userProfile',p); return p; }
-    async getProductPresets() { return this.cache.productPresets || []; }
-    async saveProductPresets(p: any) { this.set('productPresets','productPresets',p); return p; }
-    async getInvoiceConfig() { return this.cache.invoiceConfig!; }
-    async saveInvoiceConfig(c: any) { this.set('invoiceConfig','invoiceConfig',c); return c; }
-    async getEmailTemplates() { return this.cache.emailTemplates || []; }
-    async saveEmailTemplate(t: any) { const l = this.cache.emailTemplates||[]; this.set('emailTemplates','emailTemplates',[t,...l]); return t; }
-    async updateEmailTemplate(t: any) { const l = this.cache.emailTemplates||[]; this.set('emailTemplates','emailTemplates',l.map(x=>x.id===t.id?t:x)); return t; }
-    async deleteEmailTemplate(id: any) { const l = this.cache.emailTemplates||[]; this.set('emailTemplates','emailTemplates',l.filter(x=>x.id!==id)); }
-
-    // --- GOOGLE AUTH & INTEGRATION ---
-    
-    private async ensureGoogleScriptLoaded(): Promise<boolean> {
-        if (window.google && window.google.accounts && window.google.accounts.oauth2) {
-             return true;
-        }
-
-        const existingScript = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
-        if (existingScript) existingScript.remove();
-
-        const script = document.createElement('script');
-        script.src = "https://accounts.google.com/gsi/client";
-        script.async = true;
-        script.defer = true;
-        document.head.appendChild(script);
-
-        let attempts = 0;
-        while (attempts < 20) {
-            if (window.google && window.google.accounts && window.google.accounts.oauth2) return true;
-            await new Promise(resolve => setTimeout(resolve, 500));
-            attempts++;
-        }
-        return false;
-    }
-
-    async connectGoogle(service: 'calendar' | 'mail', clientId?: string): Promise<boolean> {
-        if (!clientId) {
-            alert("Bitte geben Sie zuerst eine Google Client ID in den Einstellungen ein.");
-            return false;
-        }
-        
-        const ready = await this.ensureGoogleScriptLoaded();
-        if (!ready) {
-            alert("Google Dienste sind momentan nicht erreichbar. Prüfen Sie Ihre Internetverbindung.");
-            return false;
-        }
-        
-        return new Promise((resolve) => {
-            try {
-                const client = window.google.accounts.oauth2.initTokenClient({
-                    client_id: clientId,
-                    scope: service === 'calendar' ? 'https://www.googleapis.com/auth/calendar.events' : 'https://www.googleapis.com/auth/gmail.send',
-                    callback: (tokenResponse: any) => {
-                        if (tokenResponse && tokenResponse.access_token) {
-                            this.accessToken = tokenResponse.access_token;
-                            localStorage.setItem('google_access_token', tokenResponse.access_token);
-                            localStorage.setItem(`google_${service}_connected`, 'true');
-                            resolve(true);
-                        } else {
-                            resolve(false);
-                        }
-                    },
-                });
-                client.requestAccessToken();
-            } catch (e) {
-                console.error("Google Connect Error", e);
-                alert("Verbindung fehlgeschlagen. Popup blockiert?");
-                resolve(false);
-            }
-        });
-    }
-
-    async disconnectGoogle(service: 'calendar' | 'mail'): Promise<boolean> {
-        localStorage.removeItem(`google_${service}_connected`);
-        // We only clear the token if NO services are connected anymore
-        if (!localStorage.getItem('google_calendar_connected') && !localStorage.getItem('google_mail_connected')) {
-            const token = localStorage.getItem('google_access_token');
-            if (token && window.google) {
-                window.google.accounts.oauth2.revoke(token, () => {
-                    console.log('Token revoked');
-                });
-            }
-            localStorage.removeItem('google_access_token');
-            this.accessToken = null;
-        }
-        return true;
-    }
-
-    async getIntegrationStatus(service: 'calendar' | 'mail'): Promise<boolean> {
-        return localStorage.getItem(`google_${service}_connected`) === 'true';
-    }
-
-    async sendMail(to: string, subject: string, body: string, attachments: EmailAttachment[] = []): Promise<boolean> {
-        const token = localStorage.getItem('google_access_token');
-        if (!token) {
-            alert("Nicht mit Google verbunden. Bitte in den Einstellungen verbinden.");
-            return false;
-        }
-
-        try {
-            const boundary = "foo_bar_baz";
-            const nl = "\r\n";
-            const encodeUTF8Base64 = (str: string) => {
-                return btoa(unescape(encodeURIComponent(str)));
-            };
-            
-            let message = "";
-            message += `To: ${to}${nl}`;
-            message += `Subject: =?utf-8?B?${encodeUTF8Base64(subject)}?=${nl}`;
-            message += `MIME-Version: 1.0${nl}`;
-            message += `Content-Type: multipart/mixed; boundary="${boundary}"${nl}${nl}`;
-            
-            message += `--${boundary}${nl}`;
-            message += `Content-Type: text/plain; charset="UTF-8"${nl}`;
-            message += `Content-Transfer-Encoding: base64${nl}${nl}`;
-            message += `${encodeUTF8Base64(body)}${nl}${nl}`;
-            
-            for (const att of attachments) {
-                const base64Data = att.data.split(',')[1];
-                message += `--${boundary}${nl}`;
-                message += `Content-Type: ${att.type}; name="${att.name}"${nl}`;
-                message += `Content-Disposition: attachment; filename="${att.name}"${nl}`;
-                message += `Content-Transfer-Encoding: base64${nl}${nl}`;
-                message += `${base64Data}${nl}${nl}`;
-            }
-            
-            message += `--${boundary}--`;
-
-            const raw = btoa(unescape(encodeURIComponent(message)))
-                .replace(/\+/g, '-')
-                .replace(/\//g, '_')
-                .replace(/=+$/, '');
-
-            await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ raw })
-            });
-            return true;
-        } catch (e) {
-            console.error("Mail Send Error", e);
-            alert("Fehler beim Senden der E-Mail via Google API.");
-            return false;
-        }
-    }
-
-    async processDueRetainers(): Promise<{ updatedContacts: Contact[], newInvoices: Invoice[], newActivities: Activity[] }> {
-        const contacts = await this.getContacts();
-        const invoices = await this.getInvoices();
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const dueContacts = contacts.filter(c => c.retainerActive && c.retainerNextBilling && new Date(c.retainerNextBilling) <= today && (c.retainerAmount || 0) > 0);
-        const newInvoices: Invoice[] = [];
-        const updatedContacts: Contact[] = [];
-        const newActivities: Activity[] = [];
-
-        if (dueContacts.length === 0) return { updatedContacts, newInvoices, newActivities };
-
-        let maxNum = 100;
-        invoices.forEach(i => {
-             const parts = i.invoiceNumber.split('-');
-             if (parts.length > 1) {
-                 const n = parseInt(parts[1]);
-                 if (!isNaN(n) && n > maxNum) maxNum = n;
-             }
-        });
-        
-        for (const contact of dueContacts) {
-            const alreadyExists = invoices.some(inv => inv.contactId === contact.id && inv.amount === contact.retainerAmount && inv.date === new Date().toISOString().split('T')[0]);
-            if (alreadyExists) continue;
-
-            maxNum++;
-            const invoiceNum = `2025-${maxNum}`;
-            const invAmount = contact.retainerAmount!;
-            
-            const inv: Invoice = {
-                id: crypto.randomUUID(),
-                invoiceNumber: invoiceNum,
-                date: new Date().toISOString().split('T')[0],
-                contactId: contact.id,
-                contactName: `${contact.name} (${contact.company})`,
-                description: `Retainer-Service (${contact.retainerInterval})`,
-                amount: invAmount,
-                isPaid: false
-            };
-            newInvoices.push(inv);
-            await this.saveInvoice(inv);
-
-            let nextDate = new Date(contact.retainerNextBilling!);
-            nextDate.setMonth(nextDate.getMonth() + 1);
-
-            const updatedContact = { ...contact, retainerNextBilling: nextDate.toISOString().split('T')[0] };
-            updatedContacts.push(updatedContact);
-            await this.updateContact(updatedContact);
-
-            const act: Activity = {
-                id: crypto.randomUUID(),
-                contactId: contact.id,
-                type: 'system_invoice',
-                content: `Retainer-Rechnung: ${invoiceNum}`,
-                date: new Date().toISOString().split('T')[0],
-                timestamp: new Date().toISOString(),
-                relatedId: inv.id
-            };
-            newActivities.push(act);
-            await this.saveActivity(act);
-        }
-        return { updatedContacts, newInvoices, newActivities };
-    }
-
-    async checkAndInstallUpdate(url: string, statusCallback?: (status: string) => void): Promise<boolean> {
-        try {
-            if (statusCallback) statusCallback("Prüfe Version...");
-            const response = await fetch(`${url}/index.html?t=${Date.now()}`, { cache: 'no-store' });
-            if (!response.ok) throw new Error("Update-Server nicht erreichbar");
-            const remoteHtml = await response.text();
-            const localResponse = await fetch('/index.html');
-            const localHtml = await localResponse.text();
-
-            if (remoteHtml.trim() === localHtml.trim()) return false;
-
-            if (statusCallback) statusCallback("Neue Version gefunden. Lade herunter...");
-
-            const assetFiles: string[] = [];
-            const assetRegex = /["'](?:[^"']+\/)?assets\/([^"']+)["']/g;
-            let match;
-            while ((match = assetRegex.exec(remoteHtml)) !== null) {
-                if (!assetFiles.includes(match[1])) assetFiles.push(match[1]);
-            }
-
-            const downloadedFiles = [];
-            downloadedFiles.push({ name: 'index.html', content: remoteHtml, type: 'root' });
-
-            for (const fileName of assetFiles) {
-                if (statusCallback) statusCallback(`Lade ${fileName}...`);
-                const fileRes = await fetch(`${url}/assets/${fileName}?t=${Date.now()}`);
-                if (!fileRes.ok) throw new Error(`Fehler beim Laden von ${fileName}`);
-                const content = await fileRes.text();
-                downloadedFiles.push({ name: fileName, content: content, type: 'asset' });
-            }
-
-            if (window.require) {
-                const { ipcRenderer } = window.require('electron');
-                if (statusCallback) statusCallback("Installiere...");
-                const result = await ipcRenderer.invoke('install-update', downloadedFiles);
-                if (result.success) {
-                    if (statusCallback) statusCallback("Neustart...");
-                    setTimeout(() => {
-                        ipcRenderer.invoke('restart-app');
-                    }, 1000);
-                    return true;
-                } else {
-                    throw new Error(result.error);
-                }
-            } else {
-                 throw new Error("Update nur in Desktop-App möglich.");
-            }
-        } catch (e: any) {
-            console.error("Update Error", e);
-            throw e;
-        }
-    }
-    
-    async generatePdf(htmlContent: string): Promise<string> {
-        if (window.require) {
-            const { ipcRenderer } = window.require('electron');
-            const buffer = await ipcRenderer.invoke('generate-pdf', htmlContent);
-            const bytes = new Uint8Array(buffer);
-            let binary = '';
-            const len = bytes.byteLength;
-            for (let i = 0; i < len; i++) {
-                binary += String.fromCharCode(bytes[i]);
-            }
-            return btoa(binary);
-        }
-        throw new Error("PDF Generierung ist nur in der Desktop-App verfügbar.");
-    }
-    
-    async wipeAllData(): Promise<void> {
-        localStorage.clear();
-        this.cache = {
-            contacts: null, activities: null, deals: null, tasks: null, 
-            invoices: null, expenses: null, userProfile: null, 
-            productPresets: null, invoiceConfig: null, emailTemplates: null
-        };
-        window.location.reload();
+        return { contacts, deals, activities, skippedCount };
     }
 }
 
-export const DataServiceFactory = {
-    create: (config: BackendConfig): IDataService => {
+export class DataServiceFactory {
+    static create(config: BackendConfig): IDataService {
         return new LocalDataService(config.googleClientId);
     }
-};
+}
