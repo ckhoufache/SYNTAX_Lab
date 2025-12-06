@@ -1,4 +1,5 @@
 
+
 import { Contact, Deal, Task, UserProfile, ProductPreset, Theme, BackendConfig, BackendMode, BackupData, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate, EmailAttachment, DealStage } from '../types';
 
 // Declare Google Types globally for TS
@@ -743,73 +744,114 @@ class LocalDataService implements IDataService {
         
         if (rows.length < 2) throw new Error("CSV Datei scheint leer zu sein oder hat keine Daten.");
 
-        // 2. Identify Headers (Normalize keys to handle slight variations and case insensitivity)
-        const headers = rows[0].map(h => h.trim().toLowerCase());
+        // 2. Identify Headers (Normalize keys to handle slight variations and remove BOM)
+        const headers = rows[0].map(h => h.trim().toLowerCase().replace(/^[\uFEFF\uFFFE]/, ''));
         
         // Helper to get value by header name safely
-        const getValue = (row: string[], headerName: string): string => {
-            const index = headers.indexOf(headerName.toLowerCase());
-            if (index === -1) return '';
-            return row[index] ? row[index].trim() : '';
+        const getVal = (row: string[], headerPatterns: string[]): string => {
+            const index = headers.findIndex(h => headerPatterns.some(p => h.includes(p.toLowerCase())));
+            return index > -1 && row[index] ? row[index].trim() : '';
         };
+
+        // SAFETY: Force load from storage if cache is empty (e.g. if init wasn't called)
+        if (!this.cache.contacts) {
+             this.cache.contacts = this.getFromStorage<Contact[]>('contacts', []);
+        }
+        const existingContacts = this.cache.contacts || [];
 
         const contacts: Contact[] = [];
         const deals: Deal[] = [];
         const activities: Activity[] = [];
         let skippedCount = 0;
 
-        const existingContacts = this.cache.contacts || [];
+        // --- ROBUST DUPLICATION DETECTION (SIGNATURES) ---
+        const signatures = new Set<string>();
+
+        // Helper to normalize LinkedIn URL
+        const normalizeLinkedIn = (url: string | undefined) => {
+            if (!url) return '';
+            let s = url.toLowerCase().trim();
+            s = s.replace(/^https?:\/\//, '');
+            // Handle subdomains like de.linkedin.com or www.linkedin.com
+            const idx = s.indexOf('linkedin.com/');
+            if (idx !== -1) {
+                s = s.substring(idx + 'linkedin.com/'.length);
+            }
+            // s is now "in/john-doe" or "in/john-doe/" or "pub/..."
+            if (s.endsWith('/')) s = s.slice(0, -1);
+            s = s.replace(/^(in|pub|profile)\//, '');
+            s = s.split('?')[0];
+            return s; // returns "john-doe"
+        };
+
+        const clean = (str: string | undefined | null) => {
+            if (!str) return '';
+            const s = str.trim().toLowerCase();
+            if (['-', 'n/a', 'null', 'undefined', 'false', 'true'].includes(s)) return '';
+            return s;
+        };
+
+        // Populate signatures from DB
+        const addSignature = (c: Contact) => {
+            if (c.email) signatures.add(`email:${clean(c.email)}`);
+            const li = normalizeLinkedIn(c.linkedin);
+            if (li) signatures.add(`li:${li}`);
+            const cName = clean(c.name);
+            const cComp = clean(c.company);
+            if (cName && cComp) signatures.add(`nc:${cName}|${cComp}`);
+        };
+
+        existingContacts.forEach(addSignature);
 
         // 3. Process Rows
         for (let i = 1; i < rows.length; i++) {
             const row = rows[i];
             if (row.length === 0 || (row.length === 1 && !row[0])) continue;
 
-            // Mapping Logic supporting both English and German headers
-            const fullName = getValue(row, 'Name') || getValue(row, 'fullName');
-            const firstName = getValue(row, 'First Name') || getValue(row, 'firstName') || getValue(row, 'Vorname');
-            const lastName = getValue(row, 'Last Name') || getValue(row, 'lastName') || getValue(row, 'Nachname');
+            const fullName = getVal(row, ['name', 'fullname']);
+            const firstName = getVal(row, ['firstname', 'vorname', 'first name']);
+            const lastName = getVal(row, ['lastname', 'nachname', 'last name']);
             
-            // Name Fallback Logic
             let name = fullName;
             if (!name && firstName && lastName) name = `${firstName} ${lastName}`;
             if (!name && firstName) name = firstName;
             if (!name) name = 'Unbekannt';
 
-            const company = getValue(row, 'Company') || getValue(row, 'companyName') || getValue(row, 'Firma');
-            const email = getValue(row, 'Email Address') || getValue(row, 'Email');
-            const linkedin = getValue(row, 'Profile URL') || getValue(row, 'linkedInProfileUrl') || getValue(row, 'Link');
+            const company = getVal(row, ['company', 'firma', 'organization', 'companyname']);
+            const email = getVal(row, ['email', 'e-mail', 'mail']);
+            const linkedin = getVal(row, ['linkedin', 'link', 'profile', 'url', 'web']);
 
-            // Filter out junk rows (sometimes export tools add empty or meta rows)
+            // Filter out junk rows
             if (name === 'Unbekannt' && !company) continue;
 
-            // --- DUPLICATE CHECK ---
-            const isDuplicate = existingContacts.some(c => {
-                const sameEmail = email && c.email && email.toLowerCase() === c.email.toLowerCase();
-                const sameLinkedin = linkedin && c.linkedin && linkedin.toLowerCase() === c.linkedin.toLowerCase();
-                const sameNameAndCompany = name && company && c.name.toLowerCase() === name.toLowerCase() && c.company.toLowerCase() === company.toLowerCase();
-                return sameEmail || sameLinkedin || sameNameAndCompany;
-            });
+            // --- CHECK DUPLICATES USING SIGNATURES ---
+            const rowName = clean(name);
+            const rowEmail = clean(email);
+            const rowLi = normalizeLinkedIn(linkedin);
+            const rowComp = clean(company);
 
-            const isDuplicateInBatch = contacts.some(c => {
-                const sameEmail = email && c.email && email.toLowerCase() === c.email.toLowerCase();
-                const sameLinkedin = linkedin && c.linkedin && linkedin.toLowerCase() === c.linkedin.toLowerCase();
-                const sameNameAndCompany = name && company && c.name.toLowerCase() === name.toLowerCase() && c.company.toLowerCase() === company.toLowerCase();
-                return sameEmail || sameLinkedin || sameNameAndCompany;
-            });
+            let isDuplicate = false;
+            if (rowEmail && signatures.has(`email:${rowEmail}`)) isDuplicate = true;
+            if (!isDuplicate && rowLi && signatures.has(`li:${rowLi}`)) isDuplicate = true;
+            if (!isDuplicate && rowName && rowComp && signatures.has(`nc:${rowName}|${rowComp}`)) isDuplicate = true;
 
-            if (isDuplicate || isDuplicateInBatch) {
+            if (isDuplicate) {
                 skippedCount++;
                 continue;
             }
+
+            // Create temporary object to add to signatures (prevent duplicates within batch)
+            const tempContact = { name, email, linkedin, company } as Contact;
+            addSignature(tempContact);
+            
             // --- END DUPLICATE CHECK ---
 
             // Notes aggregation
-            const summary = getValue(row, 'summary');
-            const desc = getValue(row, 'Description');
-            const subTitle = getValue(row, 'Sub Title');
-            const location = getValue(row, 'Location');
-            const icebreaker = getValue(row, 'Icebreaker');
+            const summary = getVal(row, ['summary']);
+            const desc = getVal(row, ['description']);
+            const subTitle = getVal(row, ['subtitle', 'sub title']);
+            const location = getVal(row, ['location', 'ort', 'city']);
+            const icebreaker = getVal(row, ['icebreaker']);
             
             let notesParts = [];
             if (summary) notesParts.push(summary);
@@ -822,24 +864,22 @@ class LocalDataService implements IDataService {
                 id: crypto.randomUUID(),
                 name: name,
                 company: company,
-                role: getValue(row, 'Job Title') || getValue(row, 'title') || getValue(row, 'Position'),
-                companyUrl: getValue(row, 'regularCompanyUrl') || getValue(row, 'companyUrl'),
+                role: getVal(row, ['role', 'position', 'job', 'title']),
+                companyUrl: getVal(row, ['companyurl', 'website']),
                 email: email, 
                 linkedin: linkedin,
-                avatar: getValue(row, 'profileImageUrl'),
+                avatar: getVal(row, ['avatar', 'image', 'profileimage']),
                 notes: notesParts.join('\n\n'), 
                 lastContact: new Date().toISOString().split('T')[0],
                 type: 'lead'
             };
 
-            // Avatar Fallback if empty or broken URL
             if (!newContact.avatar || newContact.avatar.length < 10) {
                  newContact.avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`;
             }
 
             contacts.push(newContact);
             
-            // Create Ghost Deal
             const deal: Deal = {
                 id: crypto.randomUUID(),
                 title: 'Neuer Lead (Import)',

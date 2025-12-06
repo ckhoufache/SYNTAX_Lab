@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
 import { Contacts } from './components/Contacts';
@@ -48,8 +48,8 @@ export const App = () => {
   const [focusedDealId, setFocusedDealId] = useState<string | null>(null);
   const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
 
-  // Service Instance
-  const dataService: IDataService = DataServiceFactory.create(backendConfig);
+  // Service Instance - MEMOIZED to prevent cache reset on re-renders
+  const dataService: IDataService = useMemo(() => DataServiceFactory.create(backendConfig), [backendConfig]);
 
   // --- INITIALIZATION ---
   useEffect(() => {
@@ -82,7 +82,7 @@ export const App = () => {
           }
       };
       init();
-  }, [backendConfig.googleClientId]);
+  }, [dataService]); // Depend on memoized service
 
   // --- HANDLERS ---
   const handleLogin = async () => {
@@ -177,16 +177,7 @@ export const App = () => {
   // Import
   const handleImportData = useCallback(async (data: BackupData) => {
       // Basic validation handled in component, here we assume data is good
-      // In a real app, use DataService to bulk save.
-      // For local simulation, we basically replace everything.
       if(confirm("Dies überschreibt alle aktuellen Daten. Fortfahren?")) {
-          // This logic would essentially be a sequence of set() calls or a bulk import method in service
-          // Since we use local storage, we can mock it by reloading or simple state replacement if service supports it.
-          // The LocalDataService doesn't have a bulkImport method exposed in interface, but let's assume we implement it or just use setters
-          // Simulating import by replacing state and saving individually (slow) or assume service handles it
-          // For now, let's just reload the page after putting data in storage if we were fully local.
-          // But to be clean, we should use the state setters.
-          
           // Note: Full import implementation usually requires clearing DB first.
           // We will just update state for now.
           setContacts(data.contacts);
