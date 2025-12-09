@@ -294,6 +294,7 @@ export const Settings: React.FC<SettingsProps> = ({
   const isDark = currentTheme === 'dark';
   const [formData, setFormData] = useState<UserProfile>(userProfile);
   const [backendForm, setBackendForm] = useState<BackendConfig>(backendConfig);
+  const [appVersion, setAppVersion] = useState("Loading...");
   
   // Accordion State Management
   const [activeSection, setActiveSection] = useState<string | null>('profile');
@@ -366,7 +367,13 @@ export const Settings: React.FC<SettingsProps> = ({
   useEffect(() => {
       const storedKey = localStorage.getItem('gemini_api_key');
       if (storedKey) setGeminiKey(storedKey);
-  }, []);
+      
+      const fetchVersion = async () => {
+          const ver = await dataService.getAppVersion();
+          setAppVersion(ver);
+      };
+      fetchVersion();
+  }, [dataService]);
 
   useEffect(() => {
     const loadIntegrations = async () => {
@@ -951,7 +958,7 @@ export const Settings: React.FC<SettingsProps> = ({
                          <div className="flex items-center justify-between mb-4">
                              <div>
                                  <h4 className="font-bold text-slate-800 dark:text-white flex items-center gap-2"><RefreshCw className="w-4 h-4"/> System Update</h4>
-                                 <p className="text-xs text-slate-500">Aktuelle Version: <span className="font-mono bg-white dark:bg-slate-900 px-1 rounded border dark:border-slate-700">v1.2.3</span></p>
+                                 <p className="text-xs text-slate-500">Installierte Version: <span className="font-mono bg-white dark:bg-slate-900 px-1 rounded border dark:border-slate-700">{appVersion}</span></p>
                              </div>
                              <div className="flex flex-col items-end gap-1">
                                  <input 

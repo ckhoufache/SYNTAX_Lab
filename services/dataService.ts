@@ -1,5 +1,3 @@
-
-
 import { Contact, Deal, Task, UserProfile, ProductPreset, Theme, BackendConfig, BackendMode, BackupData, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate, EmailAttachment, DealStage } from '../types';
 import { FirebaseDataService } from './firebaseService';
 
@@ -278,6 +276,7 @@ export interface IDataService {
     sendMail(to: string, subject: string, body: string, attachments?: EmailAttachment[]): Promise<boolean>;
     processDueRetainers(): Promise<{ updatedContacts: Contact[], newInvoices: Invoice[], newActivities: Activity[] }>;
     checkAndInstallUpdate(url: string, statusCallback?: (status: string) => void, force?: boolean): Promise<boolean>;
+    getAppVersion(): Promise<string>;
     generatePdf(htmlContent: string): Promise<string>;
     wipeAllData(): Promise<void>;
 }
@@ -718,6 +717,16 @@ class LocalDataService implements IDataService {
         return { updatedContacts, newInvoices, newActivities };
     }
 
+    async getAppVersion(): Promise<string> {
+        if (window.require) {
+            try {
+                const { ipcRenderer } = window.require('electron');
+                return await ipcRenderer.invoke('get-app-version');
+            } catch(e) { console.error(e); }
+        }
+        return 'Web-Client';
+    }
+
     async checkAndInstallUpdate(url: string, statusCallback?: (status: string) => void, force: boolean = false): Promise<boolean> {
         if (window.require) {
             try {
@@ -855,7 +864,7 @@ class LocalDataService implements IDataService {
         window.location.reload();
     }
     
-    // --- ROBUST CSV PARSING ---
+    // --- CSV IMPORT (Reused Logic) ---
     private parseCSV(text: string): string[][] {
         const arr: string[][] = [];
         let quote = false;

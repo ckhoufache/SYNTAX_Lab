@@ -1,5 +1,3 @@
-
-
 import { app, BrowserWindow, shell, ipcMain, session } from 'electron';
 import path from 'path';
 import express from 'express';
@@ -42,8 +40,8 @@ function compareVersions(v1, v2) {
 
 /**
  * Bereinigt den Hot-Update Ordner.
- * FIX: Löscht den Ordner nur, wenn die Binary WIRKLICH neuer ist.
- * Bei gleicher Version (Force Update) bleibt der Ordner bestehen.
+ * FIX: Löscht den Ordner, wenn die Binary NEUER oder GLEICH ALT ist wie das Hot Update.
+ * Das garantiert einen sauberen Start nach einer Installation via EXE.
  */
 function cleanupStaleUpdates() {
     try {
@@ -62,13 +60,15 @@ function cleanupStaleUpdates() {
 
             console.log(`Checking versions - Binary: ${binaryVersion}, HotUpdate: ${hotUpdateVersion}`);
 
-            // ÄNDERUNG: Wir löschen nur, wenn Binary > HotUpdate (1) ist.
-            // Wenn Binary == HotUpdate (0) ist, behalten wir das Update (für Force Update / Patches).
-            if (compareVersions(binaryVersion, hotUpdateVersion) === 1) {
-                console.log('Binary is strictly newer. Clearing obsolete hot_update folder.');
+            // ÄNDERUNG: Wir löschen, wenn Binary >= HotUpdate.
+            // Fall 1: Binary 1.2.4, Update 1.2.3 -> Löschen (veraltet)
+            // Fall 2: Binary 1.2.4, Update 1.2.4 -> Löschen (Clean install bevorzugen)
+            // Fall 3: Binary 1.2.4, Update 1.2.5 -> Behalten (Neues Hot Update)
+            if (compareVersions(binaryVersion, hotUpdateVersion) >= 0) {
+                console.log('Binary is newer or equal. Clearing hot_update folder to ensure clean state.');
                 fs.rmSync(hotUpdatePath, { recursive: true, force: true });
             } else {
-                console.log('Hot update is same or newer than binary. Keeping it.');
+                console.log('Hot update is strictly newer than binary. Keeping it.');
             }
         } else {
             // Hot Update Ordner existiert, aber keine version.json? Kaputt. Weg damit.

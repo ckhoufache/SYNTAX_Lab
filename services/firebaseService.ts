@@ -1,5 +1,3 @@
-
-
 import { initializeApp } from 'firebase/app';
 import { 
     getFirestore, collection, getDocs, doc, setDoc, deleteDoc, getDoc,
@@ -353,6 +351,18 @@ export class FirebaseDataService implements IDataService {
         }
 
         return { updatedContacts, newInvoices, newActivities };
+    }
+
+    async getAppVersion(): Promise<string> {
+        if (window.require) {
+            try {
+                const { ipcRenderer } = window.require('electron');
+                return await ipcRenderer.invoke('get-app-version');
+            } catch(e) { 
+                console.error("Error fetching version in Firebase mode:", e); 
+            }
+        }
+        return 'Web-Cloud';
     }
 
     async checkAndInstallUpdate(url: string, statusCallback?: (status: string) => void): Promise<boolean> { return false; }
