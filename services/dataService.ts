@@ -1,6 +1,6 @@
 
-
 import { Contact, Deal, Task, UserProfile, ProductPreset, Theme, BackendConfig, BackendMode, BackupData, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate, EmailAttachment, DealStage } from '../types';
+import { FirebaseDataService } from './firebaseService';
 
 // Declare Google Types globally for TS
 declare global {
@@ -256,8 +256,9 @@ export interface IDataService {
 
 class LocalDataService implements IDataService {
     private googleClientId?: string;
-    private accessToken: string | null = null;
+    private initialized: boolean = false;
     
+    // IMPORTANT: Singleton Cache. Do not reset on constructor.
     private cache: {
         contacts: Contact[] | null;
         activities: Activity[] | null;
@@ -284,10 +285,26 @@ class LocalDataService implements IDataService {
 
     constructor(googleClientId?: string) {
         this.googleClientId = googleClientId;
-        this.accessToken = localStorage.getItem('google_access_token');
     }
     
     async init(): Promise<void> {
+        if (this.initialized && this.cache.contacts !== null) {
+            return Promise.resolve();
+        }
+
+        // --- SHADOW BACKUP CHECK (EMERGENCY RESTORE) ---
+        // If main contacts are empty, but backup exists, restore automatically
+        const mainContacts = this.getFromStorage<Contact[]>('contacts', []);
+        if (mainContacts.length === 0) {
+            const backupContacts = this.getFromStorage<Contact[]>('contacts_mirror', []);
+            if (backupContacts.length > 0) {
+                console.warn("⚠️ Data Loss Detected! Restoring from Shadow Backup...");
+                this.set('contacts', 'contacts', backupContacts);
+                alert("WICHTIG: Ihre Kontakte waren verschwunden, wurden aber aus dem Sicherheits-Backup wiederhergestellt.");
+            }
+        }
+        
+        // Ensure defaults
         if (!localStorage.getItem('contacts')) localStorage.setItem('contacts', JSON.stringify([]));
         if (!localStorage.getItem('deals')) localStorage.setItem('deals', JSON.stringify([]));
         if (!localStorage.getItem('tasks')) localStorage.setItem('tasks', JSON.stringify([]));
@@ -344,20 +361,32 @@ class LocalDataService implements IDataService {
             this.saveInvoiceConfig(this.cache.invoiceConfig);
         }
 
+        this.initialized = true;
         return Promise.resolve();
     }
 
     private getFromStorage<T>(key: string, fallback: T): T {
-        const stored = localStorage.getItem(key);
-        return stored ? JSON.parse(stored) : fallback;
+        try {
+            const stored = localStorage.getItem(key);
+            return stored ? JSON.parse(stored) : fallback;
+        } catch(e) {
+            console.error(`Error loading key ${key} from LS`, e);
+            return fallback;
+        }
     }
 
     private set<T>(key: keyof typeof this.cache, storageKey: string, data: T): void {
         this.cache[key] = data as any;
         try {
             localStorage.setItem(storageKey, JSON.stringify(data));
+            
+            // --- SHADOW BACKUP SYSTEM ---
+            // If we are saving contacts, and the list is NOT empty, verify it in the mirror
+            if (storageKey === 'contacts' && Array.isArray(data) && data.length > 0) {
+                localStorage.setItem('contacts_mirror', JSON.stringify(data));
+            }
         } catch (error: any) {
-             console.error("Storage Error", error);
+             console.error("Storage Error (Quota exceeded?)", error);
         }
     }
 
@@ -545,8 +574,6 @@ class LocalDataService implements IDataService {
 
     // --- Integration Mocks / Logic ---
     async connectGoogle(service: 'calendar' | 'mail', clientId?: string): Promise<boolean> {
-        // In a real app, you would handle OAuth flow here.
-        // For local simulation, we just store a flag.
         localStorage.setItem(`google_${service}_connected`, 'true');
         return true;
     }
@@ -562,11 +589,8 @@ class LocalDataService implements IDataService {
         const connected = await this.getIntegrationStatus('mail');
         if (connected) {
              console.log(`[Mock Send] Email to ${to} with subject "${subject}" (Attachments: ${attachments?.length || 0})`);
-             // Here we would call the Google Gmail API
              return true; 
         } else {
-             // If not connected, we can't send via API.
-             // But UI handles mailto: links for user interaction.
              console.warn("Mail not connected, cannot background send.");
              return false;
         }
@@ -629,7 +653,6 @@ class LocalDataService implements IDataService {
             }
         }
         
-        // Refresh cache references for mass updates handled above
         if (updatedContacts.length > 0) {
             const currentC = this.cache.contacts || [];
             this.set('contacts', 'contacts', currentC.map(c => updatedContacts.find(u => u.id === c.id) || c));
@@ -639,10 +662,8 @@ class LocalDataService implements IDataService {
     }
 
     async checkAndInstallUpdate(url: string, statusCallback?: (status: string) => void): Promise<boolean> {
-        // Mock Implementation for Electron Update check
         if (window.require) {
              statusCallback?.("Verbinde mit Update-Server...");
-             // Simulate network delay
              await new Promise(r => setTimeout(r, 1000));
              statusCallback?.("Prüfe Version...");
              return false; // No update in mock
@@ -655,8 +676,6 @@ class LocalDataService implements IDataService {
             try {
                 const { ipcRenderer } = window.require('electron');
                 const buffer = await ipcRenderer.invoke('generate-pdf', htmlContent);
-                // Convert buffer to base64
-                // Electron returns Uint8Array/Buffer
                 let binary = '';
                 const bytes = new Uint8Array(buffer);
                 const len = bytes.byteLength;
@@ -669,54 +688,48 @@ class LocalDataService implements IDataService {
                 throw e;
             }
         } else {
-            // Browser Fallback (not possible to generate real PDF securely in client without libraries like jsPDF)
-            // We throw error or return empty to handle in UI
             throw new Error("PDF Generierung nur in der Desktop-App verfügbar.");
         }
     }
 
     async wipeAllData(): Promise<void> {
         localStorage.clear();
+        this.cache = {
+            contacts: [], activities: [], deals: [], tasks: [], invoices: [], expenses: [],
+            userProfile: null, productPresets: [], invoiceConfig: null, emailTemplates: []
+        };
         window.location.reload();
     }
     
     // --- ROBUST CSV PARSING ---
     private parseCSV(text: string): string[][] {
         const arr: string[][] = [];
-        let quote = false;  // 'true' means we're inside a quoted field
+        let quote = false;
         let col = 0;
         let row = 0;
         let c = "";
         
-        // Initialize 2D array
         arr[row] = [];
         arr[row][col] = "";
 
         for (let i = 0; i < text.length; i++) {
             c = text[i];
             
-            // Handle Quote
             if (c === '"') {
                 if (quote && text[i+1] === '"') {
-                    // Double quote inside quote = escaped quote
                     arr[row][col] += '"';
                     i++; 
                 } else {
-                    // Toggle quote status
                     quote = !quote;
                 }
             } 
-            // Handle Comma (only if not in quote)
             else if (c === ',' && !quote) {
                 col++;
                 arr[row][col] = "";
             } 
-            // Handle Newline (only if not in quote)
             else if ((c === '\r' || c === '\n') && !quote) {
-                // Handle Windows line ending \r\n
                 if (c === '\r' && text[i+1] === '\n') i++;
                 
-                // Only move to next row if current row is not empty (ignoring trailing newlines)
                 if (arr[row].some(cell => cell.length > 0) || col > 0) {
                     row++;
                     col = 0;
@@ -724,13 +737,11 @@ class LocalDataService implements IDataService {
                     arr[row][col] = "";
                 }
             } 
-            // Normal character
             else {
                 arr[row][col] += c;
             }
         }
         
-        // Clean up empty trailing row if present
         if(arr.length > 0 && arr[arr.length-1].length === 1 && arr[arr.length-1][0] === "") {
             arr.pop();
         }
@@ -739,21 +750,17 @@ class LocalDataService implements IDataService {
     }
 
     async importContactsFromCSV(csvText: string): Promise<{ contacts: Contact[], deals: Deal[], activities: Activity[], skippedCount: number }> {
-        // 1. Parse CSV correctly handling quotes and newlines
         const rows = this.parseCSV(csvText);
         
         if (rows.length < 2) throw new Error("CSV Datei scheint leer zu sein oder hat keine Daten.");
 
-        // 2. Identify Headers (Normalize keys to handle slight variations and remove BOM)
         const headers = rows[0].map(h => h.trim().toLowerCase().replace(/^[\uFEFF\uFFFE]/, ''));
         
-        // Helper to get value by header name safely
         const getVal = (row: string[], headerPatterns: string[]): string => {
             const index = headers.findIndex(h => headerPatterns.some(p => h.includes(p.toLowerCase())));
             return index > -1 && row[index] ? row[index].trim() : '';
         };
 
-        // SAFETY: Force load from storage if cache is empty (e.g. if init wasn't called)
         if (!this.cache.contacts) {
              this.cache.contacts = this.getFromStorage<Contact[]>('contacts', []);
         }
@@ -764,46 +771,42 @@ class LocalDataService implements IDataService {
         const activities: Activity[] = [];
         let skippedCount = 0;
 
-        // --- ROBUST DUPLICATION DETECTION (SIGNATURES) ---
+        // --- IMPROVED DUPLICATION DETECTION ---
         const signatures = new Set<string>();
 
-        // Helper to normalize LinkedIn URL
         const normalizeLinkedIn = (url: string | undefined) => {
             if (!url) return '';
             let s = url.toLowerCase().trim();
-            s = s.replace(/^https?:\/\//, '');
-            // Handle subdomains like de.linkedin.com or www.linkedin.com
+            if(s.length < 5) return '';
+            s = s.replace(/^https?:\/\//, '').replace(/^www\./, '');
             const idx = s.indexOf('linkedin.com/');
-            if (idx !== -1) {
-                s = s.substring(idx + 'linkedin.com/'.length);
-            }
-            // s is now "in/john-doe" or "in/john-doe/" or "pub/..."
+            if (idx !== -1) s = s.substring(idx + 'linkedin.com/'.length);
             if (s.endsWith('/')) s = s.slice(0, -1);
             s = s.replace(/^(in|pub|profile)\//, '');
-            s = s.split('?')[0];
-            return s; // returns "john-doe"
+            return s.split('?')[0]; 
         };
 
         const clean = (str: string | undefined | null) => {
             if (!str) return '';
             const s = str.trim().toLowerCase();
             if (['-', 'n/a', 'null', 'undefined', 'false', 'true'].includes(s)) return '';
-            return s;
+            // Remove all non-alphanumeric chars for strict comparison
+            return s.replace(/[^a-z0-9]/g, '');
         };
-
-        // Populate signatures from DB
+        
         const addSignature = (c: Contact) => {
-            if (c.email) signatures.add(`email:${clean(c.email)}`);
+            if (c.email) signatures.add(`em:${clean(c.email)}`);
             const li = normalizeLinkedIn(c.linkedin);
             if (li) signatures.add(`li:${li}`);
             const cName = clean(c.name);
             const cComp = clean(c.company);
             if (cName && cComp) signatures.add(`nc:${cName}|${cComp}`);
+            // Backup signature: Just Name, but only if name is long enough to be uniqueish
+            else if (cName && cName.length > 5) signatures.add(`n:${cName}`);
         };
 
         existingContacts.forEach(addSignature);
 
-        // 3. Process Rows
         for (let i = 1; i < rows.length; i++) {
             const row = rows[i];
             if (row.length === 0 || (row.length === 1 && !row[0])) continue;
@@ -821,44 +824,53 @@ class LocalDataService implements IDataService {
             const email = getVal(row, ['email', 'e-mail', 'mail']);
             const linkedin = getVal(row, ['linkedin', 'link', 'profile', 'url', 'web']);
 
-            // Filter out junk rows
             if (name === 'Unbekannt' && !company) continue;
 
-            // --- CHECK DUPLICATES USING SIGNATURES ---
             const rowName = clean(name);
             const rowEmail = clean(email);
             const rowLi = normalizeLinkedIn(linkedin);
             const rowComp = clean(company);
-
+            
             let isDuplicate = false;
-            if (rowEmail && signatures.has(`email:${rowEmail}`)) isDuplicate = true;
-            if (!isDuplicate && rowLi && signatures.has(`li:${rowLi}`)) isDuplicate = true;
-            if (!isDuplicate && rowName && rowComp && signatures.has(`nc:${rowName}|${rowComp}`)) isDuplicate = true;
+            let duplicateReason = "";
+
+            if (rowLi && signatures.has(`li:${rowLi}`)) {
+                isDuplicate = true;
+                duplicateReason = `LinkedIn ID: ${rowLi}`;
+            }
+            else if (rowEmail && signatures.has(`em:${rowEmail}`)) {
+                isDuplicate = true;
+                duplicateReason = `Email: ${rowEmail}`;
+            }
+            else if (rowName && rowComp && signatures.has(`nc:${rowName}|${rowComp}`)) {
+                isDuplicate = true;
+                duplicateReason = `Name+Firma: ${rowName}|${rowComp}`;
+            }
+            else if (rowName && rowName.length > 5 && signatures.has(`n:${rowName}`)) {
+                // If the new one has NO company and NO email and NO LinkedIn, assume duplicate.
+                if (!rowComp && !rowEmail && !rowLi) {
+                    isDuplicate = true;
+                    duplicateReason = `Name (Weak): ${rowName}`;
+                }
+            }
 
             if (isDuplicate) {
+                console.log(`Skipping duplicate: ${name} (${duplicateReason})`);
                 skippedCount++;
                 continue;
             }
 
-            // Create temporary object to add to signatures (prevent duplicates within batch)
             const tempContact = { name, email, linkedin, company } as Contact;
             addSignature(tempContact);
             
-            // --- END DUPLICATE CHECK ---
-
-            // Notes aggregation
             const summary = getVal(row, ['summary']);
             const desc = getVal(row, ['description']);
-            const subTitle = getVal(row, ['subtitle', 'sub title']);
-            const location = getVal(row, ['location', 'ort', 'city']);
             const icebreaker = getVal(row, ['icebreaker']);
             
             let notesParts = [];
             if (summary) notesParts.push(summary);
             if (desc) notesParts.push(desc);
             if (icebreaker) notesParts.push(`Icebreaker: ${icebreaker}`);
-            if (subTitle) notesParts.push(`Sub-Title: ${subTitle}`);
-            if (location) notesParts.push(`Standort: ${location}`);
 
             const newContact: Contact = {
                 id: crypto.randomUUID(),
@@ -868,15 +880,11 @@ class LocalDataService implements IDataService {
                 companyUrl: getVal(row, ['companyurl', 'website']),
                 email: email, 
                 linkedin: linkedin,
-                avatar: getVal(row, ['avatar', 'image', 'profileimage']),
+                avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
                 notes: notesParts.join('\n\n'), 
                 lastContact: new Date().toISOString().split('T')[0],
                 type: 'lead'
             };
-
-            if (!newContact.avatar || newContact.avatar.length < 10) {
-                 newContact.avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`;
-            }
 
             contacts.push(newContact);
             
@@ -899,19 +907,44 @@ class LocalDataService implements IDataService {
                 content: 'Kontakt importiert (CSV)',
                 date: new Date().toISOString().split('T')[0],
                 timestamp: new Date().toISOString()
-            });
+             });
         }
         
-        this.set('contacts', 'contacts', [...contacts, ...(this.cache.contacts || [])]);
-        this.set('deals', 'deals', [...deals, ...(this.cache.deals || [])]);
-        this.set('activities', 'activities', [...activities, ...(this.cache.activities || [])]);
+        const finalContacts = [...(this.cache.contacts || []), ...contacts];
+        this.set('contacts', 'contacts', finalContacts);
+        
+        const finalDeals = [...(this.cache.deals || []), ...deals];
+        this.set('deals', 'deals', finalDeals);
+        
+        const finalActivities = [...(this.cache.activities || []), ...activities];
+        this.set('activities', 'activities', finalActivities);
 
         return { contacts, deals, activities, skippedCount };
     }
 }
 
+let instance: IDataService | null = null;
+
 export class DataServiceFactory {
     static create(config: BackendConfig): IDataService {
-        return new LocalDataService(config.googleClientId);
+        // If config mode changed, we might need to recreate instance
+        // For simplicity in this React usage, we assume simple singleton or hot swap.
+        // In a real app we might need to teardown the old connection.
+        
+        // Simple Logic: if existing instance is Local and requested is Firebase, kill it.
+        if (instance) {
+             const isFirebase = instance instanceof FirebaseDataService;
+             if (config.mode === 'firebase' && !isFirebase) instance = null;
+             if (config.mode === 'local' && isFirebase) instance = null;
+        }
+
+        if (!instance) {
+            if (config.mode === 'firebase') {
+                instance = new FirebaseDataService(config);
+            } else {
+                instance = new LocalDataService(config.googleClientId);
+            }
+        }
+        return instance;
     }
 }

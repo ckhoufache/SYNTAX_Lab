@@ -14,7 +14,16 @@ export enum DealStage {
 
 export type ContactType = 'lead' | 'customer' | 'partner' | 'newsletter';
 
-export type BackendMode = 'local' | 'api';
+export type BackendMode = 'local' | 'firebase';
+
+export interface FirebaseConfig {
+    apiKey: string;
+    authDomain: string;
+    projectId: string;
+    storageBucket: string;
+    messagingSenderId: string;
+    appId: string;
+}
 
 export interface BackendConfig {
   mode: BackendMode;
@@ -22,6 +31,7 @@ export interface BackendConfig {
   apiToken?: string;
   googleClientId?: string;
   apiKey?: string; // Für externen Zugriff auf DIESE App
+  firebaseConfig?: FirebaseConfig; // NEU
 }
 
 export interface ProductPreset {

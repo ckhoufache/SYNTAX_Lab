@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
@@ -49,6 +50,7 @@ export const App = () => {
   const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
 
   // Service Instance - MEMOIZED to prevent cache reset on re-renders
+  // Now returns Singleton
   const dataService: IDataService = useMemo(() => DataServiceFactory.create(backendConfig), [backendConfig]);
 
   // --- INITIALIZATION ---
@@ -56,7 +58,9 @@ export const App = () => {
       const init = async () => {
           setIsLoading(true);
           try {
+              // Only call init, singleton handles the rest
               await dataService.init();
+              
               const [c, d, t, i, e, a, up, pp, ic, et] = await Promise.all([
                   dataService.getContacts(),
                   dataService.getDeals(),
@@ -125,12 +129,17 @@ export const App = () => {
       try {
           const result = await dataService.importContactsFromCSV(csvText);
           
-          setContacts(prev => [...result.contacts, ...prev]);
-          setDeals(prev => [...result.deals, ...prev]);
-          setActivities(prev => [...result.activities, ...prev]);
+          // Force refresh contacts from service to ensure sync
+          const freshContacts = await dataService.getContacts();
+          const freshDeals = await dataService.getDeals();
+          const freshActivities = await dataService.getActivities();
+          
+          setContacts(freshContacts);
+          setDeals(freshDeals);
+          setActivities(freshActivities);
           
           let msg = `${result.contacts.length} neue Kontakte importiert.`;
-          if (result.skippedCount > 0) msg += `\n${result.skippedCount} Duplikate übersprungen (E-Mail/LinkedIn/Name).`;
+          if (result.skippedCount > 0) msg += `\n${result.skippedCount} Duplikate erkannt und übersprungen.`;
           alert(msg);
       } catch (e: any) {
           console.error(e);
@@ -191,7 +200,10 @@ export const App = () => {
           setEmailTemplates(data.emailTemplates || []);
           setUserProfile(data.userProfile);
           
-          // Persist
+          // Persist via Service to be safe with Singleton Cache
+          // We iterate or allow the service to handle "import" but for now manual set is okay if we could access service setter.
+          // Since we can't easily access setter from here without refactor, we rely on localstorage + reload or proper service methods.
+          
           localStorage.setItem('contacts', JSON.stringify(data.contacts));
           localStorage.setItem('deals', JSON.stringify(data.deals));
           localStorage.setItem('tasks', JSON.stringify(data.tasks));
@@ -203,7 +215,8 @@ export const App = () => {
           localStorage.setItem('userProfile', JSON.stringify(data.userProfile));
           localStorage.setItem('invoiceConfig', JSON.stringify(data.invoiceConfig));
           
-          alert("Daten importiert.");
+          alert("Daten importiert. Seite wird neu geladen.");
+          window.location.reload();
       }
   }, []);
 

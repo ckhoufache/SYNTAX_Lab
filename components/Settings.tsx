@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect, useRef } from 'react';
-import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle, Key, RefreshCw, Copy, FileText, Image as ImageIcon, Briefcase, Settings as SettingsIcon, HardDrive, Users, DownloadCloud, RefreshCcw, Sparkles, Sliders, Link, Paperclip, Star, Paperclip as PaperclipIcon, FileCode, Printer, Info, AlertOctagon, Repeat } from 'lucide-react';
-import { UserProfile, Theme, ProductPreset, Contact, Deal, Task, BackupData, BackendConfig, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate, EmailAttachment, EmailAutomationConfig } from '../types';
+import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle, Key, RefreshCw, Copy, FileText, Image as ImageIcon, Briefcase, Settings as SettingsIcon, HardDrive, Users, DownloadCloud, RefreshCcw, Sparkles, Sliders, Link, Paperclip, Star, Paperclip as PaperclipIcon, FileCode, Printer, Info, AlertOctagon, Repeat, Cloud, CloudLightning } from 'lucide-react';
+import { UserProfile, Theme, ProductPreset, Contact, Deal, Task, BackupData, BackendConfig, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate, EmailAttachment, EmailAutomationConfig, FirebaseConfig } from '../types';
 import { IDataService } from '../services/dataService';
 
 // Fix for Electron's window.require
@@ -324,6 +325,11 @@ export const Settings: React.FC<SettingsProps> = ({
   
   // AI Config
   const [geminiKey, setGeminiKey] = useState('');
+  
+  // Firebase Config
+  const [fbConfig, setFbConfig] = useState<FirebaseConfig>(backendConfig.firebaseConfig || {
+      apiKey: '', authDomain: '', projectId: '', storageBucket: '', messagingSenderId: '', appId: ''
+  });
 
   // Integration States
   const [isCalendarConnected, setIsCalendarConnected] = useState(false);
@@ -574,6 +580,20 @@ export const Settings: React.FC<SettingsProps> = ({
       editingTemplateId ? onUpdateTemplate(newTemplate) : onAddTemplate(newTemplate);
       setIsTemplateModalOpen(false);
   };
+  
+  const handleSaveFirebaseConfig = () => {
+      const newConfig = { ...backendConfig, firebaseConfig: fbConfig, mode: 'firebase' as const };
+      onUpdateBackendConfig(newConfig);
+      alert("Firebase Konfiguration gespeichert. Die Seite wird neu geladen, um die Verbindung herzustellen.");
+      window.location.reload();
+  };
+
+  const handleSwitchToLocal = () => {
+      const newConfig = { ...backendConfig, mode: 'local' as const };
+      onUpdateBackendConfig(newConfig);
+      alert("Auf lokalen Modus umgestellt. Seite wird neu geladen.");
+      window.location.reload();
+  };
 
   // --- UPDATE LOGIC ---
   const handleCheckUpdate = async () => {
@@ -666,6 +686,58 @@ export const Settings: React.FC<SettingsProps> = ({
                          </div>
                     </div>
                 </SubSection>
+             </div>
+         </SettingsSection>
+         
+         {/* --- NEU: DATENBANK VERBINDUNG --- */}
+         <SettingsSection
+             title="Datenbank Verbindung"
+             icon={Cloud}
+             isDark={isDark}
+             description={backendConfig.mode === 'firebase' ? 'Google Cloud (Firebase)' : 'Lokal (Browser Storage)'}
+             isOpen={activeSection === 'database'}
+             onToggle={() => toggleSection('database')}
+         >
+             <div className="px-6 pb-6 pt-2">
+                 <div className="flex gap-4 mb-6">
+                     <button 
+                        onClick={handleSwitchToLocal}
+                        className={`flex-1 p-4 rounded-xl border text-left transition-all ${backendConfig.mode === 'local' ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:border-indigo-500' : 'border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800'}`}
+                     >
+                         <div className="flex items-center gap-2 mb-2">
+                             <HardDrive className={`w-5 h-5 ${backendConfig.mode === 'local' ? 'text-indigo-600' : 'text-slate-400'}`} />
+                             <span className={`font-bold ${backendConfig.mode === 'local' ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-600 dark:text-slate-400'}`}>Lokal (Browser)</span>
+                         </div>
+                         <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">Daten werden im LocalStorage gespeichert. Schnell, aber an dieses Gerät gebunden.</p>
+                     </button>
+                     
+                     <button 
+                        onClick={() => setBackendForm({...backendForm, mode: 'firebase'})}
+                        className={`flex-1 p-4 rounded-xl border text-left transition-all ${backendConfig.mode === 'firebase' ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:border-indigo-500' : 'border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800'}`}
+                     >
+                         <div className="flex items-center gap-2 mb-2">
+                             <CloudLightning className={`w-5 h-5 ${backendConfig.mode === 'firebase' ? 'text-indigo-600' : 'text-slate-400'}`} />
+                             <span className={`font-bold ${backendConfig.mode === 'firebase' ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-600 dark:text-slate-400'}`}>Google Cloud (Firebase)</span>
+                         </div>
+                         <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">Echtzeit-Synchronisation zwischen Geräten. Erfordert Firebase Projekt.</p>
+                     </button>
+                 </div>
+                 
+                 {/* FIREBASE CONFIG FORM */}
+                 <div className={`space-y-4 transition-all ${backendConfig.mode === 'firebase' || backendForm.mode === 'firebase' ? 'opacity-100' : 'opacity-50 pointer-events-none'}`}>
+                     <h3 className="text-sm font-bold dark:text-white border-b dark:border-slate-700 pb-2">Firebase Konfiguration</h3>
+                     <div className="grid grid-cols-2 gap-4">
+                         <div><label className="text-xs font-bold uppercase text-slate-500">API Key</label><input value={fbConfig.apiKey} onChange={e=>setFbConfig({...fbConfig, apiKey: e.target.value})} className="w-full border p-2 rounded text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
+                         <div><label className="text-xs font-bold uppercase text-slate-500">Auth Domain</label><input value={fbConfig.authDomain} onChange={e=>setFbConfig({...fbConfig, authDomain: e.target.value})} className="w-full border p-2 rounded text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
+                         <div><label className="text-xs font-bold uppercase text-slate-500">Project ID</label><input value={fbConfig.projectId} onChange={e=>setFbConfig({...fbConfig, projectId: e.target.value})} className="w-full border p-2 rounded text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
+                         <div><label className="text-xs font-bold uppercase text-slate-500">Storage Bucket</label><input value={fbConfig.storageBucket} onChange={e=>setFbConfig({...fbConfig, storageBucket: e.target.value})} className="w-full border p-2 rounded text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
+                         <div><label className="text-xs font-bold uppercase text-slate-500">Messaging Sender ID</label><input value={fbConfig.messagingSenderId} onChange={e=>setFbConfig({...fbConfig, messagingSenderId: e.target.value})} className="w-full border p-2 rounded text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
+                         <div><label className="text-xs font-bold uppercase text-slate-500">App ID</label><input value={fbConfig.appId} onChange={e=>setFbConfig({...fbConfig, appId: e.target.value})} className="w-full border p-2 rounded text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
+                     </div>
+                     <div className="flex justify-end pt-2">
+                         <button onClick={handleSaveFirebaseConfig} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">Verbindung herstellen & Speichern</button>
+                     </div>
+                 </div>
              </div>
          </SettingsSection>
 
