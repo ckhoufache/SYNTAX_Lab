@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain } from 'electron';
+import { app, BrowserWindow, shell, ipcMain, session } from 'electron';
 import path from 'path';
 import express from 'express';
 import fs from 'fs';
@@ -52,11 +52,19 @@ function startLocalServer() {
   });
 }
 
-function createWindow() {
+async function createWindow() {
+  // CACHE CLEARING (Force Fresh Load for v1.1.1)
+  // Dies löscht HTTP Cache, Service Workers etc.
+  if (!app.isPackaged || process.env.FORCE_CLEAR_CACHE === 'true') {
+      console.log('Clearing Cache...');
+      await session.defaultSession.clearCache();
+      await session.defaultSession.clearStorageData({ storages: ['serviceworkers', 'cachestorage'] });
+  }
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
-    title: "SyntaxLabCRM v1.1.0",
+    title: "SyntaxLabCRM v1.1.1",
     icon: path.join(__dirname, 'dist/favicon.ico'),
     webPreferences: {
       nodeIntegration: true,

@@ -1144,7 +1144,7 @@ export const Settings: React.FC<SettingsProps> = ({
                  {/* Version Indicator */}
                  <div className="flex items-center justify-between bg-slate-100 dark:bg-slate-800 p-3 rounded-lg mb-4">
                      <span className="text-sm font-medium text-slate-600 dark:text-slate-400">Installierte Version</span>
-                     <span className="text-sm font-bold text-slate-900 dark:text-white bg-white dark:bg-slate-700 px-2 py-1 rounded border border-slate-200 dark:border-slate-600 shadow-sm">v1.1.0</span>
+                     <span className="text-sm font-bold text-slate-900 dark:text-white bg-white dark:bg-slate-700 px-2 py-1 rounded border border-slate-200 dark:border-slate-600 shadow-sm">v1.1.1</span>
                  </div>
 
                  <div className="flex gap-2 mb-4">
@@ -1171,21 +1171,21 @@ export const Settings: React.FC<SettingsProps> = ({
                      </div>
                  )}
                  
-                 <div className="flex justify-between items-center mt-6 pt-4 border-t border-slate-100 dark:border-slate-800">
+                 <div className="flex flex-col gap-4 mt-6 pt-4 border-t border-slate-100 dark:border-slate-800">
                      <p className="text-xs text-slate-400">
                         Geben Sie die URL zu Ihrem Update-Server an, der die `version.json` hostet.
                      </p>
                      
-                     {/* FORCE UPDATE BUTTON */}
+                     {/* FORCE UPDATE BUTTON (BIG & RED) */}
                      <button 
                         onClick={() => {
                             if(confirm("Dies ignoriert die Versionsprüfung und lädt ALLE Dateien neu vom Server. Fortfahren?")) {
                                 handleCheckUpdate(true);
                             }
                         }}
-                        className="text-xs text-amber-600 hover:text-amber-800 hover:underline flex items-center gap-1"
+                        className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-3 shadow-lg hover:shadow-red-500/30 transition-all text-lg"
                      >
-                         <ShieldAlert className="w-3 h-3"/> Neuinstallation erzwingen
+                         <ShieldAlert className="w-6 h-6"/> Neuinstallation erzwingen
                      </button>
                  </div>
              </div>
