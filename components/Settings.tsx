@@ -1141,6 +1141,12 @@ export const Settings: React.FC<SettingsProps> = ({
             onToggle={() => toggleSection('update')}
          >
              <div className="p-6">
+                 {/* Version Indicator */}
+                 <div className="flex items-center justify-between bg-slate-100 dark:bg-slate-800 p-3 rounded-lg mb-4">
+                     <span className="text-sm font-medium text-slate-600 dark:text-slate-400">Installierte Version</span>
+                     <span className="text-sm font-bold text-slate-900 dark:text-white bg-white dark:bg-slate-700 px-2 py-1 rounded border border-slate-200 dark:border-slate-600 shadow-sm">v1.1.0</span>
+                 </div>
+
                  <div className="flex gap-2 mb-4">
                      <input 
                          value={updateUrl}
