@@ -20,6 +20,7 @@ let server;
 // HOT UPDATE PFAD
 const userDataPath = app.getPath('userData');
 const hotUpdatePath = path.join(userDataPath, 'hot_update');
+const hotUpdateTempPath = path.join(userDataPath, 'hot_update_temp'); // Temp folder for atomic writes
 
 /**
  * Vergleicht zwei Versionstrings (z.B. "1.2.0" vs "1.2.1").
@@ -44,6 +45,11 @@ function compareVersions(v1, v2) {
  */
 function cleanupStaleUpdates() {
     try {
+        // Temp Folder immer bereinigen beim Start
+        if (fs.existsSync(hotUpdateTempPath)) {
+             fs.rmSync(hotUpdateTempPath, { recursive: true, force: true });
+        }
+
         if (!fs.existsSync(hotUpdatePath)) return;
 
         const versionFile = path.join(hotUpdatePath, 'version.json');
@@ -191,18 +197,19 @@ ipcMain.handle('open-dev-tools', () => {
     }
 });
 
-// Update Handler
+// Update Handler (ATOMIC UPDATE IMPLEMENTATION)
 ipcMain.handle('install-update', async (event, files) => {
   try {
-    if (!fs.existsSync(hotUpdatePath)) {
-      fs.mkdirSync(hotUpdatePath, { recursive: true });
+    // 1. Prepare Temp Directory (Clean Slate)
+    if (fs.existsSync(hotUpdateTempPath)) {
+        fs.rmSync(hotUpdateTempPath, { recursive: true, force: true });
     }
+    fs.mkdirSync(hotUpdateTempPath, { recursive: true });
     
-    const assetsPath = path.join(hotUpdatePath, 'assets');
-    if (!fs.existsSync(assetsPath)) {
-      fs.mkdirSync(assetsPath, { recursive: true });
-    }
+    const assetsPath = path.join(hotUpdateTempPath, 'assets');
+    fs.mkdirSync(assetsPath, { recursive: true });
 
+    // 2. Write all files to TEMP directory
     for (const file of files) {
       const safeName = path.basename(file.name); 
       let targetPath;
@@ -210,7 +217,7 @@ ipcMain.handle('install-update', async (event, files) => {
       if (file.type === 'asset') {
           targetPath = path.join(assetsPath, safeName);
       } else {
-          targetPath = path.join(hotUpdatePath, safeName);
+          targetPath = path.join(hotUpdateTempPath, safeName);
       }
 
       if (file.content) {
@@ -223,9 +230,24 @@ ipcMain.handle('install-update', async (event, files) => {
       }
     }
     
+    // 3. SWAP Folders (Atomic Switch)
+    // Remove old hot_update folder
+    if (fs.existsSync(hotUpdatePath)) {
+        fs.rmSync(hotUpdatePath, { recursive: true, force: true });
+    }
+    
+    // Rename temp to real
+    fs.renameSync(hotUpdateTempPath, hotUpdatePath);
+
+    console.log("Atomic Update successful. Swapped folders.");
+    
     return { success: true };
   } catch (error) {
     console.error('Update failed:', error);
+    // Cleanup temp on failure
+    if (fs.existsSync(hotUpdateTempPath)) {
+        fs.rmSync(hotUpdateTempPath, { recursive: true, force: true });
+    }
     return { success: false, error: error.message };
   }
 });
