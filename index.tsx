@@ -1,4 +1,3 @@
-
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';
@@ -10,8 +9,9 @@ if (!rootElement) {
 }
 
 // Einfache Erkennung, ob wir in Electron laufen
-// Electron fügt spezifische User-Agent Strings hinzu oder erlaubt Zugriff auf process.versions.electron
-const isElectron = navigator.userAgent.toLowerCase().includes('electron');
+// Da wir den User-Agent für Google Auth fälschen ("spoofing"), müssen wir robuster prüfen.
+// Wir prüfen auf 'electron' im UA ODER ob 'window.require' existiert (Node Integration).
+const isElectron = navigator.userAgent.toLowerCase().includes('electron') || (window as any).require;
 
 const WebLandingPage = () => (
     <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-4">
