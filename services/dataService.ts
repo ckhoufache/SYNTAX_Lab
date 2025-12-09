@@ -695,7 +695,7 @@ class LocalDataService implements IDataService {
                 
                 if (!force) {
                     try {
-                        const versionResponse = await fetch(`${baseUrl}/version.json?t=${Date.now()}`);
+                        const versionResponse = await fetch(`${baseUrl}/version.json?t=${Date.now()}`); // CACHE BUSTER
                         if (!versionResponse.ok) throw new Error(`HTTP ${versionResponse.status}`);
                         const remoteData = await versionResponse.json();
                         remoteVersion = remoteData.version;
@@ -727,16 +727,24 @@ class LocalDataService implements IDataService {
                 statusCallback?.(`Lade index.html...`);
 
                 // 4. Download index.html to parse assets
-                const indexResponse = await fetch(`${baseUrl}/index.html?t=${Date.now()}`);
-                if (!indexResponse.ok) throw new Error("Index.html nicht gefunden");
-                const indexText = await indexResponse.text();
+                let indexText = "";
+                try {
+                    const indexResponse = await fetch(`${baseUrl}/index.html?t=${Date.now()}`);
+                    if (!indexResponse.ok) throw new Error("Index.html nicht gefunden");
+                    indexText = await indexResponse.text();
+                } catch(e: any) {
+                    if (force) {
+                        // Attempt fallback if index fails but we forced? No, index is critical.
+                        throw new Error(`Kritischer Fehler: index.html nicht erreichbar. ${e.message}`);
+                    }
+                    throw e;
+                }
 
                 // 5. Extract Assets (Vite hashed JS and CSS)
                 const filesToDownload: { name: string, content: string, type: 'file' | 'asset' }[] = [];
                 filesToDownload.push({ name: 'index.html', content: indexText, type: 'file' });
 
                 // RegEx to find /assets/index-....js and .css
-                // Note: Vite paths in index.html are usually relative like "./assets/..." or "/assets/..."
                 const assetRegex = /["'](?:\.|)\/assets\/([^"']+)["']/g;
                 let match;
                 const assetsToFetch = new Set<string>();
@@ -746,17 +754,21 @@ class LocalDataService implements IDataService {
                 }
                 
                 // Also manually add version.json to the list to update local state next time
-                filesToDownload.push({ name: 'version.json', content: JSON.stringify({version: remoteVersion || '1.0.8'}), type: 'file' });
+                filesToDownload.push({ name: 'version.json', content: JSON.stringify({version: remoteVersion || '1.2.0'}), type: 'file' });
 
                 // 6. Download Assets
                 for (const assetName of assetsToFetch) {
                     statusCallback?.(`Lade Asset: ${assetName}...`);
-                    const assetRes = await fetch(`${baseUrl}/assets/${assetName}`);
-                    if(assetRes.ok) {
-                        const content = await assetRes.text(); // Assuming text based assets (JS/CSS)
-                        filesToDownload.push({ name: assetName, content: content, type: 'asset' });
-                    } else {
-                        statusCallback?.(`Warnung: Asset ${assetName} nicht gefunden.`);
+                    try {
+                        const assetRes = await fetch(`${baseUrl}/assets/${assetName}?t=${Date.now()}`);
+                        if(assetRes.ok) {
+                            const content = await assetRes.text();
+                            filesToDownload.push({ name: assetName, content: content, type: 'asset' });
+                        } else {
+                            statusCallback?.(`Warnung: Asset ${assetName} nicht gefunden.`);
+                        }
+                    } catch (e) {
+                        console.warn(`Asset load fail: ${assetName}`, e);
                     }
                 }
 

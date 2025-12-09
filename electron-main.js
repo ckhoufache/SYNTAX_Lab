@@ -53,18 +53,16 @@ function startLocalServer() {
 }
 
 async function createWindow() {
-  // CACHE CLEARING (Force Fresh Load for v1.1.1)
+  // CACHE CLEARING (Force Fresh Load)
   // Dies löscht HTTP Cache, Service Workers etc.
-  if (!app.isPackaged || process.env.FORCE_CLEAR_CACHE === 'true') {
-      console.log('Clearing Cache...');
-      await session.defaultSession.clearCache();
-      await session.defaultSession.clearStorageData({ storages: ['serviceworkers', 'cachestorage'] });
-  }
+  console.log('Clearing Cache...');
+  await session.defaultSession.clearCache();
+  await session.defaultSession.clearStorageData({ storages: ['serviceworkers', 'cachestorage'] });
 
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
-    title: "SyntaxLabCRM v1.1.1",
+    title: "SyntaxLabCRM v1.2.0",
     icon: path.join(__dirname, 'dist/favicon.ico'),
     webPreferences: {
       nodeIntegration: true,

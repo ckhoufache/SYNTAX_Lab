@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle, Key, RefreshCw, Copy, FileText, Image as ImageIcon, Briefcase, Settings as SettingsIcon, HardDrive, Users, DownloadCloud, RefreshCcw, Sparkles, Sliders, Link, Paperclip, Star, Paperclip as PaperclipIcon, FileCode, Printer, Info, AlertOctagon, Repeat, Cloud, CloudLightning, ShieldAlert } from 'lucide-react';
 import { UserProfile, Theme, ProductPreset, Contact, Deal, Task, BackupData, BackendConfig, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate, EmailAttachment, EmailAutomationConfig, FirebaseConfig } from '../types';
@@ -1144,7 +1145,7 @@ export const Settings: React.FC<SettingsProps> = ({
                  {/* Version Indicator */}
                  <div className="flex items-center justify-between bg-slate-100 dark:bg-slate-800 p-3 rounded-lg mb-4">
                      <span className="text-sm font-medium text-slate-600 dark:text-slate-400">Installierte Version</span>
-                     <span className="text-sm font-bold text-slate-900 dark:text-white bg-white dark:bg-slate-700 px-2 py-1 rounded border border-slate-200 dark:border-slate-600 shadow-sm">v1.1.1</span>
+                     <span className="text-sm font-bold text-slate-900 dark:text-white bg-white dark:bg-slate-700 px-2 py-1 rounded border border-slate-200 dark:border-slate-600 shadow-sm">v1.2.0</span>
                  </div>
 
                  <div className="flex gap-2 mb-4">
@@ -1176,14 +1177,14 @@ export const Settings: React.FC<SettingsProps> = ({
                         Geben Sie die URL zu Ihrem Update-Server an, der die `version.json` hostet.
                      </p>
                      
-                     {/* FORCE UPDATE BUTTON (BIG & RED) */}
+                     {/* FORCE UPDATE BUTTON (BIG & RED) - DEFINITIV SICHTBAR */}
                      <button 
                         onClick={() => {
                             if(confirm("Dies ignoriert die Versionsprüfung und lädt ALLE Dateien neu vom Server. Fortfahren?")) {
                                 handleCheckUpdate(true);
                             }
                         }}
-                        className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-3 shadow-lg hover:shadow-red-500/30 transition-all text-lg"
+                        className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-3 shadow-lg hover:shadow-red-500/30 transition-all text-lg animate-in slide-in-from-bottom-2"
                      >
                          <ShieldAlert className="w-6 h-6"/> Neuinstallation erzwingen
                      </button>
