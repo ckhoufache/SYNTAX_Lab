@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle, Key, RefreshCw, Copy, FileText, Image as ImageIcon, Briefcase, Settings as SettingsIcon, HardDrive, Users, DownloadCloud, RefreshCcw, Sparkles, Sliders, Link, Paperclip, Star, Paperclip as PaperclipIcon, FileCode, Printer, Info, AlertOctagon, Repeat, Cloud, CloudLightning, ShieldAlert, Wifi } from 'lucide-react';
 import { UserProfile, Theme, ProductPreset, Contact, Deal, Task, BackupData, BackendConfig, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate, EmailAttachment, EmailAutomationConfig, FirebaseConfig } from '../types';
@@ -819,7 +817,7 @@ export const Settings: React.FC<SettingsProps> = ({
                      <div className="py-2 space-y-2">
                         <InnerSection title="Willkommens-E-Mail" icon={Star} isDark={isDark} isOpen={activeEmailSub === 'welcome'} onToggle={() => toggleEmailSub('welcome')}>
                              <div className="text-xs text-slate-500 mb-3 bg-slate-100 dark:bg-slate-700 p-2 rounded">
-                                 Hinweis: Willkommens-Mails werden nun manuell über den Kontakt versendet (siehe "E-Mail senden" -> Vorlage wählen).
+                                 Hinweis: Willkommens-Mails werden nun manuell über den Kontakt versendet (siehe "E-Mail senden" &rarr; Vorlage wählen).
                              </div>
                              <EmailConfigurator config={invConfigForm.emailSettings?.welcome || { subject: '', body: '', attachments: [] }} onChange={(newConfig) => handleEmailConfigChange('welcome', { ...newConfig, enabled: false })} isDark={isDark} label="Willkommens-Mail" />
                         </InnerSection>
@@ -953,7 +951,7 @@ export const Settings: React.FC<SettingsProps> = ({
                          <div className="flex items-center justify-between mb-4">
                              <div>
                                  <h4 className="font-bold text-slate-800 dark:text-white flex items-center gap-2"><RefreshCw className="w-4 h-4"/> System Update</h4>
-                                 <p className="text-xs text-slate-500">Aktuelle Version: <span className="font-mono bg-white dark:bg-slate-900 px-1 rounded border dark:border-slate-700">v1.2.2</span></p>
+                                 <p className="text-xs text-slate-500">Aktuelle Version: <span className="font-mono bg-white dark:bg-slate-900 px-1 rounded border dark:border-slate-700">v1.2.3</span></p>
                              </div>
                              <div className="flex flex-col items-end gap-1">
                                  <input 
