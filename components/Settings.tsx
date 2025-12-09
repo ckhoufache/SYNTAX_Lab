@@ -203,6 +203,11 @@ export const Settings: React.FC<SettingsProps> = ({
   };
   
   const handleCheckUpdate = async (force = false) => {
+      // DEBUG: Force alert to prove UI is responding
+      if (force) {
+          alert("UI: Update Button geklickt. Starte Prozess...");
+      }
+
       setIsUpdating(true);
       setUpdateStatus('Prüfe auf Updates...');
       try {
@@ -221,6 +226,8 @@ export const Settings: React.FC<SettingsProps> = ({
           }
       } catch (e: any) {
           setUpdateStatus('Fehler: ' + e.message);
+          // If forced, ensure user sees the error
+          if (force) alert("Update Exception in UI: " + e.message);
       } finally {
           setIsUpdating(false);
       }

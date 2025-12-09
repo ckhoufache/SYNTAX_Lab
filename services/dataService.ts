@@ -1,3 +1,4 @@
+
 import { Contact, Deal, Task, Invoice, Expense, Activity, UserProfile, ProductPreset, Theme, BackendConfig, BackendMode, BackupData, InvoiceConfig, EmailTemplate, EmailAttachment, DealStage } from '../types';
 import { FirebaseDataService } from './firebaseService';
 
@@ -359,11 +360,18 @@ class LocalDataService implements IDataService {
 
     // --- UPDATE LOGIC (DIAGNOSTIC MODE) ---
     async checkAndInstallUpdate(url: string, statusCallback?: (status: string) => void, force: boolean = false): Promise<boolean> {
-        if (!url) throw new Error("Keine Update-URL konfiguriert.");
+        if (force) window.alert(`Service: checkAndInstallUpdate aufgerufen mit URL: ${url}`);
+        
+        if (!url) {
+            if(force) window.alert("Fehler: Keine URL konfiguriert");
+            throw new Error("Keine Update-URL konfiguriert.");
+        }
         const baseUrl = url.replace(/\/$/, "");
         
         if (!window.require) {
-            console.warn("Update check skipped: Not running in Electron.");
+            const msg = "Update fehlgeschlagen: Nicht in Electron Umgebung (window.require fehlt).";
+            console.warn(msg);
+            if (force) window.alert(msg);
             return false;
         }
 
@@ -374,13 +382,13 @@ class LocalDataService implements IDataService {
             
             // 1. Fetch remote version with heavy cache busting
             const versionUrl = `${baseUrl}/version.json?t=${Date.now()}`;
-            if (force) alert(`Diagnose: Rufe ab ${versionUrl}`);
+            if (force) window.alert(`Rufe Version ab: ${versionUrl}`);
 
             const response = await fetch(versionUrl);
             
             if (!response.ok) {
                 const err = `Server antwortet nicht (Status ${response.status} ${response.statusText})`;
-                if (force) alert(err);
+                if (force) window.alert(err);
                 throw new Error(err);
             }
             
@@ -392,7 +400,7 @@ class LocalDataService implements IDataService {
             statusCallback?.(msg);
             
             if (force) {
-                alert(`Diagnose Info:\n${msg}\n\nServer JSON:\n${JSON.stringify(remoteData)}`);
+                window.alert(`Version Check:\n${msg}\n\nRemote JSON:\n${JSON.stringify(remoteData)}`);
             }
 
             // Compare versions
@@ -445,7 +453,7 @@ class LocalDataService implements IDataService {
         } catch (e: any) {
             console.error("Update Error:", e);
             statusCallback?.(`Fehler: ${e.message}`);
-            alert(`Update fehlgeschlagen:\n${e.message}`);
+            window.alert(`Update Exception:\n${e.message}`);
             throw e;
         }
     }
@@ -454,7 +462,7 @@ class LocalDataService implements IDataService {
         if (window.require) {
             try { return await window.require('electron').ipcRenderer.invoke('get-app-version'); } catch(e){}
         }
-        return '1.2.14'; 
+        return '1.2.15'; 
     }
 
     // ... Standard CRUD Implementations ...
