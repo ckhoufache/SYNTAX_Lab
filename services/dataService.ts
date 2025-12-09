@@ -357,10 +357,9 @@ class LocalDataService implements IDataService {
         alert("Benutzer-Einladungen sind nur im Firebase Cloud Modus notwendig/verfügbar.");
     }
 
-    // --- UPDATE LOGIC (FIXED) ---
+    // --- UPDATE LOGIC (DIAGNOSTIC MODE) ---
     async checkAndInstallUpdate(url: string, statusCallback?: (status: string) => void, force: boolean = false): Promise<boolean> {
         if (!url) throw new Error("Keine Update-URL konfiguriert.");
-        // Ensure NO trailing slash
         const baseUrl = url.replace(/\/$/, "");
         
         if (!window.require) {
@@ -374,17 +373,27 @@ class LocalDataService implements IDataService {
             statusCallback?.("Verbinde mit Server...");
             
             // 1. Fetch remote version with heavy cache busting
-            const versionUrl = `${baseUrl}/version.json?t=${Date.now()}&r=${Math.random()}`;
+            const versionUrl = `${baseUrl}/version.json?t=${Date.now()}`;
+            if (force) alert(`Diagnose: Rufe ab ${versionUrl}`);
+
             const response = await fetch(versionUrl);
             
-            if (!response.ok) throw new Error(`Server antwortet nicht (Status ${response.status})`);
+            if (!response.ok) {
+                const err = `Server antwortet nicht (Status ${response.status} ${response.statusText})`;
+                if (force) alert(err);
+                throw new Error(err);
+            }
             
             const remoteData = await response.json();
             const currentVersion = await this.getAppVersion();
             const cleanCurrentVersion = currentVersion.split(' ')[0]; // Remove (Hot) suffix
 
-            // Status Update für Debugging
-            statusCallback?.(`Gefunden: ${remoteData.version} (Server) vs. ${cleanCurrentVersion} (Lokal)`);
+            const msg = `Gefunden: ${remoteData.version} (Server) vs. ${cleanCurrentVersion} (Lokal)`;
+            statusCallback?.(msg);
+            
+            if (force) {
+                alert(`Diagnose Info:\n${msg}\n\nServer JSON:\n${JSON.stringify(remoteData)}`);
+            }
 
             // Compare versions
             const isNewer = (v1: string, v2: string) => {
@@ -404,20 +413,19 @@ class LocalDataService implements IDataService {
 
             statusCallback?.(`Starte Download für v${remoteData.version}...`);
 
-            // 2. Fetch Manifest (Created by build-manifest.js)
-            const manifestResponse = await fetch(`${baseUrl}/manifest.json?t=${Date.now()}&r=${Math.random()}`);
-            if (!manifestResponse.ok) throw new Error("Manifest nicht gefunden (Server-Fehler).");
+            // 2. Fetch Manifest
+            const manifestUrl = `${baseUrl}/manifest.json?t=${Date.now()}`;
+            const manifestResponse = await fetch(manifestUrl);
+            if (!manifestResponse.ok) throw new Error(`Manifest nicht gefunden (Status ${manifestResponse.status})`);
             
             const files: string[] = await manifestResponse.json();
             
             // 3. Construct Download List
             const downloadManifest = files.map(file => ({
-                // Encode filename parts to handle spaces etc.
                 url: `${baseUrl}/${file.split('/').map(s => encodeURIComponent(s)).join('/')}`,
                 relativePath: file
             }));
             
-            // Add version.json manually to the download list
             downloadManifest.push({
                 url: `${baseUrl}/version.json`,
                 relativePath: 'version.json'
@@ -437,10 +445,7 @@ class LocalDataService implements IDataService {
         } catch (e: any) {
             console.error("Update Error:", e);
             statusCallback?.(`Fehler: ${e.message}`);
-            // Explicitly Alert the user if they triggered this manually
-            if (statusCallback) {
-                alert(`Update fehlgeschlagen:\n${e.message}`);
-            }
+            alert(`Update fehlgeschlagen:\n${e.message}`);
             throw e;
         }
     }
@@ -449,7 +454,7 @@ class LocalDataService implements IDataService {
         if (window.require) {
             try { return await window.require('electron').ipcRenderer.invoke('get-app-version'); } catch(e){}
         }
-        return '1.2.13'; 
+        return '1.2.14'; 
     }
 
     // ... Standard CRUD Implementations ...
@@ -470,9 +475,6 @@ class LocalDataService implements IDataService {
         let skipped = 0;
         rows.forEach((row, i) => {
             if (i===0) return; 
-            // Simple parsing assuming standard CSV format (improved regex logic would be better)
-            // But aligning with previous simple split for now or regex if robust
-            // Using a simple split by comma handling quotes crudely
             const cols = row.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || [];
             const cleanCols = cols.map(c => c.replace(/^"|"$/g, '').trim());
 
@@ -484,9 +486,6 @@ class LocalDataService implements IDataService {
                 const linkedin = cleanCols[4]?.includes('http') ? cleanCols[4] : '';
                 const icebreaker = cleanCols[5] || '';
                 
-                // Construct Email from pattern if not present? CSV template didn't have explicit email col in provided example
-                // Assuming standard layout: First, Last, Company, Pos, Link, Icebreaker
-                // Use placeholder email if missing
                 const email = `${firstname}.${lastname}@example.com`.toLowerCase().replace(/\s/g,'');
 
                 if (firstname) {
