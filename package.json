@@ -1,19 +1,20 @@
 {
   "name": "syntaxlab-crm",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.2.1",
   "main": "electron-main.js",
   "type": "module",
   "scripts": {
     "dev": "vite --force",
-    "build": "vite build && node -e \"const fs=require('fs'); const pkg=require('./package.json'); fs.writeFileSync('./dist/version.json', JSON.stringify({version: pkg.version}));\"",
+    "prebuild": "node -e \"const fs=require('fs'); if(fs.existsSync('./dist')) fs.rmSync('./dist', {recursive:true, force:true});\"",
+    "build": "npm run prebuild && vite build && node -e \"const fs=require('fs'); const pkg=require('./package.json'); fs.writeFileSync('./dist/version.json', JSON.stringify({version: pkg.version}));\"",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "start": "node server.js",
     "electron": "electron .",
     "electron:build": "vite build && electron .",
-    "dist": "vite build && electron-builder",
-    "clean": "rm -rf node_modules/.vite"
+    "dist": "npm run build && electron-builder",
+    "clean": "rm -rf node_modules/.vite dist release"
   },
   "dependencies": {
     "@google/genai": "*",

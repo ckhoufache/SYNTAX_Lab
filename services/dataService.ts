@@ -729,12 +729,12 @@ class LocalDataService implements IDataService {
                 // 4. Download index.html to parse assets
                 let indexText = "";
                 try {
-                    const indexResponse = await fetch(`${baseUrl}/index.html?t=${Date.now()}`);
+                    // Aggressive Cache Busting
+                    const indexResponse = await fetch(`${baseUrl}/index.html?cb=${Date.now()}`, { cache: 'no-store' });
                     if (!indexResponse.ok) throw new Error("Index.html nicht gefunden");
                     indexText = await indexResponse.text();
                 } catch(e: any) {
                     if (force) {
-                        // Attempt fallback if index fails but we forced? No, index is critical.
                         throw new Error(`Kritischer Fehler: index.html nicht erreichbar. ${e.message}`);
                     }
                     throw e;
@@ -754,13 +754,13 @@ class LocalDataService implements IDataService {
                 }
                 
                 // Also manually add version.json to the list to update local state next time
-                filesToDownload.push({ name: 'version.json', content: JSON.stringify({version: remoteVersion || '1.2.0'}), type: 'file' });
+                filesToDownload.push({ name: 'version.json', content: JSON.stringify({version: remoteVersion || '1.2.1'}), type: 'file' });
 
                 // 6. Download Assets
                 for (const assetName of assetsToFetch) {
                     statusCallback?.(`Lade Asset: ${assetName}...`);
                     try {
-                        const assetRes = await fetch(`${baseUrl}/assets/${assetName}?t=${Date.now()}`);
+                        const assetRes = await fetch(`${baseUrl}/assets/${assetName}?t=${Date.now()}`, { cache: 'no-store' });
                         if(assetRes.ok) {
                             const content = await assetRes.text();
                             filesToDownload.push({ name: assetName, content: content, type: 'asset' });

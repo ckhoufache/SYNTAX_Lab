@@ -1,6 +1,3 @@
-
-
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle, Key, RefreshCw, Copy, FileText, Image as ImageIcon, Briefcase, Settings as SettingsIcon, HardDrive, Users, DownloadCloud, RefreshCcw, Sparkles, Sliders, Link, Paperclip, Star, Paperclip as PaperclipIcon, FileCode, Printer, Info, AlertOctagon, Repeat, Cloud, CloudLightning, ShieldAlert } from 'lucide-react';
 import { UserProfile, Theme, ProductPreset, Contact, Deal, Task, BackupData, BackendConfig, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate, EmailAttachment, EmailAutomationConfig, FirebaseConfig } from '../types';
@@ -633,6 +630,44 @@ export const Settings: React.FC<SettingsProps> = ({
       
       <main className="p-8 space-y-6 pb-20 max-w-5xl mx-auto w-full">
          
+         {/* --- 0. NOTFALL UPDATE (IMMER SICHTBAR) --- */}
+         <div className="bg-white dark:bg-slate-900 rounded-xl border border-red-200 dark:border-red-900 p-6 shadow-sm mb-8">
+             <div className="flex items-center justify-between">
+                 <div>
+                     <h3 className="text-red-600 font-bold flex items-center gap-2"><ShieldAlert className="w-5 h-5"/> Problembehebung</h3>
+                     <p className="text-xs text-slate-500 mt-1">
+                         Falls Updates nicht automatisch geladen werden, können Sie hier eine Neuinstallation erzwingen.
+                     </p>
+                 </div>
+                 <div className="flex items-center gap-4">
+                     <div className="flex flex-col">
+                         <label className="text-[10px] text-slate-400 uppercase font-bold">Update URL</label>
+                         <input 
+                             value={updateUrl}
+                             onChange={(e) => { setUpdateUrl(e.target.value); localStorage.setItem('update_url', e.target.value); }}
+                             placeholder="https://..." 
+                             className="border rounded px-2 py-1 text-xs w-64 dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                         />
+                     </div>
+                     <button 
+                        onClick={() => {
+                            if(confirm("Dies lädt ALLE Systemdateien neu vom Server. Fortfahren?")) {
+                                handleCheckUpdate(true);
+                            }
+                        }}
+                        className="bg-red-600 hover:bg-red-700 text-white font-bold px-4 py-2 rounded-lg flex items-center gap-2 shadow-lg hover:shadow-red-500/30 transition-all text-sm whitespace-nowrap"
+                     >
+                         <DownloadCloud className="w-4 h-4"/> Neuinstallation erzwingen
+                     </button>
+                 </div>
+             </div>
+             {updateStatus && (
+                 <div className="mt-3 p-2 bg-slate-100 dark:bg-black rounded text-[10px] font-mono text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800">
+                     {updateStatus}
+                 </div>
+             )}
+         </div>
+
          {/* --- 1. PROFIL & DARSTELLUNG --- */}
          <SettingsSection 
             title="Profil & Darstellung" 
@@ -1132,12 +1167,12 @@ export const Settings: React.FC<SettingsProps> = ({
              </div>
          </SettingsSection>
          
-         {/* --- 5. SOFTWARE UPDATE --- */}
+         {/* --- 5. SOFTWARE UPDATE (Read-only Info) --- */}
          <SettingsSection 
-            title="Software Update" 
+            title="Software Info" 
             icon={RefreshCw} 
             isDark={isDark} 
-            description="Version prüfen & aktualisieren"
+            description="Version v1.2.1"
             isOpen={activeSection === 'update'}
             onToggle={() => toggleSection('update')}
          >
@@ -1145,50 +1180,12 @@ export const Settings: React.FC<SettingsProps> = ({
                  {/* Version Indicator */}
                  <div className="flex items-center justify-between bg-slate-100 dark:bg-slate-800 p-3 rounded-lg mb-4">
                      <span className="text-sm font-medium text-slate-600 dark:text-slate-400">Installierte Version</span>
-                     <span className="text-sm font-bold text-slate-900 dark:text-white bg-white dark:bg-slate-700 px-2 py-1 rounded border border-slate-200 dark:border-slate-600 shadow-sm">v1.2.0</span>
-                 </div>
-
-                 <div className="flex gap-2 mb-4">
-                     <input 
-                         value={updateUrl}
-                         onChange={(e) => { setUpdateUrl(e.target.value); localStorage.setItem('update_url', e.target.value); }}
-                         placeholder="https://mein-update-server.de/updates" 
-                         className="flex-1 px-4 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white"
-                     />
-                     <button 
-                         onClick={() => handleCheckUpdate(false)} 
-                         disabled={isUpdating}
-                         className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2 whitespace-nowrap"
-                     >
-                         {isUpdating ? <Loader2 className="w-4 h-4 animate-spin"/> : <RefreshCcw className="w-4 h-4" />}
-                         {isUpdating ? 'Lade...' : 'Update prüfen'}
-                     </button>
+                     <span className="text-sm font-bold text-slate-900 dark:text-white bg-white dark:bg-slate-700 px-2 py-1 rounded border border-slate-200 dark:border-slate-600 shadow-sm">v1.2.1</span>
                  </div>
                  
-                 {/* DEBUG LOG / STATUS AREA */}
-                 {updateStatus && (
-                     <div className={`p-4 rounded-lg text-xs font-mono mb-4 border overflow-x-auto whitespace-pre-wrap ${updateStatus.includes('Fehler') ? 'bg-red-50 text-red-700 border-red-100' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>
-                         {updateStatus}
-                     </div>
-                 )}
-                 
-                 <div className="flex flex-col gap-4 mt-6 pt-4 border-t border-slate-100 dark:border-slate-800">
-                     <p className="text-xs text-slate-400">
-                        Geben Sie die URL zu Ihrem Update-Server an, der die `version.json` hostet.
-                     </p>
-                     
-                     {/* FORCE UPDATE BUTTON (BIG & RED) - DEFINITIV SICHTBAR */}
-                     <button 
-                        onClick={() => {
-                            if(confirm("Dies ignoriert die Versionsprüfung und lädt ALLE Dateien neu vom Server. Fortfahren?")) {
-                                handleCheckUpdate(true);
-                            }
-                        }}
-                        className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-3 shadow-lg hover:shadow-red-500/30 transition-all text-lg animate-in slide-in-from-bottom-2"
-                     >
-                         <ShieldAlert className="w-6 h-6"/> Neuinstallation erzwingen
-                     </button>
-                 </div>
+                 <p className="text-xs text-slate-400">
+                    Die Update-Verwaltung befindet sich nun oben auf dieser Seite.
+                 </p>
              </div>
          </SettingsSection>
 

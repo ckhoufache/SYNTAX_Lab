@@ -62,7 +62,7 @@ async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
-    title: "SyntaxLabCRM v1.2.0",
+    title: "SyntaxLabCRM v1.2.1",
     icon: path.join(__dirname, 'dist/favicon.ico'),
     webPreferences: {
       nodeIntegration: true,
