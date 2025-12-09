@@ -208,6 +208,32 @@ export const compileInvoiceTemplate = (invoice: Invoice, config: InvoiceConfig) 
     return template;
 };
 
+// HELPER: Dynamic Email Placeholder Replacer
+export const replaceEmailPlaceholders = (text: string, contact: Contact, config: InvoiceConfig, invoice?: Invoice) => {
+    let result = text;
+    const replacements: Record<string, string> = {
+        '{name}': contact.name || '',
+        '{firstName}': contact.name.split(' ')[0] || '',
+        '{lastName}': contact.name.split(' ').slice(1).join(' ') || '',
+        '{company}': contact.company || '',
+        '{email}': contact.email || '',
+        '{myCompany}': config.companyName || '',
+        '{myEmail}': config.email || '',
+    };
+    
+    if (invoice) {
+        replacements['{invoiceNumber}'] = invoice.invoiceNumber;
+        replacements['{amount}'] = invoice.amount.toLocaleString('de-DE') + ' €';
+        replacements['{date}'] = new Date(invoice.date).toLocaleDateString('de-DE');
+    }
+
+    for (const [key, value] of Object.entries(replacements)) {
+        // Safe replacement without RegEx special char issues
+        result = result.split(key).join(value);
+    }
+    return result;
+};
+
 export interface IDataService {
     init(): Promise<void>;
     getContacts(): Promise<Contact[]>;
@@ -331,7 +357,7 @@ class LocalDataService implements IDataService {
                 lastName: "",
                 email: "",
                 role: "Admin",
-                avatar: "https://ui-avatars.com/api/?name=User&background=6366f1&color=fff"
+                avatar: "" // No default avatar URL
             };
             this.saveUserProfile(profile);
         }
@@ -1018,7 +1044,7 @@ class LocalDataService implements IDataService {
                 companyUrl: getVal(row, ['companyurl', 'website']),
                 email: email, 
                 linkedin: linkedin,
-                avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
+                avatar: '', // No auto-generated avatar
                 notes: notesParts.join('\n\n'), 
                 lastContact: new Date().toISOString().split('T')[0],
                 type: 'lead'

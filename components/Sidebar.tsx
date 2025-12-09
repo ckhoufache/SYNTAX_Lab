@@ -1,6 +1,7 @@
 
+
 import React from 'react';
-import { LayoutDashboard, Users, KanbanSquare, Settings, Hexagon, ClipboardList, Banknote } from 'lucide-react';
+import { LayoutDashboard, Users, KanbanSquare, Settings, Hexagon, ClipboardList, Banknote, User } from 'lucide-react';
 import { ViewState, UserProfile, Theme } from '../types';
 
 interface SidebarProps {
@@ -88,11 +89,17 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({ currentView, onChan
       <div className={`p-4 border-t ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
         {userProfile && (
             <div className="px-4 flex items-center gap-3">
-                <img 
-                    src={userProfile.avatar} 
-                    alt="User" 
-                    className={`w-9 h-9 rounded-full ring-2 object-cover ${isDark ? 'ring-slate-700' : 'ring-slate-100'}`}
-                />
+                {userProfile.avatar && userProfile.avatar.length > 5 ? (
+                    <img 
+                        src={userProfile.avatar} 
+                        alt="User" 
+                        className={`w-9 h-9 rounded-full ring-2 object-cover ${isDark ? 'ring-slate-700' : 'ring-slate-100'}`}
+                    />
+                ) : (
+                    <div className={`w-9 h-9 rounded-full ring-2 flex items-center justify-center ${isDark ? 'ring-slate-700 bg-slate-800' : 'ring-slate-100 bg-slate-200'}`}>
+                        <User className={`w-5 h-5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`} />
+                    </div>
+                )}
                 <div className="flex flex-col min-w-0">
                     <span className={`text-sm font-semibold truncate ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
                         {userProfile.firstName} {userProfile.lastName}

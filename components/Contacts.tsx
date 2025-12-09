@@ -1,8 +1,9 @@
 
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Search, Filter, MoreHorizontal, Mail, Phone, Plus, Linkedin, X, FileText, Pencil, Trash, Trash2, Clock, Check, Send, Briefcase, Banknote, Calendar, Building, Globe, Upload, ArrowUpDown, ArrowUp, ArrowDown, TrendingUp, TrendingDown, Percent, Zap, History } from 'lucide-react';
-import { Contact, Activity, ActivityType, EmailTemplate, Invoice, Expense, ContactType } from '../types';
-import { DataServiceFactory } from '../services/dataService'; 
+import { Search, Filter, MoreHorizontal, Mail, Phone, Plus, Linkedin, X, FileText, Pencil, Trash, Trash2, Clock, Check, Send, Briefcase, Banknote, Calendar, Building, Globe, Upload, ArrowUpDown, ArrowUp, ArrowDown, TrendingUp, TrendingDown, Percent, Zap, History, Star, User } from 'lucide-react';
+import { Contact, Activity, ActivityType, EmailTemplate, Invoice, Expense, ContactType, InvoiceConfig } from '../types';
+import { DataServiceFactory, replaceEmailPlaceholders } from '../services/dataService'; 
 
 interface ContactsProps {
   contacts: Contact[];
@@ -23,6 +24,8 @@ interface ContactsProps {
   // New props for Financials
   invoices: Invoice[];
   expenses: Expense[];
+  // New prop for System Templates
+  invoiceConfig?: InvoiceConfig;
 }
 
 type SortKey = keyof Contact;
@@ -43,7 +46,8 @@ export const Contacts: React.FC<ContactsProps> = ({
   onImportCSV,
   onBulkDeleteContacts,
   invoices,
-  expenses
+  expenses,
+  invoiceConfig
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'customer' | 'lead' | 'newsletter'>('all'); // NEU: Tabs
@@ -340,7 +344,7 @@ export const Contacts: React.FC<ContactsProps> = ({
         linkedin: formData.linkedin,
         notes: formData.notes,
         type: formData.type || 'lead',
-        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name || '')}&background=random`,
+        avatar: '', // No auto-generation
         lastContact: new Date().toISOString().split('T')[0],
         retainerActive: formData.retainerActive,
         retainerAmount: Number(formData.retainerAmount),
@@ -435,10 +439,47 @@ export const Contacts: React.FC<ContactsProps> = ({
   };
   
   const handleTemplateSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
-      const tplId = e.target.value;
-      const tpl = emailTemplates?.find(t => t.id === tplId);
-      if (tpl) {
-          setEmailData(prev => ({ ...prev, subject: tpl.subject, body: tpl.body.replace('{name}', prev.name.split(' ')[0]) }));
+      const val = e.target.value;
+      if (!val) return;
+      
+      let subject = '';
+      let body = '';
+
+      // Check Custom Templates
+      const customTpl = emailTemplates?.find(t => t.id === val);
+      if (customTpl) {
+          subject = customTpl.subject;
+          body = customTpl.body;
+      } 
+      // Check System Templates from invoiceConfig
+      else if (invoiceConfig && invoiceConfig.emailSettings) {
+           if (val === 'sys_welcome' && invoiceConfig.emailSettings.welcome) {
+               subject = invoiceConfig.emailSettings.welcome.subject;
+               body = invoiceConfig.emailSettings.welcome.body;
+           } else if (val === 'sys_invoice' && invoiceConfig.emailSettings.invoice) {
+               subject = invoiceConfig.emailSettings.invoice.subject;
+               body = invoiceConfig.emailSettings.invoice.body;
+           } else if (val === 'sys_offer' && invoiceConfig.emailSettings.offer) {
+               subject = invoiceConfig.emailSettings.offer.subject;
+               body = invoiceConfig.emailSettings.offer.body;
+           } else if (val === 'sys_reminder' && invoiceConfig.emailSettings.reminder) {
+               subject = invoiceConfig.emailSettings.reminder.subject;
+               body = invoiceConfig.emailSettings.reminder.body;
+           }
+      }
+
+      if (subject || body) {
+          // Perform Placeholder Replacement
+          const currentContact = contacts.find(c => c.id === emailData.contactId);
+          if (currentContact && invoiceConfig) {
+              // We pass invoiceConfig. For Invoice placeholders we'd need an invoice object, 
+              // but here we are in Contact view, so invoice specific placeholders ({invoiceNumber}) won't work well 
+              // unless we pick a specific invoice. For general emails (Welcome), it works fine.
+              subject = replaceEmailPlaceholders(subject, currentContact, invoiceConfig);
+              body = replaceEmailPlaceholders(body, currentContact, invoiceConfig);
+          }
+
+          setEmailData(prev => ({ ...prev, subject, body }));
       }
   };
 
@@ -625,7 +666,13 @@ export const Contacts: React.FC<ContactsProps> = ({
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center gap-3">
                       <div className="flex items-center gap-2 relative">
-                         <img src={contact.avatar} alt={contact.name} className="w-9 h-9 rounded-full object-cover ring-2 ring-white" />
+                         {contact.avatar ? (
+                             <img src={contact.avatar} alt={contact.name} className="w-9 h-9 rounded-full object-cover ring-2 ring-white" />
+                         ) : (
+                             <div className="w-9 h-9 rounded-full bg-slate-200 ring-2 ring-white flex items-center justify-center">
+                                 <User className="w-5 h-5 text-slate-500" />
+                             </div>
+                         )}
                          {contact.linkedin && (
                             <a href={contact.linkedin} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="p-0.5 text-blue-600 bg-white rounded-full absolute -bottom-1 -right-1 shadow-sm border border-slate-100 hover:scale-110 transition-transform" title="LinkedIn Profil"><Linkedin className="w-3 h-3 fill-current" /></a>
                          )}
@@ -984,15 +1031,33 @@ export const Contacts: React.FC<ContactsProps> = ({
                 </div>
                 <form onSubmit={handleSendEmail} className="p-6 space-y-4">
                     <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-100 flex justify-between items-center"><div className="text-sm"><span className="text-indigo-600 font-medium">An: </span><span className="text-slate-700">{emailData.name} ({emailData.to})</span></div></div>
-                    {emailTemplates && emailTemplates.length > 0 && (
-                        <div className="space-y-1">
-                            <label className="text-xs font-semibold text-slate-500 uppercase">Vorlage</label>
-                            <select onChange={handleTemplateSelect} className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm">
-                                <option value="">-- Vorlage wählen --</option>
-                                {emailTemplates.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
-                            </select>
-                        </div>
-                    )}
+                    
+                    {/* TEMPLATE SELECTION (SYSTEM & CUSTOM) */}
+                    <div className="space-y-1">
+                        <label className="text-xs font-semibold text-slate-500 uppercase">Vorlage wählen</label>
+                        <select onChange={handleTemplateSelect} className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm">
+                            <option value="">-- Leer / Keine Vorlage --</option>
+                            
+                            {/* System Templates Group */}
+                            {invoiceConfig && invoiceConfig.emailSettings && (
+                                <optgroup label="System-Vorlagen">
+                                    <option value="sys_welcome">Willkommens-Mail</option>
+                                    <option value="sys_offer">Angebot</option>
+                                    <option value="sys_invoice">Rechnung</option>
+                                    <option value="sys_reminder">Zahlungserinnerung</option>
+                                </optgroup>
+                            )}
+                            
+                            {/* Custom Templates Group */}
+                            {emailTemplates && emailTemplates.length > 0 && (
+                                <optgroup label="Eigene Vorlagen">
+                                    {emailTemplates.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+                                </optgroup>
+                            )}
+                        </select>
+                        <p className="text-[10px] text-slate-400 mt-1 italic">Wählt eine Vorlage und ersetzt automatisch Platzhalter wie {'{name}'} durch den Kontaktnamen.</p>
+                    </div>
+
                     <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase">Betreff</label><input required autoFocus value={emailData.subject} onChange={(e) => setEmailData({...emailData, subject: e.target.value})} type="text" className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"/></div>
                     <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase">Nachricht</label><textarea required value={emailData.body} onChange={(e) => setEmailData({...emailData, body: e.target.value})} rows={8} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none resize-none font-sans"/></div>
                     <div className="pt-2 flex justify-end gap-3"><button type="button" onClick={() => setIsEmailModalOpen(false)} disabled={sendingEmail} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">Abbrechen</button><button type="submit" disabled={sendingEmail} className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 rounded-lg shadow-md shadow-indigo-200 transition-colors flex items-center gap-2">{sendingEmail ? 'Sende...' : <><Send className="w-4 h-4" />Senden</>}</button></div>

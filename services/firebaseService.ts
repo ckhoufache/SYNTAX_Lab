@@ -489,7 +489,7 @@ export class FirebaseDataService implements IDataService {
                 role: getVal(row, ['role', 'position', 'job', 'title']),
                 companyUrl: getVal(row, ['companyurl', 'website']),
                 notes: notesParts.join('\n\n'), 
-                avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
+                avatar: '', // No auto-generated avatar
                 lastContact: new Date().toISOString().split('T')[0],
                 type: 'lead'
              };

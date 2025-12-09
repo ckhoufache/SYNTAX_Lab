@@ -290,7 +290,7 @@ export const App = () => {
             />
         )}
         
-        {view === 'contacts' && (
+        {view === 'contacts' && invoiceConfig && (
             <Contacts 
                 contacts={contacts}
                 activities={activities}
@@ -308,6 +308,7 @@ export const App = () => {
                 onBulkDeleteContacts={handleBulkDeleteContacts}
                 invoices={invoices}
                 expenses={expenses}
+                invoiceConfig={invoiceConfig}
             />
         )}
 
