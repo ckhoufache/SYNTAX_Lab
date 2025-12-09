@@ -1,4 +1,5 @@
 
+
 import { Contact, Deal, Task, UserProfile, ProductPreset, Theme, BackendConfig, BackendMode, BackupData, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate, EmailAttachment, DealStage } from '../types';
 import { FirebaseDataService } from './firebaseService';
 
@@ -679,10 +680,85 @@ class LocalDataService implements IDataService {
 
     async checkAndInstallUpdate(url: string, statusCallback?: (status: string) => void): Promise<boolean> {
         if (window.require) {
-             statusCallback?.("Verbinde mit Update-Server...");
-             await new Promise(r => setTimeout(r, 1000));
-             statusCallback?.("Prüfe Version...");
-             return false; // No update in mock
+            try {
+                const { ipcRenderer } = window.require('electron');
+                
+                // 1. Get current version
+                const currentVersion = await ipcRenderer.invoke('get-app-version');
+                statusCallback?.(`Aktuelle Version: ${currentVersion}`);
+                
+                // 2. Clean URL and fetch remote version
+                const baseUrl = url.replace(/\/$/, '');
+                statusCallback?.("Prüfe Version auf Server...");
+                
+                const versionResponse = await fetch(`${baseUrl}/version.json?t=${Date.now()}`);
+                if (!versionResponse.ok) throw new Error(`Version Check Failed: ${versionResponse.status}`);
+                
+                const remoteData = await versionResponse.json();
+                const remoteVersion = remoteData.version;
+                
+                // 3. Compare (Simple Semantic Versioning Check)
+                const v1 = currentVersion.split('.').map(Number);
+                const v2 = remoteVersion.split('.').map(Number);
+                let updateAvailable = false;
+                
+                for(let i=0; i<3; i++) {
+                    if ((v2[i] || 0) > (v1[i] || 0)) { updateAvailable = true; break; }
+                    if ((v2[i] || 0) < (v1[i] || 0)) { break; }
+                }
+
+                if (!updateAvailable) {
+                    statusCallback?.("System ist aktuell.");
+                    return false;
+                }
+
+                statusCallback?.(`Neue Version gefunden: ${remoteVersion}. Lade herunter...`);
+
+                // 4. Download index.html to parse assets
+                const indexResponse = await fetch(`${baseUrl}/index.html?t=${Date.now()}`);
+                const indexText = await indexResponse.text();
+
+                // 5. Extract Assets (Vite hashed JS and CSS)
+                const filesToDownload: { name: string, content: string, type: 'file' | 'asset' }[] = [];
+                filesToDownload.push({ name: 'index.html', content: indexText, type: 'file' });
+
+                // RegEx to find /assets/index-....js and .css
+                const assetRegex = /["']\.\/assets\/([^"']+)["']/g;
+                let match;
+                const assetsToFetch = new Set<string>();
+
+                while ((match = assetRegex.exec(indexText)) !== null) {
+                    assetsToFetch.add(match[1]);
+                }
+
+                // 6. Download Assets
+                for (const assetName of assetsToFetch) {
+                    statusCallback?.(`Lade Asset: ${assetName}...`);
+                    const assetRes = await fetch(`${baseUrl}/assets/${assetName}`);
+                    if(assetRes.ok) {
+                        const content = await assetRes.text(); // Assuming text based assets (JS/CSS)
+                        filesToDownload.push({ name: assetName, content: content, type: 'asset' });
+                    }
+                }
+
+                // 7. Install
+                statusCallback?.("Installiere Update...");
+                const result = await ipcRenderer.invoke('install-update', filesToDownload);
+
+                if (result.success) {
+                    statusCallback?.("Update erfolgreich. Starte neu...");
+                    await new Promise(r => setTimeout(r, 1000));
+                    await ipcRenderer.invoke('restart-app');
+                    return true;
+                } else {
+                    throw new Error(result.error);
+                }
+
+            } catch (e: any) {
+                console.error("Update Error", e);
+                statusCallback?.(`Fehler: ${e.message}`);
+                throw e;
+            }
         }
         return false;
     }

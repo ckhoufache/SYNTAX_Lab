@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --force",
-    "build": "vite build",
+    "build": "vite build && node -e \"const fs=require('fs'); const pkg=require('./package.json'); fs.writeFileSync('./dist/version.json', JSON.stringify({version: pkg.version}));\"",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "start": "node server.js",
