@@ -214,6 +214,7 @@ export interface IDataService {
     updateContact(contact: Contact): Promise<Contact>;
     deleteContact(id: string): Promise<void>;
     importContactsFromCSV(csvText: string): Promise<{ contacts: Contact[], deals: Deal[], activities: Activity[], skippedCount: number }>;
+    restoreBackup(data: BackupData): Promise<void>;
     getActivities(): Promise<Activity[]>;
     saveActivity(activity: Activity): Promise<Activity>;
     deleteActivity(id: string): Promise<void>;
@@ -570,6 +571,21 @@ class LocalDataService implements IDataService {
         const list = this.cache.emailTemplates || [];
         const newList = list.filter(t => t.id !== id);
         this.set('emailTemplates', 'emailTemplates', newList);
+    }
+    
+    // --- Backup Restore ---
+    async restoreBackup(data: BackupData): Promise<void> {
+        // Just overwrite local storage keys directly using the cache setters
+        this.set('contacts', 'contacts', data.contacts);
+        this.set('deals', 'deals', data.deals);
+        this.set('tasks', 'tasks', data.tasks);
+        this.set('invoices', 'invoices', data.invoices);
+        this.set('expenses', 'expenses', data.expenses);
+        this.set('activities', 'activities', data.activities);
+        this.set('productPresets', 'productPresets', data.productPresets);
+        this.set('emailTemplates', 'emailTemplates', data.emailTemplates || []);
+        this.set('userProfile', 'userProfile', data.userProfile);
+        this.set('invoiceConfig', 'invoiceConfig', data.invoiceConfig);
     }
 
     // --- Integration Mocks / Logic ---

@@ -7,7 +7,7 @@ import {
 import { 
     Contact, Deal, Task, Invoice, Expense, Activity, 
     UserProfile, ProductPreset, InvoiceConfig, EmailTemplate,
-    BackendConfig, EmailAttachment, DealStage
+    BackendConfig, EmailAttachment, DealStage, BackupData
 } from '../types';
 import { IDataService } from './dataService';
 
@@ -191,6 +191,37 @@ export class FirebaseDataService implements IDataService {
     async saveEmailTemplate(template: EmailTemplate): Promise<EmailTemplate> { return this.save('emailTemplates', template); }
     async updateEmailTemplate(template: EmailTemplate): Promise<EmailTemplate> { return this.save('emailTemplates', template); }
     async deleteEmailTemplate(id: string): Promise<void> { await this.delete('emailTemplates', id); }
+
+    // --- Backup Restore (Batched for Firestore) ---
+    async restoreBackup(data: BackupData): Promise<void> {
+        // We must batch writes, but Firestore limits batches to 500 ops.
+        // We'll create a helper to process chunks.
+        
+        const commitBatch = async (items: any[], collectionName: string) => {
+            const chunkSize = 450; // safe buffer below 500
+            for (let i = 0; i < items.length; i += chunkSize) {
+                const chunk = items.slice(i, i + chunkSize);
+                const batch = writeBatch(this.db);
+                chunk.forEach(item => {
+                    batch.set(doc(this.db, collectionName, item.id), item);
+                });
+                await batch.commit();
+            }
+        };
+
+        await commitBatch(data.contacts, 'contacts');
+        await commitBatch(data.deals, 'deals');
+        await commitBatch(data.tasks, 'tasks');
+        await commitBatch(data.invoices, 'invoices');
+        await commitBatch(data.expenses, 'expenses');
+        await commitBatch(data.activities, 'activities');
+        await commitBatch(data.productPresets, 'productPresets');
+        await commitBatch(data.emailTemplates || [], 'emailTemplates');
+        
+        if (data.invoiceConfig) await this.saveInvoiceConfig(data.invoiceConfig);
+        // We generally DON'T overwrite the userProfile on restore in Firebase mode to keep multi-user setup intact,
+        // unless it's a specific "me" backup. For safety, we skip userProfile restore in Cloud mode.
+    }
 
     // --- MOCKS & HELPERS ---
     async connectGoogle(service: 'calendar' | 'mail', clientId?: string): Promise<boolean> { return true; }

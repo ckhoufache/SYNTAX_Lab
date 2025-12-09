@@ -187,38 +187,20 @@ export const App = () => {
   const handleImportData = useCallback(async (data: BackupData) => {
       // Basic validation handled in component, here we assume data is good
       if(confirm("Dies überschreibt alle aktuellen Daten. Fortfahren?")) {
-          // Note: Full import implementation usually requires clearing DB first.
-          // We will just update state for now.
-          setContacts(data.contacts);
-          setDeals(data.deals);
-          setTasks(data.tasks);
-          setInvoices(data.invoices);
-          setExpenses(data.expenses);
-          setActivities(data.activities);
-          setInvoiceConfig(data.invoiceConfig);
-          setProductPresets(data.productPresets);
-          setEmailTemplates(data.emailTemplates || []);
-          setUserProfile(data.userProfile);
-          
-          // Persist via Service to be safe with Singleton Cache
-          // We iterate or allow the service to handle "import" but for now manual set is okay if we could access service setter.
-          // Since we can't easily access setter from here without refactor, we rely on localstorage + reload or proper service methods.
-          
-          localStorage.setItem('contacts', JSON.stringify(data.contacts));
-          localStorage.setItem('deals', JSON.stringify(data.deals));
-          localStorage.setItem('tasks', JSON.stringify(data.tasks));
-          localStorage.setItem('invoices', JSON.stringify(data.invoices));
-          localStorage.setItem('expenses', JSON.stringify(data.expenses));
-          localStorage.setItem('activities', JSON.stringify(data.activities));
-          localStorage.setItem('productPresets', JSON.stringify(data.productPresets));
-          localStorage.setItem('emailTemplates', JSON.stringify(data.emailTemplates || []));
-          localStorage.setItem('userProfile', JSON.stringify(data.userProfile));
-          localStorage.setItem('invoiceConfig', JSON.stringify(data.invoiceConfig));
-          
-          alert("Daten importiert. Seite wird neu geladen.");
-          window.location.reload();
+          setIsLoading(true);
+          try {
+              // Use the service to restore data (works for both Local and Firebase)
+              await dataService.restoreBackup(data);
+              
+              alert("Daten importiert. Seite wird neu geladen.");
+              window.location.reload();
+          } catch (e: any) {
+              console.error("Backup Restore Failed", e);
+              alert("Fehler beim Wiederherstellen: " + e.message);
+              setIsLoading(false);
+          }
       }
-  }, []);
+  }, [dataService]);
 
   const handleRunRetainer = async () => {
       setIsLoading(true);
