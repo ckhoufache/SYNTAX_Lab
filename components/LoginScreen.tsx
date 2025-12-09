@@ -1,9 +1,11 @@
+
 import React, { useState, useEffect } from 'react';
-import { Hexagon, Globe, ArrowRight, Settings, Check, AlertCircle, LayoutDashboard, WifiOff, RefreshCcw, Trash2, Bug } from 'lucide-react';
-import { BackendConfig, Theme } from '../types';
+import { Hexagon, Globe, Settings, Check, AlertCircle, WifiOff, RefreshCcw, Trash2, Bug, LogIn, ShieldAlert } from 'lucide-react';
+import { BackendConfig, Theme, UserProfile } from '../types';
+import { DataServiceFactory } from '../services/dataService';
 
 interface LoginScreenProps {
-  onLogin: () => void;
+  onLogin: (user: UserProfile) => void;
   backendConfig: BackendConfig;
   onUpdateConfig: (config: BackendConfig) => void;
   isLoading: boolean;
@@ -19,86 +21,107 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 }) => {
   const [showConfig, setShowConfig] = useState(!backendConfig.googleClientId);
   const [clientId, setClientId] = useState(backendConfig.googleClientId || '');
-  const [googleReady, setGoogleReady] = useState(false);
-  const [statusMsg, setStatusMsg] = useState("Initialisiere...");
-  const [origin, setOrigin] = useState("");
-  const [logs, setLogs] = useState<string[]>([]);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [statusMsg, setStatusMsg] = useState("Warte auf Google Dienste...");
   
   const isDark = theme === 'dark';
 
-  // Debug Helper
-  const addLog = (msg: string) => {
-      console.log(`[Login] ${msg}`);
-      setLogs(prev => [...prev.slice(-4), msg]); // Keep last 5 logs
-      setStatusMsg(msg);
+  // JWT Decoder (Simple implementation to avoid external lib dependency)
+  const parseJwt = (token: string) => {
+      try {
+        return JSON.parse(atob(token.split('.')[1]));
+      } catch (e) {
+        return null;
+      }
   };
 
   useEffect(() => {
-    setOrigin(window.location.origin);
-    addLog(`Origin: ${window.location.origin}`);
-    
-    // Check Internet
-    if(!navigator.onLine) addLog("WARNUNG: Keine Internetverbindung!");
+    // 1. Check if Client ID is present
+    if (!backendConfig.googleClientId) {
+        setStatusMsg("Konfiguration erforderlich.");
+        return;
+    }
 
-    const checkGoogle = () => {
+    // 2. Initialize Google Sign-In
+    const initializeGoogleSignIn = () => {
         if (window.google && window.google.accounts) {
-            setGoogleReady(true);
-            addLog("Google Script (GSI) geladen.");
-        } else {
-            // Check if script tag exists
-            const script = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
-            if(script) {
-                setStatusMsg("Lade Google Script...");
-            } else {
-                addLog("Google Script Tag nicht gefunden! Wird von DataService injiziert...");
+            try {
+                window.google.accounts.id.initialize({
+                    client_id: backendConfig.googleClientId,
+                    callback: handleCredentialResponse,
+                    auto_select: false,
+                    cancel_on_tap_outside: true
+                });
+                
+                // Render the button
+                window.google.accounts.id.renderButton(
+                    document.getElementById("googleButtonDiv"),
+                    { theme: isDark ? "filled_black" : "outline", size: "large", width: "100%", text: "continue_with" }
+                );
+                
+                setStatusMsg("Bereit.");
+            } catch (e: any) {
+                console.error("GSI Init Error", e);
+                setErrorMsg("Fehler beim Laden des Google Buttons. Prüfen Sie die Client ID.");
             }
+        } else {
+            // Retry if script not yet loaded
+            setTimeout(initializeGoogleSignIn, 1000);
         }
     };
-    
-    // Run initial check
-    checkGoogle();
-    
-    // Poll for changes
-    const interval = setInterval(checkGoogle, 2000);
-    return () => clearInterval(interval);
-  }, []);
+
+    initializeGoogleSignIn();
+  }, [backendConfig.googleClientId, isDark]);
+
+  const handleCredentialResponse = async (response: any) => {
+      setErrorMsg(null);
+      setStatusMsg("Prüfe Zugriffsrechte...");
+      
+      try {
+          const payload = parseJwt(response.credential);
+          if (!payload) throw new Error("Konnte Login-Daten nicht verarbeiten.");
+
+          const userProfile: UserProfile = {
+              firstName: payload.given_name || payload.name,
+              lastName: payload.family_name || '',
+              email: payload.email,
+              avatar: payload.picture,
+              role: 'Benutzer' // Default, will be updated by DB
+          };
+
+          // CHECK WHITELIST / ACCESS CONTROL
+          const service = DataServiceFactory.create(backendConfig);
+          await service.init();
+          
+          const hasAccess = await service.checkUserAccess(userProfile.email);
+          
+          if (hasAccess) {
+              setStatusMsg("Zugriff genehmigt. Lade Daten...");
+              onLogin(userProfile);
+          } else {
+              setErrorMsg("Zugriff verweigert. Ihre E-Mail ist nicht für dieses CRM freigeschaltet.");
+              setStatusMsg("");
+          }
+
+      } catch (e: any) {
+          console.error(e);
+          setErrorMsg(e.message || "Ein unbekannter Fehler ist aufgetreten.");
+          setStatusMsg("");
+      }
+  };
 
   const handleSaveConfig = (e: React.FormEvent) => {
     e.preventDefault();
     onUpdateConfig({ ...backendConfig, googleClientId: clientId });
-    addLog("Config gespeichert.");
     setShowConfig(false);
-  };
-
-  const handleLoginClick = async () => {
-      addLog("Klick auf Login Button...");
-      try {
-          await onLogin();
-          // Note: onLogin is async but might not reject. We rely on DataService logs (which go to console).
-          addLog("Login-Prozess angestoßen.");
-      } catch (e: any) {
-          addLog(`FEHLER im Handler: ${e.message}`);
-          alert(`Login Fehler: ${e.message}`);
-      }
+    setStatusMsg("Konfiguration gespeichert. Bitte warten...");
+    setTimeout(() => window.location.reload(), 500); // Reload to re-init GSI
   };
   
   const handleResetApp = () => {
-      if(confirm("ACHTUNG: Dies löscht ALLE lokalen Daten und setzt die App zurück. Nutzen Sie dies nur bei Problemen. Fortfahren?")) {
+      if(confirm("ACHTUNG: Dies löscht ALLE lokalen Einstellungen. Fortfahren?")) {
           localStorage.clear();
           window.location.reload();
-      }
-  };
-  
-  const handleOpenDevTools = () => {
-      if (window.require) {
-          try {
-              const { ipcRenderer } = window.require('electron');
-              ipcRenderer.invoke('open-dev-tools');
-          } catch(e) {
-              alert("Konnte DevTools nicht öffnen (nicht in Electron?)");
-          }
-      } else {
-          alert("DevTools nur in Desktop-App verfügbar. Drücken Sie F12.");
       }
   };
 
@@ -111,16 +134,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           <div className="absolute top-[40%] -right-[10%] w-[40%] h-[40%] rounded-full bg-purple-500 blur-[100px]" />
       </div>
 
-      {/* DevTools Trigger */}
-      <button onClick={handleOpenDevTools} className="absolute top-4 right-4 p-2 text-slate-400 hover:text-indigo-500 transition-colors z-50" title="Open Debugger">
-          <Bug className="w-5 h-5"/>
-      </button>
-
-      {/* VERSION BADGE - Visual Confirmation of Update */}
-      <div className="absolute bottom-4 right-4 bg-red-600 text-white text-xs font-bold px-3 py-1 rounded-full shadow-lg animate-pulse z-50">
-          v1.0.1 (Update Erfolgreich)
-      </div>
-
       <div className="z-10 w-full max-w-md p-8 animate-in fade-in zoom-in duration-300">
         <div className="flex flex-col items-center mb-8">
             <div className="bg-indigo-600 p-4 rounded-2xl shadow-xl shadow-indigo-200 dark:shadow-none mb-6">
@@ -128,40 +141,40 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             </div>
             <h1 className="text-3xl font-bold tracking-tight mb-2">SyntaxLabCRM</h1>
             <p className={`text-center ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                Willkommen zurück.
+                Interne Unternehmenssoftware
             </p>
         </div>
 
         <div className={`rounded-2xl shadow-xl border overflow-hidden transition-all ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
             
+            {/* ERROR MESSAGE */}
+            {errorMsg && (
+                <div className="bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 p-4 text-sm flex items-start gap-3 border-b border-red-100 dark:border-red-900">
+                    <ShieldAlert className="w-5 h-5 shrink-0 mt-0.5" />
+                    <div>
+                        <p className="font-bold">Anmeldung fehlgeschlagen</p>
+                        <p>{errorMsg}</p>
+                    </div>
+                </div>
+            )}
+
             {!showConfig && (
-                <div className="p-8 flex flex-col gap-4">
-                    {!googleReady && (
-                        <div className="bg-red-50 text-red-600 p-3 rounded-lg text-xs flex items-center gap-2 mb-2 border border-red-100">
-                            <WifiOff className="w-4 h-4" />
-                            <span>Keine Verbindung zu Google.</span>
-                        </div>
-                    )}
+                <div className="p-8 flex flex-col gap-6">
+                    <div className="min-h-[50px] flex items-center justify-center">
+                        {/* GOOGLE BUTTON TARGET */}
+                        <div id="googleButtonDiv" className="w-full"></div>
+                    </div>
                     
-                    <button 
-                        onClick={handleLoginClick}
-                        disabled={isLoading || !googleReady}
-                        className="w-full bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium py-3 px-4 rounded-xl flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-[0.98] shadow-sm disabled:opacity-70 disabled:pointer-events-none disabled:grayscale focus:ring-4 focus:ring-indigo-100 outline-none"
-                    >
-                        {isLoading ? (
-                            <span className="w-5 h-5 border-2 border-slate-400 border-t-indigo-600 rounded-full animate-spin"></span>
-                        ) : (
-                            <img src="https://www.google.com/favicon.ico" alt="G" className="w-5 h-5" />
-                        )}
-                        <span>{isLoading ? 'Melde an...' : 'Mit Google anmelden'}</span>
-                    </button>
+                    <div className="text-center text-xs text-slate-400">
+                        {statusMsg}
+                    </div>
                     
                     <div className="relative my-2">
                         <div className="absolute inset-0 flex items-center"><div className={`w-full border-t ${isDark ? 'border-slate-800' : 'border-slate-100'}`}></div></div>
-                        <div className="relative flex justify-center text-xs uppercase"><span className={`px-2 ${isDark ? 'bg-slate-900 text-slate-500' : 'bg-white text-slate-400'}`}>System</span></div>
+                        <div className="relative flex justify-center text-xs uppercase"><span className={`px-2 ${isDark ? 'bg-slate-900 text-slate-500' : 'bg-white text-slate-400'}`}>Optionen</span></div>
                     </div>
                     
-                    <div className="flex justify-center gap-4">
+                    <div className="flex justify-center gap-6">
                         <button 
                             onClick={() => setShowConfig(true)}
                             className={`text-xs flex items-center justify-center gap-1 hover:underline ${isDark ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600'}`}
@@ -172,14 +185,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                             onClick={handleResetApp}
                             className={`text-xs flex items-center justify-center gap-1 hover:underline text-red-400 hover:text-red-500`}
                         >
-                            <Trash2 className="w-3 h-3" /> Alles Löschen (Hard Reset)
+                            <Trash2 className="w-3 h-3" /> App Reset
                         </button>
-                    </div>
-                    
-                    {/* Visual Debug Log */}
-                    <div className="mt-4 p-2 bg-slate-100 dark:bg-slate-950 rounded text-[10px] font-mono text-slate-500 border border-slate-200 dark:border-slate-800 h-24 overflow-y-auto">
-                         <div className="font-bold border-b border-slate-200 dark:border-slate-800 mb-1 pb-1">Debug Log:</div>
-                         {logs.map((l, i) => <div key={i}>{l}</div>)}
                     </div>
                 </div>
             )}
@@ -188,21 +195,19 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 <div className="p-8">
                     <div className="flex items-center gap-2 mb-4 text-amber-500">
                         <AlertCircle className="w-5 h-5" />
-                        <h3 className="font-bold text-sm">Setup erforderlich</h3>
+                        <h3 className="font-bold text-sm">Google API Setup</h3>
                     </div>
                     <p className={`text-xs mb-4 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                        Um Google Login zu nutzen, benötigen Sie eine Client ID aus der Google Cloud Console.
-                        <br/><br/>
-                        <strong className="text-indigo-500">Wichtig für Desktop:</strong> Fügen Sie <code>{origin}</code> zu den "Authorized Origins" hinzu.
+                        Bitte geben Sie Ihre <strong>Google Client ID</strong> ein, um sich anzumelden und Dienste wie Gmail oder Kalender zu nutzen.
                     </p>
                     <form onSubmit={handleSaveConfig} className="space-y-4">
                         <div>
-                            <label className={`text-xs font-bold uppercase mb-1 block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Google Client ID</label>
+                            <label className={`text-xs font-bold uppercase mb-1 block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Client ID</label>
                             <input 
                                 required
                                 value={clientId}
                                 onChange={(e) => setClientId(e.target.value)}
-                                placeholder="12345-...apps.googleusercontent.com"
+                                placeholder="123...apps.googleusercontent.com"
                                 className={`w-full px-3 py-2 rounded-lg text-sm border outline-none focus:ring-2 focus:ring-indigo-500 ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
                             />
                         </div>
@@ -220,6 +225,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 </div>
             )}
         </div>
+        
+        <p className="text-center text-[10px] text-slate-400 mt-8">
+            Verwenden Sie Ihre Firmen-E-Mail Adresse zur Anmeldung.
+            <br/>Nicht autorisierte Konten haben keinen Zugriff.
+        </p>
       </div>
     </div>
   );
