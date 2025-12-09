@@ -1,4 +1,3 @@
-
 import { Contact, Deal, Task, Invoice, Expense, Activity, UserProfile, ProductPreset, Theme, BackendConfig, BackendMode, BackupData, InvoiceConfig, EmailTemplate, EmailAttachment, DealStage } from '../types';
 import { FirebaseDataService } from './firebaseService';
 
@@ -360,29 +359,42 @@ class LocalDataService implements IDataService {
 
     // --- UPDATE LOGIC (DIAGNOSTIC MODE) ---
     async checkAndInstallUpdate(url: string, statusCallback?: (status: string) => void, force: boolean = false): Promise<boolean> {
-        if (force) window.alert(`Service: checkAndInstallUpdate aufgerufen mit URL: ${url}`);
+        // ULTRA-SAFE ALERT: Must run if force is true
+        if (force) window.alert(`[FORCE] checkAndInstallUpdate gestartet.\nURL: ${url}`);
         
         if (!url) {
-            if(force) window.alert("Fehler: Keine URL konfiguriert");
-            throw new Error("Keine Update-URL konfiguriert.");
+            const msg = "Fehler: Keine Update-URL in den Einstellungen.";
+            if(force) window.alert(msg);
+            throw new Error(msg);
         }
         const baseUrl = url.replace(/\/$/, "");
         
-        if (!window.require) {
-            const msg = "Update fehlgeschlagen: Nicht in Electron Umgebung (window.require fehlt).";
-            console.warn(msg);
+        // ROBUST ELECTRON CHECK
+        // If we have window.require, it's Electron.
+        const isElectron = !!(window as any).require;
+        
+        if (!isElectron) {
+            const msg = "Update fehlgeschlagen: Die App läuft scheinbar nicht im Electron-Modus (window.require fehlt). Updates sind nur in der Desktop-App möglich.";
+            console.error(msg);
             if (force) window.alert(msg);
             return false;
         }
 
-        const ipcRenderer = window.require('electron').ipcRenderer;
+        // Safe IPC Access
+        let ipcRenderer;
+        try {
+            ipcRenderer = (window as any).require('electron').ipcRenderer;
+        } catch (e: any) {
+            if (force) window.alert("IPC Load Error: " + e.message);
+            return false;
+        }
 
         try {
             statusCallback?.("Verbinde mit Server...");
             
             // 1. Fetch remote version with heavy cache busting
             const versionUrl = `${baseUrl}/version.json?t=${Date.now()}`;
-            if (force) window.alert(`Rufe Version ab: ${versionUrl}`);
+            if (force) console.log(`Rufe Version ab: ${versionUrl}`);
 
             const response = await fetch(versionUrl);
             
@@ -462,7 +474,7 @@ class LocalDataService implements IDataService {
         if (window.require) {
             try { return await window.require('electron').ipcRenderer.invoke('get-app-version'); } catch(e){}
         }
-        return '1.2.15'; 
+        return '1.2.16'; 
     }
 
     // ... Standard CRUD Implementations ...

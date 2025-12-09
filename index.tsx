@@ -8,10 +8,13 @@ if (!rootElement) {
   throw new Error("Could not find root element to mount to");
 }
 
-// Einfache Erkennung, ob wir in Electron laufen
-// Da wir den User-Agent für Google Auth fälschen ("spoofing"), müssen wir robuster prüfen.
-// Wir prüfen auf 'electron' im UA ODER ob 'window.require' existiert (Node Integration).
-const isElectron = navigator.userAgent.toLowerCase().includes('electron') || (window as any).require;
+// Robuste Erkennung für Electron
+// Da wir den User-Agent für Google Auth fälschen ("spoofing"), verschwindet das Wort 'Electron' daraus.
+// Wir prüfen daher auf Node.js Integrationen, die nur in Electron verfügbar sind.
+const isElectron = 
+    window.navigator.userAgent.toLowerCase().includes('electron') || 
+    (window as any).require || 
+    (window as any).process?.type === 'renderer';
 
 const WebLandingPage = () => (
     <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-4">
