@@ -11,13 +11,13 @@ import { LoginScreen } from './components/LoginScreen';
 import { DataServiceFactory, IDataService } from './services/dataService';
 import { 
   Contact, Deal, Task, Invoice, Expense, Activity, 
-  UserProfile, BackendConfig, ViewState, Theme, 
+  UserProfile, BackendConfig, ViewState, 
   ProductPreset, InvoiceConfig, EmailTemplate, BackupData, DealStage 
 } from './types';
 
 export const App = () => {
   const [view, setView] = useState<ViewState>('dashboard');
-  const [theme, setTheme] = useState<Theme>('light');
+  // Theme state removed, defaulted to Light
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -48,10 +48,6 @@ export const App = () => {
   // INITIAL LOAD
   useEffect(() => {
       const init = async () => {
-          // If we have a user profile in service, we might be auto-logged in (Local Mode)
-          // But for Real Google Auth, we force LoginScreen unless we have a token (DataService handles this implicitly)
-          // For now, let LoginScreen control entry.
-          
           await dataService.init(); 
           // Do NOT load data yet. Load data only after auth.
       };
@@ -76,7 +72,6 @@ export const App = () => {
           setContacts(c); setDeals(d); setTasks(t); setInvoices(i); setExpenses(e); setActivities(a);
           setProductPresets(pp); setInvoiceConfig(ic); setEmailTemplates(et);
           
-          // UserProfile comes from Login now, but we sync it
           if(up) setUserProfile(up);
           
       } catch (err) {
@@ -96,10 +91,8 @@ export const App = () => {
   const handleLogout = () => {
       setIsAuthenticated(false);
       setUserProfile(null);
-      // Clear sensitive data from memory state
       setContacts([]); setDeals([]); setInvoices([]);
-      // DataService holds tokens, ideally we call a logout there too if needed
-      window.location.reload(); // Simple way to clear all service state
+      window.location.reload(); 
   };
 
   const handleUpdateBackendConfig = (config: BackendConfig) => {
@@ -148,18 +141,16 @@ export const App = () => {
             backendConfig={backendConfig} 
             onUpdateConfig={handleUpdateBackendConfig}
             isLoading={isLoading}
-            theme={theme}
           />
       );
   }
 
   return (
-    <div className={`flex h-screen overflow-hidden font-sans ${theme === 'dark' ? 'dark bg-slate-900' : 'bg-slate-50'}`}>
+    <div className="flex h-screen overflow-hidden font-sans bg-slate-50">
         <Sidebar 
             currentView={view} 
             onChangeView={setView} 
             userProfile={userProfile}
-            theme={theme}
             onLogout={handleLogout}
         />
         
@@ -212,7 +203,6 @@ export const App = () => {
         {view === 'settings' && userProfile && invoiceConfig && (
             <Settings 
                 userProfile={userProfile} onUpdateProfile={handleUpdateProfile}
-                currentTheme={theme} onUpdateTheme={setTheme}
                 productPresets={productPresets} onUpdatePresets={handleUpdatePresets}
                 contacts={contacts} deals={deals} tasks={tasks} invoices={invoices} expenses={expenses} activities={activities}
                 onImportData={handleImportData} backendConfig={backendConfig} onUpdateBackendConfig={handleUpdateBackendConfig}

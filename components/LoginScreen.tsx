@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Hexagon, Globe, Settings, Check, AlertCircle, WifiOff, RefreshCcw, Trash2, Bug, LogIn, ShieldAlert } from 'lucide-react';
-import { BackendConfig, Theme, UserProfile } from '../types';
+import { BackendConfig, UserProfile } from '../types';
 import { DataServiceFactory } from '../services/dataService';
 
 interface LoginScreenProps {
@@ -9,22 +9,20 @@ interface LoginScreenProps {
   backendConfig: BackendConfig;
   onUpdateConfig: (config: BackendConfig) => void;
   isLoading: boolean;
-  theme: Theme;
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ 
   onLogin, 
   backendConfig, 
   onUpdateConfig, 
-  isLoading,
-  theme
+  isLoading
 }) => {
   const [showConfig, setShowConfig] = useState(!backendConfig.googleClientId);
   const [clientId, setClientId] = useState(backendConfig.googleClientId || '');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState("Warte auf Google Dienste...");
   
-  const isDark = theme === 'dark';
+  const isDark = false; // Forced Light Mode
 
   // JWT Decoder (Simple implementation to avoid external lib dependency)
   const parseJwt = (token: string) => {
@@ -56,7 +54,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 // Render the button
                 window.google.accounts.id.renderButton(
                     document.getElementById("googleButtonDiv"),
-                    { theme: isDark ? "filled_black" : "outline", size: "large", width: "100%", text: "continue_with" }
+                    { theme: "outline", size: "large", width: "100%", text: "continue_with" }
                 );
                 
                 setStatusMsg("Bereit.");
@@ -71,7 +69,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     };
 
     initializeGoogleSignIn();
-  }, [backendConfig.googleClientId, isDark]);
+  }, [backendConfig.googleClientId]);
 
   const handleCredentialResponse = async (response: any) => {
       setErrorMsg(null);
@@ -126,7 +124,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   };
 
   return (
-    <div className={`w-full h-screen flex flex-col items-center justify-center relative overflow-hidden transition-colors duration-300 ${isDark ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-900'}`}>
+    <div className="w-full h-screen flex flex-col items-center justify-center relative overflow-hidden transition-colors duration-300 bg-slate-50 text-slate-900">
       
       {/* Background FX */}
       <div className={`absolute top-0 left-0 w-full h-full overflow-hidden z-0 opacity-10 pointer-events-none`}>
@@ -136,20 +134,20 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
       <div className="z-10 w-full max-w-md p-8 animate-in fade-in zoom-in duration-300">
         <div className="flex flex-col items-center mb-8">
-            <div className="bg-indigo-600 p-4 rounded-2xl shadow-xl shadow-indigo-200 dark:shadow-none mb-6">
+            <div className="bg-indigo-600 p-4 rounded-2xl shadow-xl shadow-indigo-200 mb-6">
                 <Hexagon className="w-10 h-10 text-white fill-white/20" />
             </div>
             <h1 className="text-3xl font-bold tracking-tight mb-2">SyntaxLabCRM</h1>
-            <p className={`text-center ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+            <p className="text-center text-slate-500">
                 Interne Unternehmenssoftware
             </p>
         </div>
 
-        <div className={`rounded-2xl shadow-xl border overflow-hidden transition-all ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+        <div className="rounded-2xl shadow-xl border overflow-hidden transition-all bg-white border-slate-200">
             
             {/* ERROR MESSAGE */}
             {errorMsg && (
-                <div className="bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 p-4 text-sm flex items-start gap-3 border-b border-red-100 dark:border-red-900">
+                <div className="bg-red-50 text-red-600 p-4 text-sm flex items-start gap-3 border-b border-red-100">
                     <ShieldAlert className="w-5 h-5 shrink-0 mt-0.5" />
                     <div>
                         <p className="font-bold">Anmeldung fehlgeschlagen</p>
@@ -170,14 +168,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     </div>
                     
                     <div className="relative my-2">
-                        <div className="absolute inset-0 flex items-center"><div className={`w-full border-t ${isDark ? 'border-slate-800' : 'border-slate-100'}`}></div></div>
-                        <div className="relative flex justify-center text-xs uppercase"><span className={`px-2 ${isDark ? 'bg-slate-900 text-slate-500' : 'bg-white text-slate-400'}`}>Optionen</span></div>
+                        <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-100"></div></div>
+                        <div className="relative flex justify-center text-xs uppercase"><span className="px-2 bg-white text-slate-400">Optionen</span></div>
                     </div>
                     
                     <div className="flex justify-center gap-6">
                         <button 
                             onClick={() => setShowConfig(true)}
-                            className={`text-xs flex items-center justify-center gap-1 hover:underline ${isDark ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600'}`}
+                            className="text-xs flex items-center justify-center gap-1 hover:underline text-slate-400 hover:text-slate-600"
                         >
                             <Settings className="w-3 h-3" /> Konfiguration
                         </button>
@@ -197,23 +195,23 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                         <AlertCircle className="w-5 h-5" />
                         <h3 className="font-bold text-sm">Google API Setup</h3>
                     </div>
-                    <p className={`text-xs mb-4 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    <p className="text-xs mb-4 text-slate-500">
                         Bitte geben Sie Ihre <strong>Google Client ID</strong> ein, um sich anzumelden und Dienste wie Gmail oder Kalender zu nutzen.
                     </p>
                     <form onSubmit={handleSaveConfig} className="space-y-4">
                         <div>
-                            <label className={`text-xs font-bold uppercase mb-1 block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Client ID</label>
+                            <label className="text-xs font-bold uppercase mb-1 block text-slate-500">Client ID</label>
                             <input 
                                 required
                                 value={clientId}
                                 onChange={(e) => setClientId(e.target.value)}
                                 placeholder="123...apps.googleusercontent.com"
-                                className={`w-full px-3 py-2 rounded-lg text-sm border outline-none focus:ring-2 focus:ring-indigo-500 ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
+                                className="w-full px-3 py-2 rounded-lg text-sm border outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 border-slate-200"
                             />
                         </div>
                         <div className="flex gap-2">
                             {backendConfig.googleClientId && (
-                                <button type="button" onClick={() => setShowConfig(false)} className={`flex-1 py-2 rounded-lg text-sm font-medium ${isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-600'}`}>
+                                <button type="button" onClick={() => setShowConfig(false)} className="flex-1 py-2 rounded-lg text-sm font-medium hover:bg-slate-100 text-slate-600">
                                     Abbrechen
                                 </button>
                             )}
