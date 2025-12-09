@@ -1,6 +1,7 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
-import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle, Key, RefreshCw, Copy, FileText, Image as ImageIcon, Briefcase, Settings as SettingsIcon, HardDrive, Users, DownloadCloud, RefreshCcw, Sparkles, Sliders, Link, Paperclip, Star, Paperclip as PaperclipIcon, FileCode, Printer, Info, AlertOctagon, Repeat, Cloud, CloudLightning } from 'lucide-react';
+import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle, Key, RefreshCw, Copy, FileText, Image as ImageIcon, Briefcase, Settings as SettingsIcon, HardDrive, Users, DownloadCloud, RefreshCcw, Sparkles, Sliders, Link, Paperclip, Star, Paperclip as PaperclipIcon, FileCode, Printer, Info, AlertOctagon, Repeat, Cloud, CloudLightning, ShieldAlert } from 'lucide-react';
 import { UserProfile, Theme, ProductPreset, Contact, Deal, Task, BackupData, BackendConfig, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate, EmailAttachment, EmailAutomationConfig, FirebaseConfig } from '../types';
 import { IDataService } from '../services/dataService';
 
@@ -596,18 +597,22 @@ export const Settings: React.FC<SettingsProps> = ({
   };
 
   // --- UPDATE LOGIC ---
-  const handleCheckUpdate = async () => {
+  const handleCheckUpdate = async (force: boolean = false) => {
       if (!updateUrl) {
           setUpdateStatus("Bitte geben Sie eine Update-URL an.");
           return;
       }
       setIsUpdating(true);
-      setUpdateStatus("Prüfe auf Updates...");
+      setUpdateStatus(force ? "Erzwinge Update..." : "Prüfe auf Updates...");
 
       try {
-          const hasUpdate = await dataService.checkAndInstallUpdate(updateUrl, (status) => setUpdateStatus(status));
-          if (!hasUpdate) {
-               setUpdateStatus("System ist aktuell.");
+          // Pass force flag
+          const hasUpdate = await dataService.checkAndInstallUpdate(updateUrl, (status) => setUpdateStatus(status), force);
+          
+          if (!hasUpdate && !force) {
+               // Status was already set by callback inside checkAndInstallUpdate if update was not available
+               // We only override if it was a silent check
+               if(updateStatus === "Prüfe auf Updates...") setUpdateStatus("System ist aktuell.");
                alert("Kein Update verfügbar. Sie verwenden bereits die neueste Version.");
                setIsUpdating(false);
           }
@@ -1144,22 +1149,39 @@ export const Settings: React.FC<SettingsProps> = ({
                          className="flex-1 px-4 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white"
                      />
                      <button 
-                         onClick={handleCheckUpdate} 
+                         onClick={() => handleCheckUpdate(false)} 
                          disabled={isUpdating}
-                         className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2"
+                         className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2 whitespace-nowrap"
                      >
                          {isUpdating ? <Loader2 className="w-4 h-4 animate-spin"/> : <RefreshCcw className="w-4 h-4" />}
-                         {isUpdating ? 'Vergleiche Versionen...' : 'Update prüfen'}
+                         {isUpdating ? 'Lade...' : 'Update prüfen'}
                      </button>
                  </div>
+                 
+                 {/* DEBUG LOG / STATUS AREA */}
                  {updateStatus && (
-                     <div className={`p-3 rounded-lg text-sm font-medium flex items-center gap-2 ${updateStatus.includes('erfolgreich') ? 'bg-green-100 text-green-700' : updateStatus.includes('aktuell') ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-700'}`}>
-                         <Info className="w-4 h-4"/> {updateStatus}
+                     <div className={`p-4 rounded-lg text-xs font-mono mb-4 border overflow-x-auto whitespace-pre-wrap ${updateStatus.includes('Fehler') ? 'bg-red-50 text-red-700 border-red-100' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>
+                         {updateStatus}
                      </div>
                  )}
-                 <p className="text-xs text-slate-400 mt-2">
-                     Geben Sie die URL zu Ihrem Update-Server an, der die `index.html` und Assets hostet.
-                 </p>
+                 
+                 <div className="flex justify-between items-center mt-6 pt-4 border-t border-slate-100 dark:border-slate-800">
+                     <p className="text-xs text-slate-400">
+                        Geben Sie die URL zu Ihrem Update-Server an, der die `version.json` hostet.
+                     </p>
+                     
+                     {/* FORCE UPDATE BUTTON */}
+                     <button 
+                        onClick={() => {
+                            if(confirm("Dies ignoriert die Versionsprüfung und lädt ALLE Dateien neu vom Server. Fortfahren?")) {
+                                handleCheckUpdate(true);
+                            }
+                        }}
+                        className="text-xs text-amber-600 hover:text-amber-800 hover:underline flex items-center gap-1"
+                     >
+                         <ShieldAlert className="w-3 h-3"/> Neuinstallation erzwingen
+                     </button>
+                 </div>
              </div>
          </SettingsSection>
 

@@ -251,7 +251,7 @@ export interface IDataService {
     getIntegrationStatus(service: 'calendar' | 'mail'): Promise<boolean>;
     sendMail(to: string, subject: string, body: string, attachments?: EmailAttachment[]): Promise<boolean>;
     processDueRetainers(): Promise<{ updatedContacts: Contact[], newInvoices: Invoice[], newActivities: Activity[] }>;
-    checkAndInstallUpdate(url: string, statusCallback?: (status: string) => void): Promise<boolean>;
+    checkAndInstallUpdate(url: string, statusCallback?: (status: string) => void, force?: boolean): Promise<boolean>;
     generatePdf(htmlContent: string): Promise<string>;
     wipeAllData(): Promise<void>;
 }
@@ -678,44 +678,57 @@ class LocalDataService implements IDataService {
         return { updatedContacts, newInvoices, newActivities };
     }
 
-    async checkAndInstallUpdate(url: string, statusCallback?: (status: string) => void): Promise<boolean> {
+    async checkAndInstallUpdate(url: string, statusCallback?: (status: string) => void, force: boolean = false): Promise<boolean> {
         if (window.require) {
             try {
                 const { ipcRenderer } = window.require('electron');
                 
                 // 1. Get current version
                 const currentVersion = await ipcRenderer.invoke('get-app-version');
-                statusCallback?.(`Aktuelle Version: ${currentVersion}`);
+                statusCallback?.(`Lokale Version: ${currentVersion}`);
                 
                 // 2. Clean URL and fetch remote version
                 const baseUrl = url.replace(/\/$/, '');
-                statusCallback?.("Prüfe Version auf Server...");
+                statusCallback?.(`Prüfe URL: ${baseUrl}/version.json...`);
                 
-                const versionResponse = await fetch(`${baseUrl}/version.json?t=${Date.now()}`);
-                if (!versionResponse.ok) throw new Error(`Version Check Failed: ${versionResponse.status}`);
+                let remoteVersion = "0.0.0";
                 
-                const remoteData = await versionResponse.json();
-                const remoteVersion = remoteData.version;
-                
-                // 3. Compare (Simple Semantic Versioning Check)
-                const v1 = currentVersion.split('.').map(Number);
-                const v2 = remoteVersion.split('.').map(Number);
-                let updateAvailable = false;
-                
-                for(let i=0; i<3; i++) {
-                    if ((v2[i] || 0) > (v1[i] || 0)) { updateAvailable = true; break; }
-                    if ((v2[i] || 0) < (v1[i] || 0)) { break; }
+                if (!force) {
+                    try {
+                        const versionResponse = await fetch(`${baseUrl}/version.json?t=${Date.now()}`);
+                        if (!versionResponse.ok) throw new Error(`HTTP ${versionResponse.status}`);
+                        const remoteData = await versionResponse.json();
+                        remoteVersion = remoteData.version;
+                        statusCallback?.(`Server Version: ${remoteVersion}`);
+                    } catch(e: any) {
+                        statusCallback?.(`Versions-Check fehlgeschlagen: ${e.message}`);
+                        // If force is not enabled, we stop here on error
+                        throw e;
+                    }
+
+                    // 3. Compare (Simple Semantic Versioning Check)
+                    const v1 = currentVersion.split('.').map(Number);
+                    const v2 = remoteVersion.split('.').map(Number);
+                    let updateAvailable = false;
+                    
+                    for(let i=0; i<3; i++) {
+                        if ((v2[i] || 0) > (v1[i] || 0)) { updateAvailable = true; break; }
+                        if ((v2[i] || 0) < (v1[i] || 0)) { break; }
+                    }
+
+                    if (!updateAvailable) {
+                        statusCallback?.("System ist aktuell (Kein Update nötig).");
+                        return false;
+                    }
+                } else {
+                    statusCallback?.("Erzwinge Update (Überspringe Versionsprüfung)...");
                 }
 
-                if (!updateAvailable) {
-                    statusCallback?.("System ist aktuell.");
-                    return false;
-                }
-
-                statusCallback?.(`Neue Version gefunden: ${remoteVersion}. Lade herunter...`);
+                statusCallback?.(`Lade index.html...`);
 
                 // 4. Download index.html to parse assets
                 const indexResponse = await fetch(`${baseUrl}/index.html?t=${Date.now()}`);
+                if (!indexResponse.ok) throw new Error("Index.html nicht gefunden");
                 const indexText = await indexResponse.text();
 
                 // 5. Extract Assets (Vite hashed JS and CSS)
@@ -723,13 +736,17 @@ class LocalDataService implements IDataService {
                 filesToDownload.push({ name: 'index.html', content: indexText, type: 'file' });
 
                 // RegEx to find /assets/index-....js and .css
-                const assetRegex = /["']\.\/assets\/([^"']+)["']/g;
+                // Note: Vite paths in index.html are usually relative like "./assets/..." or "/assets/..."
+                const assetRegex = /["'](?:\.|)\/assets\/([^"']+)["']/g;
                 let match;
                 const assetsToFetch = new Set<string>();
 
                 while ((match = assetRegex.exec(indexText)) !== null) {
                     assetsToFetch.add(match[1]);
                 }
+                
+                // Also manually add version.json to the list to update local state next time
+                filesToDownload.push({ name: 'version.json', content: JSON.stringify({version: remoteVersion || '1.0.8'}), type: 'file' });
 
                 // 6. Download Assets
                 for (const assetName of assetsToFetch) {
@@ -738,6 +755,8 @@ class LocalDataService implements IDataService {
                     if(assetRes.ok) {
                         const content = await assetRes.text(); // Assuming text based assets (JS/CSS)
                         filesToDownload.push({ name: assetName, content: content, type: 'asset' });
+                    } else {
+                        statusCallback?.(`Warnung: Asset ${assetName} nicht gefunden.`);
                     }
                 }
 
