@@ -1,4 +1,5 @@
 
+
 import { initializeApp } from 'firebase/app';
 import { 
     getFirestore, collection, getDocs, doc, setDoc, deleteDoc, getDoc,
@@ -9,7 +10,7 @@ import {
     UserProfile, ProductPreset, InvoiceConfig, EmailTemplate,
     BackendConfig, EmailAttachment, DealStage, BackupData
 } from '../types';
-import { IDataService } from './dataService';
+import { IDataService, DEFAULT_PDF_TEMPLATE } from './dataService';
 
 export class FirebaseDataService implements IDataService {
     private db: any;
@@ -77,7 +78,32 @@ export class FirebaseDataService implements IDataService {
     async getContacts(): Promise<Contact[]> { return this.getAll<Contact>('contacts'); }
     async saveContact(contact: Contact): Promise<Contact> { return this.save('contacts', contact); }
     async updateContact(contact: Contact): Promise<Contact> { return this.save('contacts', contact); }
-    async deleteContact(id: string): Promise<void> { await this.delete('contacts', id); }
+    async deleteContact(id: string): Promise<void> { 
+        // CASCADE DELETE FOR FIREBASE
+        // Note: Firestore does not support automatic cascade delete. We must do it manually.
+        const batch = writeBatch(this.db);
+        
+        // 1. Delete Contact
+        const contactRef = doc(this.db, 'contacts', id);
+        batch.delete(contactRef);
+        
+        // 2. Find and delete related Deals
+        const dealsQuery = query(collection(this.db, 'deals'), where('contactId', '==', id));
+        const dealsSnapshot = await getDocs(dealsQuery);
+        dealsSnapshot.forEach(d => batch.delete(d.ref));
+        
+        // 3. Find and delete related Activities
+        const actQuery = query(collection(this.db, 'activities'), where('contactId', '==', id));
+        const actSnapshot = await getDocs(actQuery);
+        actSnapshot.forEach(d => batch.delete(d.ref));
+        
+        // 4. Find and delete related Tasks
+        const taskQuery = query(collection(this.db, 'tasks'), where('relatedEntityId', '==', id));
+        const taskSnapshot = await getDocs(taskQuery);
+        taskSnapshot.forEach(d => batch.delete(d.ref));
+        
+        await batch.commit();
+    }
 
     // --- DEALS ---
     async getDeals(): Promise<Deal[]> { return this.getAll<Deal>('deals'); }
@@ -180,8 +206,21 @@ export class FirebaseDataService implements IDataService {
 
     async getInvoiceConfig(): Promise<InvoiceConfig> {
         const configs = await this.getAll<InvoiceConfig>('invoiceConfig');
-        return configs.length > 0 ? configs[0] : {} as any;
+        const config = configs.length > 0 ? configs[0] : {} as any;
+
+        // Auto-inject template if missing (Self-Healing)
+        if (!config.pdfTemplate) {
+            config.pdfTemplate = DEFAULT_PDF_TEMPLATE;
+            // Ensure defaults
+            if(!config.companyName) config.companyName = '[Firmenname]';
+            
+            // Save back to DB so it persists
+            await this.saveInvoiceConfig(config);
+        }
+
+        return config;
     }
+    
     async saveInvoiceConfig(config: InvoiceConfig): Promise<InvoiceConfig> {
         await setDoc(doc(this.db, 'invoiceConfig', 'main'), config);
         return config;
@@ -395,14 +434,25 @@ export class FirebaseDataService implements IDataService {
              const row = rows[i];
              if (row.length === 0 || (row.length === 1 && !row[0])) continue;
              
-             const fullName = getVal(row, ['name', 'fullname']);
-             const firstName = getVal(row, ['firstname', 'vorname']);
-             const lastName = getVal(row, ['lastname', 'nachname']);
-             let name = fullName || (firstName && lastName ? `${firstName} ${lastName}` : firstName || 'Unbekannt');
+             // Updated Parsing Logic for Split Names
+             const firstName = getVal(row, ['vorname', 'firstname', 'first name']);
+             const lastName = getVal(row, ['nachname', 'lastname', 'last name']);
+             const fullNameHeader = getVal(row, ['name', 'fullname', 'voller name']);
+
+             let name = '';
+             if (firstName && lastName) {
+                 name = `${firstName} ${lastName}`;
+             } else if (fullNameHeader) {
+                 name = fullNameHeader;
+             } else if (firstName) {
+                 name = firstName;
+             } else {
+                 name = 'Unbekannt';
+             }
              
-             const company = getVal(row, ['company', 'firma']);
-             const email = getVal(row, ['email']);
-             const linkedin = getVal(row, ['linkedin']);
+             const company = getVal(row, ['company', 'firma', 'organization', 'companyname']);
+             const email = getVal(row, ['email', 'e-mail', 'mail']);
+             const linkedin = getVal(row, ['link', 'linkedin', 'profile', 'url', 'web']); // Updated map
              
              if (name === 'Unbekannt' && !company) continue;
              
@@ -418,20 +468,33 @@ export class FirebaseDataService implements IDataService {
              else if (rowName && rowComp && signatures.has(`nc:${rowName}|${rowComp}`)) isDuplicate = true;
              
              if (isDuplicate) { skippedCount++; continue; }
+
+             // Add signature for current batch dedupe
+             const tempContact = { name, email, linkedin, company } as Contact;
+             addSignature(tempContact);
+             
+             // Map Icebreaker to Notes
+            const icebreaker = getVal(row, ['icebreaker']);
+            const summary = getVal(row, ['summary']);
+            const desc = getVal(row, ['description']);
+            
+            let notesParts = [];
+            if (icebreaker) notesParts.push(`Icebreaker: ${icebreaker}`);
+            if (summary) notesParts.push(summary);
+            if (desc) notesParts.push(desc);
              
              const newContact: Contact = {
                 id: crypto.randomUUID(),
                 name, company, email, linkedin,
-                role: getVal(row, ['role', 'position']),
-                companyUrl: getVal(row, ['url', 'web']),
-                notes: getVal(row, ['notes', 'summary']),
+                role: getVal(row, ['role', 'position', 'job', 'title']),
+                companyUrl: getVal(row, ['companyurl', 'website']),
+                notes: notesParts.join('\n\n'), 
                 avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
                 lastContact: new Date().toISOString().split('T')[0],
                 type: 'lead'
              };
              
              contacts.push(newContact);
-             addSignature(newContact); // Add to temp sigs so we don't import dupe inside same csv
              
              const deal: Deal = {
                 id: crypto.randomUUID(),

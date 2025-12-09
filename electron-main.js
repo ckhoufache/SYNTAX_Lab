@@ -39,9 +39,9 @@ function compareVersions(v1, v2) {
 }
 
 /**
- * Bereinigt den Hot-Update Ordner, falls die installierte Binary-Version
- * neuer oder gleich alt ist wie das cached Update.
- * Das garantiert, dass nach einem EXE-Install die neuen Daten genutzt werden.
+ * Bereinigt den Hot-Update Ordner.
+ * FIX: Löscht den Ordner nur, wenn die Binary WIRKLICH neuer ist.
+ * Bei gleicher Version (Force Update) bleibt der Ordner bestehen.
  */
 function cleanupStaleUpdates() {
     try {
@@ -60,11 +60,13 @@ function cleanupStaleUpdates() {
 
             console.log(`Checking versions - Binary: ${binaryVersion}, HotUpdate: ${hotUpdateVersion}`);
 
-            // Wenn Binary >= HotUpdate, dann ist das HotUpdate veraltet oder wir haben gerade
-            // frisch installiert. In beiden Fällen wollen wir die sauberen Daten aus der Binary nutzen.
-            if (compareVersions(binaryVersion, hotUpdateVersion) >= 0) {
-                console.log('Binary is newer or equal. Clearing stale hot_update folder.');
+            // ÄNDERUNG: Wir löschen nur, wenn Binary > HotUpdate (1) ist.
+            // Wenn Binary == HotUpdate (0) ist, behalten wir das Update (für Force Update / Patches).
+            if (compareVersions(binaryVersion, hotUpdateVersion) === 1) {
+                console.log('Binary is strictly newer. Clearing obsolete hot_update folder.');
                 fs.rmSync(hotUpdatePath, { recursive: true, force: true });
+            } else {
+                console.log('Hot update is same or newer than binary. Keeping it.');
             }
         } else {
             // Hot Update Ordner existiert, aber keine version.json? Kaputt. Weg damit.

@@ -11,7 +11,7 @@ declare global {
     }
 }
 
-const DEFAULT_PDF_TEMPLATE = `<!DOCTYPE html>
+export const DEFAULT_PDF_TEMPLATE = `<!DOCTYPE html>
 <html lang="de">
 <head>
     <meta charset="UTF-8">
@@ -407,9 +407,23 @@ class LocalDataService implements IDataService {
         return contact;
     }
     async deleteContact(id: string): Promise<void> {
-        const list = this.cache.contacts || [];
-        const newList = list.filter(c => c.id !== id);
-        this.set('contacts', 'contacts', newList);
+        // Cascade Delete: Delete related entities
+        const deals = this.cache.deals || [];
+        const tasks = this.cache.tasks || [];
+        const activities = this.cache.activities || [];
+        const contacts = this.cache.contacts || [];
+
+        // Filter out items related to this contact
+        const newDeals = deals.filter(d => d.contactId !== id);
+        const newTasks = tasks.filter(t => t.relatedEntityId !== id);
+        const newActivities = activities.filter(a => a.contactId !== id);
+        const newContacts = contacts.filter(c => c.id !== id);
+
+        // Update storage
+        this.set('deals', 'deals', newDeals);
+        this.set('tasks', 'tasks', newTasks);
+        this.set('activities', 'activities', newActivities);
+        this.set('contacts', 'contacts', newContacts);
     }
 
     // --- CRUD Activities ---
@@ -948,18 +962,27 @@ class LocalDataService implements IDataService {
             const row = rows[i];
             if (row.length === 0 || (row.length === 1 && !row[0])) continue;
 
-            const fullName = getVal(row, ['name', 'fullname']);
-            const firstName = getVal(row, ['firstname', 'vorname', 'first name']);
-            const lastName = getVal(row, ['lastname', 'nachname', 'last name']);
-            
-            let name = fullName;
-            if (!name && firstName && lastName) name = `${firstName} ${lastName}`;
-            if (!name && firstName) name = firstName;
-            if (!name) name = 'Unbekannt';
+            // Updated Parsing Logic for Split Names
+            const firstName = getVal(row, ['vorname', 'firstname', 'first name']);
+            const lastName = getVal(row, ['nachname', 'lastname', 'last name']);
+            const fullNameHeader = getVal(row, ['name', 'fullname', 'voller name']);
+
+            let name = '';
+            if (firstName && lastName) {
+                name = `${firstName} ${lastName}`;
+            } else if (fullNameHeader) {
+                name = fullNameHeader;
+            } else if (firstName) {
+                name = firstName;
+            } else {
+                name = 'Unbekannt';
+            }
 
             const company = getVal(row, ['company', 'firma', 'organization', 'companyname']);
             const email = getVal(row, ['email', 'e-mail', 'mail']);
-            const linkedin = getVal(row, ['linkedin', 'link', 'profile', 'url', 'web']);
+            
+            // Map 'Link' specifically to LinkedIn
+            const linkedin = getVal(row, ['link', 'linkedin', 'profile', 'url', 'web']);
 
             if (name === 'Unbekannt' && !company) continue;
 
@@ -984,7 +1007,6 @@ class LocalDataService implements IDataService {
                 duplicateReason = `Name+Firma: ${rowName}|${rowComp}`;
             }
             else if (rowName && rowName.length > 5 && signatures.has(`n:${rowName}`)) {
-                // If the new one has NO company and NO email and NO LinkedIn, assume duplicate.
                 if (!rowComp && !rowEmail && !rowLi) {
                     isDuplicate = true;
                     duplicateReason = `Name (Weak): ${rowName}`;
@@ -997,17 +1019,19 @@ class LocalDataService implements IDataService {
                 continue;
             }
 
+            // Temp contact for signature tracking within same import batch
             const tempContact = { name, email, linkedin, company } as Contact;
             addSignature(tempContact);
             
+            // Map Icebreaker to Notes
+            const icebreaker = getVal(row, ['icebreaker']);
             const summary = getVal(row, ['summary']);
             const desc = getVal(row, ['description']);
-            const icebreaker = getVal(row, ['icebreaker']);
             
             let notesParts = [];
+            if (icebreaker) notesParts.push(`Icebreaker: ${icebreaker}`);
             if (summary) notesParts.push(summary);
             if (desc) notesParts.push(desc);
-            if (icebreaker) notesParts.push(`Icebreaker: ${icebreaker}`);
 
             const newContact: Contact = {
                 id: crypto.randomUUID(),

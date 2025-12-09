@@ -115,13 +115,26 @@ export const App = () => {
       await handleAddActivity(act);
   };
   const handleUpdateContact = async (c: Contact) => { await dataService.updateContact(c); setContacts(prev => prev.map(x => x.id === c.id ? c : x)); };
-  const handleDeleteContact = async (id: string) => { await dataService.deleteContact(id); setContacts(prev => prev.filter(x => x.id !== id)); };
+  
+  const handleDeleteContact = async (id: string) => { 
+      await dataService.deleteContact(id); 
+      
+      // Update UI State locally (Cascade Delete Visualization)
+      setContacts(prev => prev.filter(x => x.id !== id)); 
+      setDeals(prev => prev.filter(d => d.contactId !== id));
+      setTasks(prev => prev.filter(t => t.relatedEntityId !== id));
+      setActivities(prev => prev.filter(a => a.contactId !== id));
+  };
   
   const handleBulkDeleteContacts = async (ids: string[]) => {
       for(const id of ids) {
           await dataService.deleteContact(id);
       }
+      // Bulk update UI state
       setContacts(prev => prev.filter(c => !ids.includes(c.id)));
+      setDeals(prev => prev.filter(d => !ids.includes(d.contactId)));
+      setTasks(prev => prev.filter(t => !t.relatedEntityId || !ids.includes(t.relatedEntityId)));
+      setActivities(prev => prev.filter(a => !ids.includes(a.contactId)));
   };
 
   const handleImportContactsCSV = useCallback(async (csvText: string) => {
