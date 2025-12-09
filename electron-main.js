@@ -1,3 +1,5 @@
+
+
 import { app, BrowserWindow, shell, ipcMain, session } from 'electron';
 import path from 'path';
 import express from 'express';
@@ -199,8 +201,8 @@ ipcMain.handle('open-dev-tools', () => {
     }
 });
 
-// Update Handler (ATOMIC UPDATE IMPLEMENTATION)
-ipcMain.handle('install-update', async (event, files) => {
+// Update Handler (ATOMIC UPDATE + DOWNLOAD DELEGATION)
+ipcMain.handle('install-update', async (event, downloadManifest) => {
   try {
     // 1. Prepare Temp Directory (Clean Slate)
     if (fs.existsSync(hotUpdateTempPath)) {
@@ -211,25 +213,29 @@ ipcMain.handle('install-update', async (event, files) => {
     const assetsPath = path.join(hotUpdateTempPath, 'assets');
     fs.mkdirSync(assetsPath, { recursive: true });
 
-    // 2. Write all files to TEMP directory
-    for (const file of files) {
-      const safeName = path.basename(file.name); 
-      let targetPath;
-      
-      if (file.type === 'asset') {
-          targetPath = path.join(assetsPath, safeName);
-      } else {
-          targetPath = path.join(hotUpdateTempPath, safeName);
-      }
+    console.log(`Starting batch download of ${downloadManifest.length} files...`);
 
-      if (file.content) {
-          // IMPORTANT: Handle Base64 Encoding for binary files (images, etc)
-          if (file.encoding === 'base64') {
-              fs.writeFileSync(targetPath, Buffer.from(file.content, 'base64'));
-          } else {
-              fs.writeFileSync(targetPath, file.content, 'utf-8');
-          }
-      }
+    // 2. Download files directly in Main process (No IPC overhead)
+    for (const item of downloadManifest) {
+        // item: { url: string, relativePath: string }
+        const targetPath = path.join(hotUpdateTempPath, item.relativePath);
+        
+        // Ensure directory exists for nested files (if any)
+        fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+
+        // Add Cache-Buster to URL
+        const downloadUrl = `${item.url}?cb=${Date.now()}`;
+        
+        // Fetch
+        const response = await fetch(downloadUrl, { cache: 'no-store' });
+        if (!response.ok) {
+            throw new Error(`Failed to download ${item.relativePath}: HTTP ${response.status}`);
+        }
+
+        // Write Stream
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        fs.writeFileSync(targetPath, buffer);
     }
     
     // 3. SWAP Folders (Atomic Switch)

@@ -740,10 +740,9 @@ class LocalDataService implements IDataService {
 
                 statusCallback?.(`Lade index.html...`);
 
-                // 4. Download index.html to parse assets
+                // 4. Download index.html to parse assets (Manifest Generation)
                 let indexText = "";
                 try {
-                    // Aggressive Cache Busting
                     const indexResponse = await fetch(`${baseUrl}/index.html?cb=${Date.now()}`, { cache: 'no-store' });
                     if (!indexResponse.ok) throw new Error("Index.html nicht gefunden");
                     indexText = await indexResponse.text();
@@ -754,9 +753,13 @@ class LocalDataService implements IDataService {
                     throw e;
                 }
 
-                // 5. Extract Assets (Vite hashed JS and CSS)
-                const filesToDownload: { name: string, content: string, type: 'file' | 'asset', encoding?: string }[] = [];
-                filesToDownload.push({ name: 'index.html', content: indexText, type: 'file' });
+                // 5. Construct Download Manifest
+                const filesToDownload: { url: string, relativePath: string }[] = [];
+                
+                // Add index.html
+                filesToDownload.push({ url: `${baseUrl}/index.html`, relativePath: 'index.html' });
+                // Add version.json
+                filesToDownload.push({ url: `${baseUrl}/version.json`, relativePath: 'version.json' });
 
                 // RegEx to find /assets/index-....js and .css
                 const assetRegex = /["'](?:\.|)\/assets\/([^"']+)["']/g;
@@ -766,42 +769,16 @@ class LocalDataService implements IDataService {
                 while ((match = assetRegex.exec(indexText)) !== null) {
                     assetsToFetch.add(match[1]);
                 }
-                
-                // Also manually add version.json to the list to update local state next time
-                filesToDownload.push({ name: 'version.json', content: JSON.stringify({version: remoteVersion || '1.2.1'}), type: 'file' });
 
-                // 6. Download Assets (UPDATED to handle BINARY)
                 for (const assetName of assetsToFetch) {
-                    statusCallback?.(`Lade Asset: ${assetName}...`);
-                    try {
-                        const assetRes = await fetch(`${baseUrl}/assets/${assetName}?t=${Date.now()}`, { cache: 'no-store' });
-                        if(assetRes.ok) {
-                            // Convert Blob to Base64 to safely pass through IPC
-                            const blob = await assetRes.blob();
-                            const base64 = await new Promise<string>((resolve) => {
-                                const reader = new FileReader();
-                                reader.onloadend = () => resolve(reader.result as string);
-                                reader.readAsDataURL(blob);
-                            });
-                            // Remove data URL prefix (e.g. "data:application/javascript;base64,")
-                            const cleanBase64 = base64.split(',')[1];
-                            
-                            filesToDownload.push({ 
-                                name: assetName, 
-                                content: cleanBase64, 
-                                type: 'asset',
-                                encoding: 'base64' // Flag for main process
-                            });
-                        } else {
-                            statusCallback?.(`Warnung: Asset ${assetName} nicht gefunden.`);
-                        }
-                    } catch (e) {
-                        console.warn(`Asset load fail: ${assetName}`, e);
-                    }
+                    filesToDownload.push({ 
+                        url: `${baseUrl}/assets/${assetName}`, 
+                        relativePath: `assets/${assetName}`
+                    });
                 }
 
-                // 7. Install
-                statusCallback?.("Installiere Update...");
+                // 6. Send Manifest to Main Process for downloading
+                statusCallback?.(`Starte Download von ${filesToDownload.length} Dateien...`);
                 const result = await ipcRenderer.invoke('install-update', filesToDownload);
 
                 if (result.success) {
