@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useRef } from 'react';
-import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle, Key, RefreshCw, Copy, FileText, Image as ImageIcon, Briefcase, Settings as SettingsIcon, HardDrive, Users, DownloadCloud, RefreshCcw, Sparkles, Sliders, Link, Paperclip, Star, Paperclip as PaperclipIcon, FileCode, Printer, Info, AlertOctagon, Repeat, Cloud, CloudLightning, ShieldAlert } from 'lucide-react';
+import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle, Key, RefreshCw, Copy, FileText, Image as ImageIcon, Briefcase, Settings as SettingsIcon, HardDrive, Users, DownloadCloud, RefreshCcw, Sparkles, Sliders, Link, Paperclip, Star, Paperclip as PaperclipIcon, FileCode, Printer, Info, AlertOctagon, Repeat, Cloud, CloudLightning, ShieldAlert, Wifi } from 'lucide-react';
 import { UserProfile, Theme, ProductPreset, Contact, Deal, Task, BackupData, BackendConfig, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate, EmailAttachment, EmailAutomationConfig, FirebaseConfig } from '../types';
 import { IDataService } from '../services/dataService';
 
@@ -302,7 +303,6 @@ export const Settings: React.FC<SettingsProps> = ({
   const [activeEmailSub, setActiveEmailSub] = useState<string | null>('welcome');
 
   const toggleSection = (id: string) => {
-      // Wenn wir eine neue Sektion öffnen, schließen wir die alte und setzen Sub-Sektion zurück (oder setzen eine Standard Sub-Sektion)
       if (activeSection === id) {
           setActiveSection(null);
       } else {
@@ -340,12 +340,12 @@ export const Settings: React.FC<SettingsProps> = ({
   const [localPresets, setLocalPresets] = useState<ProductPreset[]>(productPresets);
   const [newPresetTitle, setNewPresetTitle] = useState('');
   const [newPresetValue, setNewPresetValue] = useState('');
-  const [newPresetIsSub, setNewPresetIsSub] = useState(false); // NEU
+  const [newPresetIsSub, setNewPresetIsSub] = useState(false);
 
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
   const [editPresetTitle, setEditPresetTitle] = useState('');
   const [editPresetValue, setEditPresetValue] = useState('');
-  const [editPresetIsSub, setEditPresetIsSub] = useState(false); // NEU
+  const [editPresetIsSub, setEditPresetIsSub] = useState(false);
   
   // Template States
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
@@ -456,7 +456,6 @@ export const Settings: React.FC<SettingsProps> = ({
           value: parseFloat(newPresetValue),
           isSubscription: newPresetIsSub
       };
-      // FIX: create new array and set BOTH local state and parent prop immediately
       const newArray = [...localPresets, newPreset];
       setLocalPresets(newArray);
       onUpdatePresets(newArray);
@@ -494,7 +493,7 @@ export const Settings: React.FC<SettingsProps> = ({
           : p
       );
       setLocalPresets(updatedPresets);
-      onUpdatePresets(updatedPresets); // IMPORTANT: Propagate changes to parent/DB
+      onUpdatePresets(updatedPresets); 
       handleCancelEditPreset();
   };
   
@@ -536,17 +535,13 @@ export const Settings: React.FC<SettingsProps> = ({
       reader.readAsText(file);
   };
   
-  // --- WIPE / FACTORY RESET LOGIC (FIXED: 3x Confirm, no prompt) ---
   const handleWipeData = async () => {
-      // Step 1
       if (!confirm("WARNUNG: Sie sind dabei, ALLE Daten im Programm zu löschen.\n\nDies beinhaltet Kontakte, Rechnungen, Einstellungen etc.\n\nSind Sie sicher?")) {
           return;
       }
-      // Step 2
       if (!confirm("WIRKLICH LÖSCHEN?\n\nEs gibt kein 'Rückgängig'. Wenn Sie kein Backup haben, sind die Daten für immer verloren.\n\nWollen Sie wirklich fortfahren?")) {
           return;
       }
-      // Step 3 (Ersatz für prompt(), da in Electron oft problematisch)
       if (!confirm("LETZTE WARNUNG: \n\nSind Sie zu 100% sicher, dass Sie alle Daten unwiderruflich löschen wollen?")) {
           return;
       }
@@ -594,7 +589,6 @@ export const Settings: React.FC<SettingsProps> = ({
       window.location.reload();
   };
 
-  // --- UPDATE LOGIC ---
   const handleCheckUpdate = async (force: boolean = false) => {
       if (!updateUrl) {
           setUpdateStatus("Bitte geben Sie eine Update-URL an.");
@@ -604,12 +598,9 @@ export const Settings: React.FC<SettingsProps> = ({
       setUpdateStatus(force ? "Erzwinge Update..." : "Prüfe auf Updates...");
 
       try {
-          // Pass force flag
           const hasUpdate = await dataService.checkAndInstallUpdate(updateUrl, (status) => setUpdateStatus(status), force);
           
           if (!hasUpdate && !force) {
-               // Status was already set by callback inside checkAndInstallUpdate if update was not available
-               // We only override if it was a silent check
                if(updateStatus === "Prüfe auf Updates...") setUpdateStatus("System ist aktuell.");
                alert("Kein Update verfügbar. Sie verwenden bereits die neueste Version.");
                setIsUpdating(false);
@@ -630,44 +621,6 @@ export const Settings: React.FC<SettingsProps> = ({
       
       <main className="p-8 space-y-6 pb-20 max-w-5xl mx-auto w-full">
          
-         {/* --- 0. NOTFALL UPDATE (IMMER SICHTBAR) --- */}
-         <div className="bg-white dark:bg-slate-900 rounded-xl border border-red-200 dark:border-red-900 p-6 shadow-sm mb-8">
-             <div className="flex items-center justify-between">
-                 <div>
-                     <h3 className="text-red-600 font-bold flex items-center gap-2"><ShieldAlert className="w-5 h-5"/> Problembehebung</h3>
-                     <p className="text-xs text-slate-500 mt-1">
-                         Falls Updates nicht automatisch geladen werden, können Sie hier eine Neuinstallation erzwingen.
-                     </p>
-                 </div>
-                 <div className="flex items-center gap-4">
-                     <div className="flex flex-col">
-                         <label className="text-[10px] text-slate-400 uppercase font-bold">Update URL</label>
-                         <input 
-                             value={updateUrl}
-                             onChange={(e) => { setUpdateUrl(e.target.value); localStorage.setItem('update_url', e.target.value); }}
-                             placeholder="https://..." 
-                             className="border rounded px-2 py-1 text-xs w-64 dark:bg-slate-800 dark:border-slate-700 dark:text-white"
-                         />
-                     </div>
-                     <button 
-                        onClick={() => {
-                            if(confirm("Dies lädt ALLE Systemdateien neu vom Server. Fortfahren?")) {
-                                handleCheckUpdate(true);
-                            }
-                        }}
-                        className="bg-red-600 hover:bg-red-700 text-white font-bold px-4 py-2 rounded-lg flex items-center gap-2 shadow-lg hover:shadow-red-500/30 transition-all text-sm whitespace-nowrap"
-                     >
-                         <DownloadCloud className="w-4 h-4"/> Neuinstallation erzwingen
-                     </button>
-                 </div>
-             </div>
-             {updateStatus && (
-                 <div className="mt-3 p-2 bg-slate-100 dark:bg-black rounded text-[10px] font-mono text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800">
-                     {updateStatus}
-                 </div>
-             )}
-         </div>
-
          {/* --- 1. PROFIL & DARSTELLUNG --- */}
          <SettingsSection 
             title="Profil & Darstellung" 
@@ -730,58 +683,6 @@ export const Settings: React.FC<SettingsProps> = ({
              </div>
          </SettingsSection>
          
-         {/* --- NEU: DATENBANK VERBINDUNG --- */}
-         <SettingsSection
-             title="Datenbank Verbindung"
-             icon={Cloud}
-             isDark={isDark}
-             description={backendConfig.mode === 'firebase' ? 'Google Cloud (Firebase)' : 'Lokal (Browser Storage)'}
-             isOpen={activeSection === 'database'}
-             onToggle={() => toggleSection('database')}
-         >
-             <div className="px-6 pb-6 pt-2">
-                 <div className="flex gap-4 mb-6">
-                     <button 
-                        onClick={handleSwitchToLocal}
-                        className={`flex-1 p-4 rounded-xl border text-left transition-all ${backendConfig.mode === 'local' ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:border-indigo-500' : 'border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800'}`}
-                     >
-                         <div className="flex items-center gap-2 mb-2">
-                             <HardDrive className={`w-5 h-5 ${backendConfig.mode === 'local' ? 'text-indigo-600' : 'text-slate-400'}`} />
-                             <span className={`font-bold ${backendConfig.mode === 'local' ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-600 dark:text-slate-400'}`}>Lokal (Browser)</span>
-                         </div>
-                         <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">Daten werden im LocalStorage gespeichert. Schnell, aber an dieses Gerät gebunden.</p>
-                     </button>
-                     
-                     <button 
-                        onClick={() => setBackendForm({...backendForm, mode: 'firebase'})}
-                        className={`flex-1 p-4 rounded-xl border text-left transition-all ${backendConfig.mode === 'firebase' ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:border-indigo-500' : 'border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800'}`}
-                     >
-                         <div className="flex items-center gap-2 mb-2">
-                             <CloudLightning className={`w-5 h-5 ${backendConfig.mode === 'firebase' ? 'text-indigo-600' : 'text-slate-400'}`} />
-                             <span className={`font-bold ${backendConfig.mode === 'firebase' ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-600 dark:text-slate-400'}`}>Google Cloud (Firebase)</span>
-                         </div>
-                         <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">Echtzeit-Synchronisation zwischen Geräten. Erfordert Firebase Projekt.</p>
-                     </button>
-                 </div>
-                 
-                 {/* FIREBASE CONFIG FORM */}
-                 <div className={`space-y-4 transition-all ${backendConfig.mode === 'firebase' || backendForm.mode === 'firebase' ? 'opacity-100' : 'opacity-50 pointer-events-none'}`}>
-                     <h3 className="text-sm font-bold dark:text-white border-b dark:border-slate-700 pb-2">Firebase Konfiguration</h3>
-                     <div className="grid grid-cols-2 gap-4">
-                         <div><label className="text-xs font-bold uppercase text-slate-500">API Key</label><input value={fbConfig.apiKey} onChange={e=>setFbConfig({...fbConfig, apiKey: e.target.value})} className="w-full border p-2 rounded text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
-                         <div><label className="text-xs font-bold uppercase text-slate-500">Auth Domain</label><input value={fbConfig.authDomain} onChange={e=>setFbConfig({...fbConfig, authDomain: e.target.value})} className="w-full border p-2 rounded text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
-                         <div><label className="text-xs font-bold uppercase text-slate-500">Project ID</label><input value={fbConfig.projectId} onChange={e=>setFbConfig({...fbConfig, projectId: e.target.value})} className="w-full border p-2 rounded text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
-                         <div><label className="text-xs font-bold uppercase text-slate-500">Storage Bucket</label><input value={fbConfig.storageBucket} onChange={e=>setFbConfig({...fbConfig, storageBucket: e.target.value})} className="w-full border p-2 rounded text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
-                         <div><label className="text-xs font-bold uppercase text-slate-500">Messaging Sender ID</label><input value={fbConfig.messagingSenderId} onChange={e=>setFbConfig({...fbConfig, messagingSenderId: e.target.value})} className="w-full border p-2 rounded text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
-                         <div><label className="text-xs font-bold uppercase text-slate-500">App ID</label><input value={fbConfig.appId} onChange={e=>setFbConfig({...fbConfig, appId: e.target.value})} className="w-full border p-2 rounded text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
-                     </div>
-                     <div className="flex justify-end pt-2">
-                         <button onClick={handleSaveFirebaseConfig} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">Verbindung herstellen & Speichern</button>
-                     </div>
-                 </div>
-             </div>
-         </SettingsSection>
-
          {/* --- 2. SYSTEMKONFIGURATION --- */}
          <SettingsSection
              title="Systemkonfiguration"
@@ -817,60 +718,30 @@ export const Settings: React.FC<SettingsProps> = ({
                          <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Bankname</label><input name="bankName" value={invConfigForm.bankName} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
                          <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Steuernummer</label><input name="taxId" value={invConfigForm.taxId} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
                          
-                         {/* Neuer Tax Rule Selector */}
                          <div className="col-span-2 mt-2 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg border dark:border-slate-700">
                              <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400 block mb-2">Besteuerungsart (Umsatzsteuer)</label>
                              <div className="flex gap-4">
                                 <label className="flex items-center gap-2 cursor-pointer">
-                                    <input 
-                                        type="radio" 
-                                        name="taxRule" 
-                                        value="small_business" 
-                                        checked={invConfigForm.taxRule === 'small_business' || !invConfigForm.taxRule}
-                                        onChange={handleInvConfigChange}
-                                        className="text-indigo-600 focus:ring-indigo-500"
-                                    />
+                                    <input type="radio" name="taxRule" value="small_business" checked={invConfigForm.taxRule === 'small_business' || !invConfigForm.taxRule} onChange={handleInvConfigChange} className="text-indigo-600 focus:ring-indigo-500" />
                                     <span className="text-sm dark:text-slate-300">Kleinunternehmer (§19 UStG)</span>
                                 </label>
                                 <label className="flex items-center gap-2 cursor-pointer">
-                                    <input 
-                                        type="radio" 
-                                        name="taxRule" 
-                                        value="standard" 
-                                        checked={invConfigForm.taxRule === 'standard'}
-                                        onChange={handleInvConfigChange}
-                                        className="text-indigo-600 focus:ring-indigo-500"
-                                    />
+                                    <input type="radio" name="taxRule" value="standard" checked={invConfigForm.taxRule === 'standard'} onChange={handleInvConfigChange} className="text-indigo-600 focus:ring-indigo-500" />
                                     <span className="text-sm dark:text-slate-300">Regelbesteuerung (19%)</span>
                                 </label>
                              </div>
-                             <p className="text-xs text-slate-400 mt-2">
-                                 {invConfigForm.taxRule === 'standard' 
-                                    ? 'Rechnungen weisen 19% MwSt. und Brutto/Netto Beträge aus.' 
-                                    : 'Es wird keine Umsatzsteuer erhoben (Hinweis auf §19 UStG wird gedruckt).'}
-                             </p>
                          </div>
 
                          <div className="col-span-2"><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Fußzeile (Text)</label><textarea name="footerText" value={invConfigForm.footerText || ''} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white" rows={2} /></div>
                          
-                         {/* PDF Template Editor */}
                          <div className="col-span-2 mt-2">
                              <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400 flex items-center gap-2 mb-2">
                                  <FileCode className="w-4 h-4" /> PDF Layout & Design (HTML)
                              </label>
                              <div className="relative">
-                                 <textarea 
-                                     name="pdfTemplate" 
-                                     value={invConfigForm.pdfTemplate || ''} 
-                                     onChange={handleInvConfigChange} 
-                                     className="w-full px-3 py-2 border rounded-lg text-xs font-mono bg-slate-900 text-slate-200 h-64 focus:ring-2 focus:ring-indigo-500" 
-                                 />
-                                 <div className="absolute top-2 right-2 opacity-50 hover:opacity-100 transition-opacity bg-slate-800 p-2 rounded text-[10px] text-white max-w-xs pointer-events-none">
-                                     Verfügbare Platzhalter: {'{invoiceNumber}'}, {'{date}'}, {'{contactName}'}, {'{netAmount}'}, {'{taxAmount}'}, {'{grossAmount}'}, etc.
-                                 </div>
+                                 <textarea name="pdfTemplate" value={invConfigForm.pdfTemplate || ''} onChange={handleInvConfigChange} className="w-full px-3 py-2 border rounded-lg text-xs font-mono bg-slate-900 text-slate-200 h-64 focus:ring-2 focus:ring-indigo-500" />
                              </div>
                          </div>
-                         
                          <div className="col-span-2 flex justify-end"><button onClick={() => { onUpdateInvoiceConfig(invConfigForm); alert('Gespeichert'); }} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">Speichern</button></div>
                      </div>
                  </SubSection>
@@ -908,12 +779,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                             <div className="flex flex-col">
                                                 <div className="flex items-center gap-2">
                                                     <span className="font-medium text-sm text-slate-800 dark:text-slate-200">{preset.title}</span>
-                                                    {/* Fix: Wrapped Repeat icon in span to support title attribute without TS error */}
-                                                    {preset.isSubscription && (
-                                                        <span title="Wiederkehrend / Abo" className="flex items-center">
-                                                            <Repeat className="w-3 h-3 text-indigo-500" />
-                                                        </span>
-                                                    )}
+                                                    {preset.isSubscription && <span title="Wiederkehrend / Abo" className="flex items-center"><Repeat className="w-3 h-3 text-indigo-500" /></span>}
                                                 </div>
                                                 <span className="text-xs text-slate-500">{preset.value} €</span>
                                             </div>
@@ -926,8 +792,6 @@ export const Settings: React.FC<SettingsProps> = ({
                                 </div>
                             ))}
                         </div>
-                        
-                        {/* New Preset Input Form */}
                         <div className="bg-slate-50 dark:bg-slate-800/50 p-3 rounded-lg border border-slate-200 dark:border-slate-700">
                             <div className="flex gap-2 mb-2">
                                 <input placeholder="Neues Produkt" value={newPresetTitle} onChange={e=>setNewPresetTitle(e.target.value)} className="flex-1 px-3 py-2 border rounded-lg text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white" />
@@ -935,17 +799,10 @@ export const Settings: React.FC<SettingsProps> = ({
                             </div>
                             <div className="flex items-center justify-between">
                                 <label className="flex items-center gap-2 cursor-pointer">
-                                    <input 
-                                        type="checkbox" 
-                                        checked={newPresetIsSub} 
-                                        onChange={e => setNewPresetIsSub(e.target.checked)} 
-                                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4"
-                                    />
+                                    <input type="checkbox" checked={newPresetIsSub} onChange={e => setNewPresetIsSub(e.target.checked)} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4" />
                                     <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Ist Abo / Wiederkehrend</span>
                                 </label>
-                                <button onClick={handleAddPreset} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-sm flex items-center gap-1">
-                                    <Plus className="w-3 h-3" /> Hinzufügen
-                                </button>
+                                <button onClick={handleAddPreset} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-sm flex items-center gap-1"><Plus className="w-3 h-3" /> Hinzufügen</button>
                             </div>
                         </div>
                      </div>
@@ -959,101 +816,32 @@ export const Settings: React.FC<SettingsProps> = ({
                      onToggle={() => toggleSubSection('config_email_automation')}
                  >
                      <div className="py-2 space-y-2">
-                        {/* Welcome Mail Section */}
-                        <InnerSection
-                            title="Willkommens-E-Mail"
-                            icon={Star}
-                            isDark={isDark}
-                            isOpen={activeEmailSub === 'welcome'}
-                            onToggle={() => toggleEmailSub('welcome')}
+                        <InnerSection title="Willkommens-E-Mail" icon={Star} isDark={isDark} isOpen={activeEmailSub === 'welcome'} onToggle={() => toggleEmailSub('welcome')}
                             extraHeader={
                                 <label onClick={e => e.stopPropagation()} className="flex items-center gap-2 cursor-pointer bg-white dark:bg-slate-700 border dark:border-slate-600 px-2.5 py-1 rounded-full shadow-sm hover:bg-slate-50 transition-colors">
-                                    <input 
-                                    type="checkbox"
-                                    checked={invConfigForm.emailSettings?.welcome?.enabled || false}
-                                    onChange={(e) => handleEmailConfigChange('welcome', { ...(invConfigForm.emailSettings?.welcome || {} as any), enabled: e.target.checked })}
-                                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
-                                    />
+                                    <input type="checkbox" checked={invConfigForm.emailSettings?.welcome?.enabled || false} onChange={(e) => handleEmailConfigChange('welcome', { ...(invConfigForm.emailSettings?.welcome || {} as any), enabled: e.target.checked })} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5" />
                                     <span className="text-[10px] font-bold dark:text-slate-300 uppercase tracking-wide">Auto-Send</span>
                                 </label>
                             }
                         >
-                             <EmailConfigurator 
-                                config={invConfigForm.emailSettings?.welcome || { subject: '', body: '', attachments: [] }}
-                                onChange={(newConfig) => handleEmailConfigChange('welcome', { ...newConfig, enabled: invConfigForm.emailSettings?.welcome?.enabled })}
-                                isDark={isDark}
-                                label="Willkommens-Mail"
-                             />
+                             <EmailConfigurator config={invConfigForm.emailSettings?.welcome || { subject: '', body: '', attachments: [] }} onChange={(newConfig) => handleEmailConfigChange('welcome', { ...newConfig, enabled: invConfigForm.emailSettings?.welcome?.enabled })} isDark={isDark} label="Willkommens-Mail" />
                         </InnerSection>
-
-                        {/* Invoice Mail Section */}
-                        <InnerSection
-                            title="Rechnungsversand"
-                            icon={Printer}
-                            isDark={isDark}
-                            isOpen={activeEmailSub === 'invoice'}
-                            onToggle={() => toggleEmailSub('invoice')}
-                        >
-                             <EmailConfigurator 
-                                config={invConfigForm.emailSettings?.invoice || { subject: '', body: '', attachments: [] }}
-                                onChange={(newConfig) => handleEmailConfigChange('invoice', newConfig)}
-                                isDark={isDark}
-                                label="Rechnung"
-                             />
+                        <InnerSection title="Rechnungsversand" icon={Printer} isDark={isDark} isOpen={activeEmailSub === 'invoice'} onToggle={() => toggleEmailSub('invoice')}>
+                             <EmailConfigurator config={invConfigForm.emailSettings?.invoice || { subject: '', body: '', attachments: [] }} onChange={(newConfig) => handleEmailConfigChange('invoice', newConfig)} isDark={isDark} label="Rechnung" />
                         </InnerSection>
-
-                        {/* Offer Mail Section */}
-                        <InnerSection
-                            title="Angebotsversand"
-                            icon={Briefcase}
-                            isDark={isDark}
-                            isOpen={activeEmailSub === 'offer'}
-                            onToggle={() => toggleEmailSub('offer')}
-                        >
-                             <EmailConfigurator 
-                                config={invConfigForm.emailSettings?.offer || { subject: '', body: '', attachments: [] }}
-                                onChange={(newConfig) => handleEmailConfigChange('offer', newConfig)}
-                                isDark={isDark}
-                                label="Angebot"
-                             />
+                        <InnerSection title="Angebotsversand" icon={Briefcase} isDark={isDark} isOpen={activeEmailSub === 'offer'} onToggle={() => toggleEmailSub('offer')}>
+                             <EmailConfigurator config={invConfigForm.emailSettings?.offer || { subject: '', body: '', attachments: [] }} onChange={(newConfig) => handleEmailConfigChange('offer', newConfig)} isDark={isDark} label="Angebot" />
                         </InnerSection>
-
-                        {/* Reminder Mail Section */}
-                        <InnerSection
-                            title="Mahnwesen (Erinnerung)"
-                            icon={AlertTriangle}
-                            isDark={isDark}
-                            isOpen={activeEmailSub === 'reminder'}
-                            onToggle={() => toggleEmailSub('reminder')}
-                        >
-                             <EmailConfigurator 
-                                config={invConfigForm.emailSettings?.reminder || { subject: '', body: '', attachments: [] }}
-                                onChange={(newConfig) => handleEmailConfigChange('reminder', newConfig)}
-                                isDark={isDark}
-                                label="Mahnung"
-                             />
+                        <InnerSection title="Mahnwesen (Erinnerung)" icon={AlertTriangle} isDark={isDark} isOpen={activeEmailSub === 'reminder'} onToggle={() => toggleEmailSub('reminder')}>
+                             <EmailConfigurator config={invConfigForm.emailSettings?.reminder || { subject: '', body: '', attachments: [] }} onChange={(newConfig) => handleEmailConfigChange('reminder', newConfig)} isDark={isDark} label="Mahnung" />
                         </InnerSection>
-                        
-                        {/* Allgemeine Textbausteine */}
-                        <InnerSection
-                            title="Allgemeine Textbausteine"
-                            icon={FileText}
-                            isDark={isDark}
-                            isOpen={activeEmailSub === 'templates'}
-                            onToggle={() => toggleEmailSub('templates')}
-                        >
+                        <InnerSection title="Allgemeine Textbausteine" icon={FileText} isDark={isDark} isOpen={activeEmailSub === 'templates'} onToggle={() => toggleEmailSub('templates')}>
                             <p className="text-xs text-slate-500 mb-3">Zusätzliche Vorlagen für manuelle E-Mails.</p>
                             <div className="space-y-2 mb-4">
                                 {emailTemplates.map(template => (
                                     <div key={template.id} className="flex items-center justify-between p-3 border rounded-lg bg-white dark:bg-slate-800 dark:border-slate-700 hover:border-indigo-300 transition-colors">
-                                        <div>
-                                            <p className="font-medium text-sm text-slate-800 dark:text-slate-200 flex items-center gap-2"><FileText className="w-3.5 h-3.5 text-indigo-500"/> {template.title}</p>
-                                            <p className="text-xs text-slate-500 truncate max-w-xs">{template.subject}</p>
-                                        </div>
-                                        <div className="flex gap-2">
-                                            <button onClick={() => openTemplateModal(template)} className="text-slate-400 hover:text-indigo-600 p-1.5 hover:bg-slate-100 rounded" title="Bearbeiten"><Pencil className="w-4 h-4"/></button>
-                                            <button onClick={() => onDeleteTemplate(template.id)} className="text-slate-400 hover:text-red-600 p-1.5 hover:bg-red-50 rounded" title="Löschen"><Trash2 className="w-4 h-4"/></button>
-                                        </div>
+                                        <div><p className="font-medium text-sm text-slate-800 dark:text-slate-200 flex items-center gap-2"><FileText className="w-3.5 h-3.5 text-indigo-500"/> {template.title}</p><p className="text-xs text-slate-500 truncate max-w-xs">{template.subject}</p></div>
+                                        <div className="flex gap-2"><button onClick={() => openTemplateModal(template)} className="text-slate-400 hover:text-indigo-600 p-1.5 hover:bg-slate-100 rounded" title="Bearbeiten"><Pencil className="w-4 h-4"/></button><button onClick={() => onDeleteTemplate(template.id)} className="text-slate-400 hover:text-red-600 p-1.5 hover:bg-red-50 rounded" title="Löschen"><Trash2 className="w-4 h-4"/></button></div>
                                     </div>
                                 ))}
                                 {emailTemplates.length === 0 && <p className="text-sm text-slate-400 text-center py-4 italic">Keine manuellen Vorlagen vorhanden.</p>}
@@ -1074,28 +862,42 @@ export const Settings: React.FC<SettingsProps> = ({
             title="Integrationen & API" 
             icon={Globe} 
             isDark={isDark} 
-            description="Google Dienste & KI Anbindung"
+            description="Google Dienste, Datenbank & KI"
             isOpen={activeSection === 'integrations'}
             onToggle={() => toggleSection('integrations')}
          >
              <div className="px-6 pb-6 pt-2 space-y-4">
+                 <SubSection title="Datenbank Verbindung" isDark={isDark} isOpen={activeSubSection === 'database_conn'} onToggle={() => toggleSubSection('database_conn')}>
+                     <div className="flex gap-4 mb-6">
+                         <button onClick={handleSwitchToLocal} className={`flex-1 p-4 rounded-xl border text-left transition-all ${backendConfig.mode === 'local' ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:border-indigo-500' : 'border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800'}`}>
+                             <div className="flex items-center gap-2 mb-2"><HardDrive className={`w-5 h-5 ${backendConfig.mode === 'local' ? 'text-indigo-600' : 'text-slate-400'}`} /><span className={`font-bold ${backendConfig.mode === 'local' ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-600 dark:text-slate-400'}`}>Lokal (Browser)</span></div>
+                             <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">Daten werden im LocalStorage gespeichert. Schnell, aber an dieses Gerät gebunden.</p>
+                         </button>
+                         <button onClick={() => setBackendForm({...backendForm, mode: 'firebase'})} className={`flex-1 p-4 rounded-xl border text-left transition-all ${backendConfig.mode === 'firebase' ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:border-indigo-500' : 'border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800'}`}>
+                             <div className="flex items-center gap-2 mb-2"><CloudLightning className={`w-5 h-5 ${backendConfig.mode === 'firebase' ? 'text-indigo-600' : 'text-slate-400'}`} /><span className={`font-bold ${backendConfig.mode === 'firebase' ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-600 dark:text-slate-400'}`}>Google Cloud (Firebase)</span></div>
+                             <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">Echtzeit-Synchronisation zwischen Geräten. Erfordert Firebase Projekt.</p>
+                         </button>
+                     </div>
+                     <div className={`space-y-4 transition-all ${backendConfig.mode === 'firebase' || backendForm.mode === 'firebase' ? 'opacity-100' : 'opacity-50 pointer-events-none'}`}>
+                         <h3 className="text-sm font-bold dark:text-white border-b dark:border-slate-700 pb-2">Firebase Konfiguration</h3>
+                         <div className="grid grid-cols-2 gap-4">
+                             <div><label className="text-xs font-bold uppercase text-slate-500">API Key</label><input value={fbConfig.apiKey} onChange={e=>setFbConfig({...fbConfig, apiKey: e.target.value})} className="w-full border p-2 rounded text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
+                             <div><label className="text-xs font-bold uppercase text-slate-500">Auth Domain</label><input value={fbConfig.authDomain} onChange={e=>setFbConfig({...fbConfig, authDomain: e.target.value})} className="w-full border p-2 rounded text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
+                             <div><label className="text-xs font-bold uppercase text-slate-500">Project ID</label><input value={fbConfig.projectId} onChange={e=>setFbConfig({...fbConfig, projectId: e.target.value})} className="w-full border p-2 rounded text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
+                             <div><label className="text-xs font-bold uppercase text-slate-500">Storage Bucket</label><input value={fbConfig.storageBucket} onChange={e=>setFbConfig({...fbConfig, storageBucket: e.target.value})} className="w-full border p-2 rounded text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
+                             <div><label className="text-xs font-bold uppercase text-slate-500">Messaging Sender ID</label><input value={fbConfig.messagingSenderId} onChange={e=>setFbConfig({...fbConfig, messagingSenderId: e.target.value})} className="w-full border p-2 rounded text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
+                             <div><label className="text-xs font-bold uppercase text-slate-500">App ID</label><input value={fbConfig.appId} onChange={e=>setFbConfig({...fbConfig, appId: e.target.value})} className="w-full border p-2 rounded text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white" /></div>
+                         </div>
+                         <div className="flex justify-end pt-2"><button onClick={handleSaveFirebaseConfig} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">Verbindung herstellen & Speichern</button></div>
+                     </div>
+                 </SubSection>
+
                  <div className="flex items-center justify-between p-4 border rounded-lg bg-white dark:bg-slate-800 dark:border-slate-700">
                      <div className="flex items-center gap-4">
                          <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-full"><Calendar className="w-5 h-5 text-blue-600 dark:text-blue-400" /></div>
-                         <div>
-                             <h3 className="font-semibold text-sm dark:text-white">Google Calendar</h3>
-                             <p className="text-xs text-slate-500 dark:text-slate-400">Termine synchronisieren</p>
-                         </div>
+                         <div><h3 className="font-semibold text-sm dark:text-white">Google Calendar</h3><p className="text-xs text-slate-500 dark:text-slate-400">Termine synchronisieren</p></div>
                      </div>
-                     <button 
-                         onClick={handleToggleCalendar}
-                         disabled={!!isConnecting}
-                         className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-                             isCalendarConnected 
-                                 ? 'bg-green-100 text-green-700 border border-green-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200' 
-                                 : 'bg-slate-100 text-slate-600 hover:bg-indigo-50 hover:text-indigo-600'
-                         }`}
-                     >
+                     <button onClick={handleToggleCalendar} disabled={!!isConnecting} className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${isCalendarConnected ? 'bg-green-100 text-green-700 border border-green-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200' : 'bg-slate-100 text-slate-600 hover:bg-indigo-50 hover:text-indigo-600'}`}>
                          {isConnecting === 'calendar' ? 'Lade...' : isCalendarConnected ? 'Verbunden' : 'Verbinden'}
                      </button>
                  </div>
@@ -1103,20 +905,9 @@ export const Settings: React.FC<SettingsProps> = ({
                  <div className="flex items-center justify-between p-4 border rounded-lg bg-white dark:bg-slate-800 dark:border-slate-700">
                      <div className="flex items-center gap-4">
                          <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-full"><Mail className="w-5 h-5 text-red-600 dark:text-red-400" /></div>
-                         <div>
-                             <h3 className="font-semibold text-sm dark:text-white">Google Mail</h3>
-                             <p className="text-xs text-slate-500 dark:text-slate-400">E-Mails direkt senden</p>
-                         </div>
+                         <div><h3 className="font-semibold text-sm dark:text-white">Google Mail</h3><p className="text-xs text-slate-500 dark:text-slate-400">E-Mails direkt senden</p></div>
                      </div>
-                     <button 
-                         onClick={handleToggleMail}
-                         disabled={!!isConnecting}
-                         className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-                             isMailConnected 
-                                 ? 'bg-green-100 text-green-700 border border-green-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200' 
-                                 : 'bg-slate-100 text-slate-600 hover:bg-indigo-50 hover:text-indigo-600'
-                         }`}
-                     >
+                     <button onClick={handleToggleMail} disabled={!!isConnecting} className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${isMailConnected ? 'bg-green-100 text-green-700 border border-green-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200' : 'bg-slate-100 text-slate-600 hover:bg-indigo-50 hover:text-indigo-600'}`}>
                          {isConnecting === 'mail' ? 'Lade...' : isMailConnected ? 'Verbunden' : 'Verbinden'}
                      </button>
                  </div>
@@ -1124,100 +915,109 @@ export const Settings: React.FC<SettingsProps> = ({
                  <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
                     <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400 flex items-center gap-2 mb-2"><Sparkles className="w-3.5 h-3.5 text-indigo-500"/> Google Gemini API Key</label>
                     <div className="flex gap-2">
-                        <input 
-                            type="password"
-                            value={geminiKey}
-                            onChange={(e) => setGeminiKey(e.target.value)}
-                            className="flex-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-600 dark:text-white"
-                            placeholder="AIzaSy..."
-                        />
-                        <button 
-                            onClick={() => { localStorage.setItem('gemini_api_key', geminiKey); alert('API Key gespeichert.'); }} 
-                            className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700"
-                        >
-                            Speichern
-                        </button>
+                        <input type="password" value={geminiKey} onChange={(e) => setGeminiKey(e.target.value)} className="flex-1 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-800 dark:border-slate-600 dark:text-white" placeholder="AIzaSy..." />
+                        <button onClick={() => { localStorage.setItem('gemini_api_key', geminiKey); alert('API Key gespeichert.'); }} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">Speichern</button>
                     </div>
                     <p className="text-[10px] text-slate-400 mt-1">Benötigt für KI-Analysen. Wird nur lokal im Browser gespeichert.</p>
                  </div>
              </div>
          </SettingsSection>
 
-         {/* --- 4. DATENVERWALTUNG --- */}
+         {/* --- 4. DATENVERWALTUNG (NEU ORGANISIERT) --- */}
          <SettingsSection 
             title="Datenverwaltung" 
             icon={Database} 
             isDark={isDark} 
-            description="Backup, Export & Import"
+            description="Backup, Updates & Reset"
             isOpen={activeSection === 'data'}
             onToggle={() => toggleSection('data')}
          >
-             <div className="p-6 grid grid-cols-2 gap-4">
-                 <button onClick={handleExport} className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-all group">
-                     <DownloadCloud className="w-8 h-8 text-slate-400 group-hover:text-indigo-600 mb-2" />
-                     <span className="font-semibold text-slate-700 dark:text-slate-300">Backup erstellen</span>
-                     <span className="text-xs text-slate-400">Alle Daten als JSON exportieren</span>
-                 </button>
-                 <button onClick={handleImportClick} className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-all group">
-                     <Upload className="w-8 h-8 text-slate-400 group-hover:text-indigo-600 mb-2" />
-                     <span className="font-semibold text-slate-700 dark:text-slate-300">Backup wiederherstellen</span>
-                     <span className="text-xs text-slate-400">JSON-Datei importieren</span>
-                 </button>
-                 <input ref={fileInputRef} type="file" onChange={handleFileChange} className="hidden" accept=".json" />
-             </div>
-         </SettingsSection>
-         
-         {/* --- 5. SOFTWARE UPDATE (Read-only Info) --- */}
-         <SettingsSection 
-            title="Software Info" 
-            icon={RefreshCw} 
-            isDark={isDark} 
-            description="Version v1.2.1"
-            isOpen={activeSection === 'update'}
-            onToggle={() => toggleSection('update')}
-         >
-             <div className="p-6">
-                 {/* Version Indicator */}
-                 <div className="flex items-center justify-between bg-slate-100 dark:bg-slate-800 p-3 rounded-lg mb-4">
-                     <span className="text-sm font-medium text-slate-600 dark:text-slate-400">Installierte Version</span>
-                     <span className="text-sm font-bold text-slate-900 dark:text-white bg-white dark:bg-slate-700 px-2 py-1 rounded border border-slate-200 dark:border-slate-600 shadow-sm">v1.2.1</span>
-                 </div>
-                 
-                 <p className="text-xs text-slate-400">
-                    Die Update-Verwaltung befindet sich nun oben auf dieser Seite.
-                 </p>
-             </div>
-         </SettingsSection>
+             <div className="px-6 pb-6 pt-2">
+                 {/* Backup & Import */}
+                 <SubSection title="Backup & Wiederherstellung" isDark={isDark} isOpen={activeSubSection === 'data_backup'} onToggle={() => toggleSubSection('data_backup')}>
+                    <div className="grid grid-cols-2 gap-4">
+                        <button onClick={handleExport} className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-all group">
+                            <DownloadCloud className="w-8 h-8 text-slate-400 group-hover:text-indigo-600 mb-2" />
+                            <span className="font-semibold text-slate-700 dark:text-slate-300">Backup erstellen</span>
+                            <span className="text-xs text-slate-400">Alle Daten als JSON exportieren</span>
+                        </button>
+                        <button onClick={handleImportClick} className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-all group">
+                            <Upload className="w-8 h-8 text-slate-400 group-hover:text-indigo-600 mb-2" />
+                            <span className="font-semibold text-slate-700 dark:text-slate-300">Backup wiederherstellen</span>
+                            <span className="text-xs text-slate-400">JSON-Datei importieren</span>
+                        </button>
+                        <input ref={fileInputRef} type="file" onChange={handleFileChange} className="hidden" accept=".json" />
+                    </div>
+                 </SubSection>
 
-         {/* --- 6. GEFAHRENZONE (Factory Reset) --- */}
-         <SettingsSection 
-            title="Gefahrenzone" 
-            icon={AlertOctagon} 
-            isDark={isDark} 
-            description="Datenlöschung & Reset"
-            isOpen={activeSection === 'danger'}
-            onToggle={() => toggleSection('danger')}
-         >
-             <div className="p-6 bg-red-50 dark:bg-red-900/10 border-t border-red-100 dark:border-red-900/30">
-                 <div className="flex items-start gap-4">
-                     <div className="p-3 bg-red-100 dark:bg-red-900/30 text-red-600 rounded-full">
-                         <Trash2 className="w-6 h-6" />
+                 {/* Software & Updates */}
+                 <SubSection title="Software & Updates" isDark={isDark} isOpen={activeSubSection === 'data_updates'} onToggle={() => toggleSubSection('data_updates')}>
+                    <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                         <div className="flex items-center justify-between mb-4">
+                             <div>
+                                 <h4 className="font-bold text-slate-800 dark:text-white flex items-center gap-2"><RefreshCw className="w-4 h-4"/> System Update</h4>
+                                 <p className="text-xs text-slate-500">Aktuelle Version: <span className="font-mono bg-white dark:bg-slate-900 px-1 rounded border dark:border-slate-700">v1.2.1</span></p>
+                             </div>
+                             <div className="flex flex-col items-end gap-1">
+                                 <input 
+                                     value={updateUrl}
+                                     onChange={(e) => { setUpdateUrl(e.target.value); localStorage.setItem('update_url', e.target.value); }}
+                                     placeholder="Update Server URL..." 
+                                     className="border rounded px-2 py-1 text-xs w-64 dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                                 />
+                             </div>
+                         </div>
+                         
+                         <div className="flex gap-4">
+                             <button 
+                                onClick={() => handleCheckUpdate(false)}
+                                disabled={isUpdating}
+                                className="flex-1 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                             >
+                                 {isUpdating && updateStatus.includes('Prüfe') ? <Loader2 className="w-4 h-4 animate-spin"/> : <RefreshCcw className="w-4 h-4"/>}
+                                 Nach Updates suchen
+                             </button>
+                             <button 
+                                onClick={() => { if(confirm("Dies lädt ALLE Systemdateien neu vom Server. Fortfahren?")) { handleCheckUpdate(true); } }}
+                                disabled={isUpdating}
+                                className="flex-1 bg-red-50 border border-red-200 hover:bg-red-100 text-red-700 px-4 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                             >
+                                 <ShieldAlert className="w-4 h-4"/>
+                                 Neuinstallation erzwingen
+                             </button>
+                         </div>
+                         {updateStatus && (
+                             <div className="mt-3 p-2 bg-slate-100 dark:bg-black rounded text-[10px] font-mono text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 flex items-center gap-2">
+                                 <Info className="w-3 h-3"/> {updateStatus}
+                             </div>
+                         )}
+                    </div>
+                 </SubSection>
+
+                 {/* Gefahrenzone */}
+                 <SubSection title="Gefahrenzone" isDark={isDark} isOpen={activeSubSection === 'data_danger'} onToggle={() => toggleSubSection('data_danger')}>
+                     <div className="p-4 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 rounded-xl">
+                         <div className="flex items-start gap-4">
+                             <div className="p-2 bg-red-100 dark:bg-red-900/30 text-red-600 rounded-full mt-1">
+                                 <Trash2 className="w-5 h-5" />
+                             </div>
+                             <div className="flex-1">
+                                 <h3 className="font-bold text-red-700 dark:text-red-400">Alles Löschen (Factory Reset)</h3>
+                                 <p className="text-xs text-red-600/80 dark:text-red-400/80 mt-1 mb-3">
+                                     Diese Aktion löscht alle Kontakte, Rechnungen, Einstellungen und Aktivitäten unwiderruflich. 
+                                     Das Programm wird auf den Werkszustand zurückgesetzt.
+                                 </p>
+                                 <button 
+                                     onClick={handleWipeData}
+                                     className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md shadow-red-200 dark:shadow-none flex items-center gap-2"
+                                 >
+                                     <AlertOctagon className="w-4 h-4" />
+                                     Alle Daten unwiderruflich löschen
+                                 </button>
+                             </div>
+                         </div>
                      </div>
-                     <div className="flex-1">
-                         <h3 className="text-lg font-bold text-red-700 dark:text-red-400">Alles Löschen (Factory Reset)</h3>
-                         <p className="text-sm text-red-600/80 dark:text-red-400/80 mt-1 mb-4">
-                             Diese Aktion löscht alle Kontakte, Rechnungen, Einstellungen und Aktivitäten unwiderruflich. 
-                             Das Programm wird auf den Werkszustand zurückgesetzt.
-                         </p>
-                         <button 
-                             onClick={handleWipeData}
-                             className="bg-red-600 hover:bg-red-700 text-white px-5 py-2.5 rounded-lg font-bold shadow-lg shadow-red-200 dark:shadow-none flex items-center gap-2"
-                         >
-                             <AlertOctagon className="w-4 h-4" />
-                             Alle Daten unwiderruflich löschen
-                         </button>
-                     </div>
-                 </div>
+                 </SubSection>
              </div>
          </SettingsSection>
 
