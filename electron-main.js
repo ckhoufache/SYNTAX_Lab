@@ -23,6 +23,41 @@ const hotUpdatePath = path.join(userDataPath, 'hot_update');
 const hotUpdateTempPath = path.join(userDataPath, 'hot_update_temp'); // Temp folder for atomic writes
 
 /**
+ * PHASE 1: BOOTLOADER LOGIC
+ * Diese Funktion läuft VOR dem Server-Start und VOR dem Fenster-Öffnen.
+ * Sie prüft, ob ein fertiges Update im Temp-Ordner liegt und tauscht es aus.
+ * Da hier noch nichts geladen ist, gibt es keine File-Locks (Windows).
+ */
+function applyPendingUpdates() {
+    try {
+        if (fs.existsSync(hotUpdateTempPath)) {
+            console.log("Found pending update in hot_update_temp. Applying...");
+
+            // 1. Altes Update löschen (falls vorhanden)
+            if (fs.existsSync(hotUpdatePath)) {
+                try {
+                    fs.rmSync(hotUpdatePath, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+                } catch (e) {
+                    console.error("Could not delete old hot_update folder. Aborting update apply.", e);
+                    // Wenn wir das alte nicht löschen können, behalten wir es und löschen das Temp beim nächsten Cleanup
+                    return; 
+                }
+            }
+
+            // 2. Temp umbenennen zu Live
+            try {
+                fs.renameSync(hotUpdateTempPath, hotUpdatePath);
+                console.log("Update applied successfully!");
+            } catch (e) {
+                console.error("Failed to move temp folder to live.", e);
+            }
+        }
+    } catch (e) {
+        console.error("Critical error in bootloader update logic:", e);
+    }
+}
+
+/**
  * Vergleicht zwei Versionstrings (z.B. "1.2.0" vs "1.2.1").
  * Gibt 1 zurück wenn v1 > v2, -1 wenn v1 < v2, 0 wenn gleich.
  */
@@ -39,13 +74,17 @@ function compareVersions(v1, v2) {
 }
 
 /**
- * Bereinigt den Hot-Update Ordner.
- * FIX: Löscht den Ordner, wenn die Binary NEUER oder GLEICH ALT ist wie das Hot Update.
- * Das garantiert einen sauberen Start nach einer Installation via EXE.
+ * Bereinigt den Hot-Update Ordner, falls die EXE neuer ist.
+ * Strategie:
+ * - EXE > Update: Update ist veraltet -> Löschen.
+ * - EXE == Update: Update ist ein Hotfix oder Re-Download -> Behalten.
+ * - EXE < Update: Update ist neu -> Behalten.
  */
 function cleanupStaleUpdates() {
     try {
-        // Temp Folder immer bereinigen beim Start
+        // Temp Folder immer bereinigen, falls Reste da sind (z.B. fehlgeschlagener Download)
+        // Aber NICHT, wenn wir gerade applyPendingUpdates ausführen wollten (das passiert davor).
+        // Hier gehen wir davon aus, dass applyPendingUpdates schon lief.
         if (fs.existsSync(hotUpdateTempPath)) {
              fs.rmSync(hotUpdateTempPath, { recursive: true, force: true });
         }
@@ -60,19 +99,15 @@ function cleanupStaleUpdates() {
 
             console.log(`Checking versions - Binary: ${binaryVersion}, HotUpdate: ${hotUpdateVersion}`);
 
-            // ÄNDERUNG: Wir löschen, wenn Binary >= HotUpdate.
-            // Fall 1: Binary 1.2.4, Update 1.2.3 -> Löschen (veraltet)
-            // Fall 2: Binary 1.2.4, Update 1.2.4 -> Löschen (Clean install bevorzugen)
-            // Fall 3: Binary 1.2.4, Update 1.2.5 -> Behalten (Neues Hot Update)
-            if (compareVersions(binaryVersion, hotUpdateVersion) >= 0) {
-                console.log('Binary is newer or equal. Clearing hot_update folder to ensure clean state.');
+            // Wenn Binary STRICT GRÖSSER ist als HotUpdate, dann ist das Update alt.
+            if (compareVersions(binaryVersion, hotUpdateVersion) === 1) {
+                console.log('Binary is strictly newer. Clearing outdated hot_update folder.');
                 fs.rmSync(hotUpdatePath, { recursive: true, force: true });
             } else {
-                console.log('Hot update is strictly newer than binary. Keeping it.');
+                console.log('Hot update is newer or equal (Hotfix). Keeping it.');
             }
         } else {
-            // Hot Update Ordner existiert, aber keine version.json? Kaputt. Weg damit.
-            console.log('Corrupted hot_update folder detected. Clearing.');
+            console.log('Corrupted hot_update folder detected (no version.json). Clearing.');
             fs.rmSync(hotUpdatePath, { recursive: true, force: true });
         }
     } catch (e) {
@@ -81,20 +116,15 @@ function cleanupStaleUpdates() {
 }
 
 function startLocalServer() {
-  // Zuerst aufräumen!
-  cleanupStaleUpdates();
-
   const serverApp = express();
 
-  // Prüfen ob (nach dem Cleanup) noch ein valides Hot Update existiert
+  // Prüfen ob ein valides Hot Update existiert
   if (fs.existsSync(hotUpdatePath)) {
       console.log('Serving updates from hot_update folder');
-      // Express schaut zuerst hier nach Dateien (z.B. index.html, assets/...)
       serverApp.use(express.static(hotUpdatePath));
   }
 
-  // Fallback: Wenn Datei nicht im Update-Ordner ist (oder kein Update existiert),
-  // nimm die Datei aus der eingebauten App (dist Ordner).
+  // Fallback: Dateien aus der eingebauten App (dist Ordner).
   console.log('Serving fallback from internal dist folder');
   serverApp.use(express.static(path.join(__dirname, 'dist')));
   
@@ -113,8 +143,6 @@ function startLocalServer() {
 }
 
 async function createWindow() {
-  // CACHE CLEARING (Force Fresh Load)
-  // Dies löscht HTTP Cache, Service Workers etc.
   console.log('Clearing Cache...');
   await session.defaultSession.clearCache();
   await session.defaultSession.clearStorageData({ storages: ['serviceworkers', 'cachestorage'] });
@@ -127,7 +155,7 @@ async function createWindow() {
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
-      webSecurity: false, // Wichtig für lokale CORS Probleme beim Laden von Ressourcen
+      webSecurity: false,
       allowRunningInsecureContent: true 
     },
     autoHideMenuBar: false, 
@@ -145,10 +173,7 @@ async function createWindow() {
     mainWindow.loadURL(APP_URL);
   }
 
-  // Fenster-Handler für Popups
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    // 1. Google Auth Popups: MÜSSEN in der App bleiben (allow)
-    // Damit das 'window.opener' Event feuern kann.
     if (url.startsWith('https://accounts.google.com') || url.includes('google.com/signin')) {
       return { 
         action: 'allow',
@@ -157,8 +182,6 @@ async function createWindow() {
           width: 600,
           height: 700,
           center: true,
-          // Wichtig: Das Popup braucht ähnliche Rechte, aber wir wollen sicherstellen,
-          // dass der User-Agent auch hier greift.
           webPreferences: {
              nodeIntegration: false,
              contextIsolation: true,
@@ -167,22 +190,15 @@ async function createWindow() {
         }
       };
     }
-    
-    // 2. Alle anderen externen Links (z.B. LinkedIn Profile): Im Standard-Browser öffnen
     if (url.startsWith('http')) {
       shell.openExternal(url);
       return { action: 'deny' };
     }
-    
     return { action: 'allow' };
   });
 
-  // Event Listener für neu erstellte Fenster (z.B. das Google Popup)
-  // Wir müssen sicherstellen, dass auch das Popup den gefälschten User-Agent nutzt,
-  // sonst blockiert Google den Zugriff ("Browser nicht sicher").
   mainWindow.webContents.on('did-create-window', (childWindow, details) => {
       childWindow.webContents.setUserAgent(GOOGLE_AUTH_USER_AGENT);
-      // Optional: Menüleiste auch im Popup ausblenden
       childWindow.setMenuBarVisibility(false);
   });
 
@@ -191,8 +207,17 @@ async function createWindow() {
   });
 }
 
+// VERSION CHECK
 ipcMain.handle('get-app-version', () => {
-  return app.getVersion();
+    // Versuche Version aus hot_update zu lesen, da diese relevanter ist
+    try {
+        const versionFile = path.join(hotUpdatePath, 'version.json');
+        if (fs.existsSync(versionFile)) {
+            const data = JSON.parse(fs.readFileSync(versionFile, 'utf-8'));
+            return `${data.version} (Hot)`;
+        }
+    } catch(e) {}
+    return app.getVersion();
 });
 
 ipcMain.handle('open-dev-tools', () => {
@@ -201,7 +226,7 @@ ipcMain.handle('open-dev-tools', () => {
     }
 });
 
-// Update Handler (ATOMIC UPDATE + DOWNLOAD DELEGATION)
+// Update Handler (DOWNLOAD ONLY - NO SWAP HERE)
 ipcMain.handle('install-update', async (event, downloadManifest) => {
   try {
     // 1. Prepare Temp Directory (Clean Slate)
@@ -213,45 +238,34 @@ ipcMain.handle('install-update', async (event, downloadManifest) => {
     const assetsPath = path.join(hotUpdateTempPath, 'assets');
     fs.mkdirSync(assetsPath, { recursive: true });
 
-    console.log(`Starting batch download of ${downloadManifest.length} files...`);
+    console.log(`Starting batch download of ${downloadManifest.length} files to TEMP...`);
 
-    // 2. Download files directly in Main process (No IPC overhead)
+    // 2. Download files directly in Main process
     for (const item of downloadManifest) {
-        // item: { url: string, relativePath: string }
         const targetPath = path.join(hotUpdateTempPath, item.relativePath);
-        
-        // Ensure directory exists for nested files (if any)
         fs.mkdirSync(path.dirname(targetPath), { recursive: true });
 
-        // Add Cache-Buster to URL
-        const downloadUrl = `${item.url}?cb=${Date.now()}`;
-        
-        // Fetch
+        const downloadUrl = `${item.url}?cb=${Date.now()}`; // Cache Buster
         const response = await fetch(downloadUrl, { cache: 'no-store' });
+        
         if (!response.ok) {
             throw new Error(`Failed to download ${item.relativePath}: HTTP ${response.status}`);
         }
 
-        // Write Stream
         const arrayBuffer = await response.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
         fs.writeFileSync(targetPath, buffer);
     }
     
-    // 3. SWAP Folders (Atomic Switch)
-    // Remove old hot_update folder
-    if (fs.existsSync(hotUpdatePath)) {
-        fs.rmSync(hotUpdatePath, { recursive: true, force: true });
-    }
+    // 3. DO NOT SWAP HERE.
+    // Wir lassen den 'hot_update_temp' Ordner einfach liegen.
+    // Beim nächsten App-Start wird 'applyPendingUpdates()' ihn finden und austauschen.
     
-    // Rename temp to real
-    fs.renameSync(hotUpdateTempPath, hotUpdatePath);
-
-    console.log("Atomic Update successful. Swapped folders.");
-    
+    console.log("Download complete. Ready for restart.");
     return { success: true };
+
   } catch (error) {
-    console.error('Update failed:', error);
+    console.error('Download failed:', error);
     // Cleanup temp on failure
     if (fs.existsSync(hotUpdateTempPath)) {
         fs.rmSync(hotUpdateTempPath, { recursive: true, force: true });
@@ -269,16 +283,13 @@ ipcMain.handle('generate-pdf', async (event, htmlContent) => {
     let pdfWindow = new BrowserWindow({ show: false, width: 800, height: 1200 });
     try {
         await pdfWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
-        
         const pdfData = await pdfWindow.webContents.printToPDF({
             printBackground: true,
             pageSize: 'A4',
             margins: { top: 0, bottom: 0, left: 0, right: 0 }
         });
-        
         pdfWindow.close();
         pdfWindow = null;
-        
         return pdfData; 
     } catch (error) {
         if (pdfWindow) pdfWindow.close();
@@ -286,15 +297,36 @@ ipcMain.handle('generate-pdf', async (event, htmlContent) => {
     }
 });
 
-app.whenReady().then(() => {
-  createWindow();
+// APP LIFECYCLE
+const gotTheLock = app.requestSingleInstanceLock();
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
     }
   });
-});
+
+  // WICHTIG: Updates anwenden BEVOR irgendetwas anderes passiert
+  // Wir machen das synchron/direkt hier im Top-Level oder im ready handler VOR createWindow
+  applyPendingUpdates();
+  
+  // Dann erst aufräumen
+  cleanupStaleUpdates();
+
+  app.whenReady().then(() => {
+    createWindow();
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow();
+      }
+    });
+  });
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
