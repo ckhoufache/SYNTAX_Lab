@@ -106,6 +106,8 @@ export const Settings: React.FC<SettingsProps> = ({
   const [inviteEmail, setInviteEmail] = useState('');
   const [isInviting, setIsInviting] = useState(false);
   
+  const [newProduct, setNewProduct] = useState({ title: '', value: '' }); // State for new product preset
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Effects
@@ -247,6 +249,23 @@ export const Settings: React.FC<SettingsProps> = ({
       }
   };
 
+  const handleAddProduct = () => {
+      if (!newProduct.title || !newProduct.value) return;
+      const newItem: ProductPreset = {
+          id: crypto.randomUUID(),
+          title: newProduct.title,
+          value: parseFloat(newProduct.value),
+          isSubscription: false 
+      };
+      onUpdatePresets([...productPresets, newItem]);
+      setNewProduct({ title: '', value: '' });
+  };
+
+  const handleDeleteProduct = async (id: string) => {
+       await dataService.deleteProductPreset(id);
+       onUpdatePresets(productPresets.filter(p => p.id !== id));
+  };
+
   return (
     <div className="flex-1 bg-slate-50 h-screen overflow-y-auto flex flex-col relative">
       <header className="bg-white border-b border-slate-200 px-8 py-6 shrink-0">
@@ -382,7 +401,47 @@ export const Settings: React.FC<SettingsProps> = ({
                      </div>
                  </SubSection>
                  <SubSection title="Produkt Presets" isDark={isDark} isOpen={activeSubSection === 'config_products'} onToggle={() => toggleSubSection('config_products')}>
-                     <div className="py-2"><p className="text-sm text-slate-500">Verwalten Sie Ihre Produkte hier.</p></div>
+                     <div className="space-y-4">
+                        {/* List existing */}
+                        <div className="grid gap-2">
+                            {productPresets.map(p => (
+                                <div key={p.id} className="flex justify-between items-center p-3 bg-white border border-slate-200 rounded-lg">
+                                    <span className="font-medium text-sm text-slate-700">{p.title}</span>
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-sm font-bold text-indigo-600">{p.value.toLocaleString('de-DE')} €</span>
+                                        <button onClick={() => handleDeleteProduct(p.id)} className="text-slate-400 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
+                                    </div>
+                                </div>
+                            ))}
+                            {productPresets.length === 0 && <p className="text-sm text-slate-400 italic">Keine Produkte vorhanden.</p>}
+                        </div>
+
+                        {/* Add New */}
+                        <div className="flex gap-2 items-end pt-4 border-t border-slate-100">
+                            <div className="flex-1">
+                                <label className="text-xs font-bold uppercase text-slate-500">Produktname</label>
+                                <input
+                                    value={newProduct.title}
+                                    onChange={e => setNewProduct({...newProduct, title: e.target.value})}
+                                    className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
+                                    placeholder="z.B. Beratungspaket"
+                                />
+                            </div>
+                            <div className="w-32">
+                                <label className="text-xs font-bold uppercase text-slate-500">Preis (€)</label>
+                                <input
+                                    type="number"
+                                    value={newProduct.value}
+                                    onChange={e => setNewProduct({...newProduct, value: e.target.value})}
+                                    className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
+                                    placeholder="0.00"
+                                />
+                            </div>
+                            <button onClick={handleAddProduct} disabled={!newProduct.title || !newProduct.value} className="bg-indigo-600 disabled:opacity-50 text-white p-2.5 rounded-lg mb-[1px] hover:bg-indigo-700">
+                                <Plus className="w-5 h-5" />
+                            </button>
+                        </div>
+                    </div>
                  </SubSection>
                  <SubSection title="E-Mail Versand & Automation" isDark={isDark} isOpen={activeSubSection === 'config_email_automation'} onToggle={() => toggleSubSection('config_email_automation')}>
                      <div className="py-2"><p className="text-sm text-slate-500">Konfigurieren Sie E-Mail Vorlagen.</p></div>
