@@ -296,6 +296,8 @@ export const Settings: React.FC<SettingsProps> = ({
   const [backendForm, setBackendForm] = useState<BackendConfig>(backendConfig);
   const [appVersion, setAppVersion] = useState("Loading...");
   
+  const [teamMembers, setTeamMembers] = useState<UserProfile[]>([]);
+  
   // Accordion State Management
   const [activeSection, setActiveSection] = useState<string | null>('profile');
   const [activeSubSection, setActiveSubSection] = useState<string | null>('profile_data');
@@ -373,6 +375,12 @@ export const Settings: React.FC<SettingsProps> = ({
           setAppVersion(ver);
       };
       fetchVersion();
+      
+      const fetchTeam = async () => {
+          const team = await dataService.getAllUsers();
+          setTeamMembers(team);
+      };
+      fetchTeam();
   }, [dataService]);
 
   useEffect(() => {
@@ -471,7 +479,10 @@ export const Settings: React.FC<SettingsProps> = ({
       setNewPresetIsSub(false);
   };
 
-  const handleDeletePreset = (id: string) => { 
+  const handleDeletePreset = async (id: string) => { 
+      // Ensure backend deletion first
+      await dataService.deleteProductPreset(id);
+      // Then update UI
       const newArray = localPresets.filter(p => p.id !== id);
       setLocalPresets(newArray);
       onUpdatePresets(newArray);
@@ -684,6 +695,44 @@ export const Settings: React.FC<SettingsProps> = ({
                                  <div className="w-4 h-4 rounded-full bg-slate-900 border border-slate-700"></div> Dunkel
                              </button>
                          </div>
+                    </div>
+                </SubSection>
+
+                {/* TEAM MEMBERS LIST (Only visible when connected to Firebase) */}
+                <SubSection 
+                    title="Team Mitglieder (Cloud)" 
+                    isDark={isDark}
+                    isOpen={activeSubSection === 'profile_team'}
+                    onToggle={() => toggleSubSection('profile_team')}
+                >
+                    <div className="py-2">
+                        {teamMembers.length > 0 ? (
+                            <div className="grid gap-3">
+                                {teamMembers.map((member, idx) => (
+                                    <div key={idx} className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-100 dark:border-slate-700">
+                                        {member.avatar ? (
+                                            <img src={member.avatar} alt="User" className="w-8 h-8 rounded-full object-cover"/>
+                                        ) : (
+                                            <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-xs">
+                                                {member.firstName?.charAt(0)}{member.lastName?.charAt(0)}
+                                            </div>
+                                        )}
+                                        <div>
+                                            <p className="text-sm font-bold dark:text-white">{member.firstName} {member.lastName}</p>
+                                            <p className="text-xs text-slate-500">{member.email}</p>
+                                        </div>
+                                        <div className="ml-auto text-xs bg-slate-200 dark:bg-slate-700 px-2 py-1 rounded text-slate-600 dark:text-slate-300">
+                                            {member.role || 'Mitglied'}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="text-sm text-slate-400 italic">Keine weiteren Teammitglieder gefunden oder Offline.</p>
+                        )}
+                        <p className="text-xs text-slate-400 mt-3 border-t pt-2 dark:border-slate-700">
+                            Diese Liste zeigt alle Benutzer, die Zugriff auf die gemeinsame Datenbank haben.
+                        </p>
                     </div>
                 </SubSection>
              </div>

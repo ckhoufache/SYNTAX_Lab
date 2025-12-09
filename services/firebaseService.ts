@@ -177,6 +177,10 @@ export class FirebaseDataService implements IDataService {
         return null;
     }
 
+    async getAllUsers(): Promise<UserProfile[]> { 
+        return this.getAll<UserProfile>('userProfile'); 
+    }
+
     async saveUserProfile(profile: UserProfile): Promise<UserProfile> { 
         // Modified to save to specific ID
         const instanceId = this.getLocalInstanceId();
@@ -200,6 +204,10 @@ export class FirebaseDataService implements IDataService {
         }
         await batch.commit();
         return presets;
+    }
+
+    async deleteProductPreset(id: string): Promise<void> {
+        await this.delete('productPresets', id);
     }
 
     async getInvoiceConfig(): Promise<InvoiceConfig> {

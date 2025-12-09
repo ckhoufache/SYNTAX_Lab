@@ -261,9 +261,11 @@ export interface IDataService {
     updateExpense(expense: Expense): Promise<Expense>;
     deleteExpense(id: string): Promise<void>;
     getUserProfile(): Promise<UserProfile | null>;
+    getAllUsers(): Promise<UserProfile[]>; // NEW: Team Support
     saveUserProfile(profile: UserProfile): Promise<UserProfile>;
     getProductPresets(): Promise<ProductPreset[]>;
     saveProductPresets(presets: ProductPreset[]): Promise<ProductPreset[]>;
+    deleteProductPreset(id: string): Promise<void>; // NEW: Clean Deletion
     getInvoiceConfig(): Promise<InvoiceConfig>;
     saveInvoiceConfig(config: InvoiceConfig): Promise<InvoiceConfig>;
     getEmailTemplates(): Promise<EmailTemplate[]>;
@@ -574,6 +576,9 @@ class LocalDataService implements IDataService {
 
     // --- User Profile & Config ---
     async getUserProfile(): Promise<UserProfile | null> { return this.cache.userProfile; }
+    async getAllUsers(): Promise<UserProfile[]> { 
+        return this.cache.userProfile ? [this.cache.userProfile] : [];
+    }
     async saveUserProfile(profile: UserProfile): Promise<UserProfile> {
         this.set('userProfile', 'userProfile', profile);
         return profile;
@@ -583,6 +588,11 @@ class LocalDataService implements IDataService {
     async saveProductPresets(presets: ProductPreset[]): Promise<ProductPreset[]> {
         this.set('productPresets', 'productPresets', presets);
         return presets;
+    }
+    async deleteProductPreset(id: string): Promise<void> {
+        const list = this.cache.productPresets || [];
+        const newList = list.filter(p => p.id !== id);
+        this.set('productPresets', 'productPresets', newList);
     }
 
     async getInvoiceConfig(): Promise<InvoiceConfig> { 

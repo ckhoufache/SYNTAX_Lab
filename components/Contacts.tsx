@@ -555,8 +555,8 @@ export const Contacts: React.FC<ContactsProps> = ({
       {/* Tabs (NEU) */}
       <div className="bg-white px-8 border-b border-slate-100 flex gap-1">
           <button onClick={() => setActiveTab('all')} className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'all' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Alle</button>
-          <button onClick={() => setActiveTab('customer')} className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'customer' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Kunden</button>
           <button onClick={() => setActiveTab('lead')} className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'lead' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Leads</button>
+          <button onClick={() => setActiveTab('customer')} className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'customer' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Kunden</button>
           <button onClick={() => setActiveTab('newsletter')} className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'newsletter' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Newsletter</button>
       </div>
 
