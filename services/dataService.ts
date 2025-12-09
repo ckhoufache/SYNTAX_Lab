@@ -371,15 +371,20 @@ class LocalDataService implements IDataService {
         const ipcRenderer = window.require('electron').ipcRenderer;
 
         try {
-            statusCallback?.("Prüfe Version...");
+            statusCallback?.("Verbinde mit Server...");
             
-            // 1. Fetch remote version
-            const response = await fetch(`${baseUrl}/version.json?t=${Date.now()}`);
-            if (!response.ok) throw new Error("Update-Server nicht erreichbar");
+            // 1. Fetch remote version with heavy cache busting
+            const versionUrl = `${baseUrl}/version.json?t=${Date.now()}&r=${Math.random()}`;
+            const response = await fetch(versionUrl);
+            
+            if (!response.ok) throw new Error(`Server antwortet nicht (Status ${response.status})`);
             
             const remoteData = await response.json();
             const currentVersion = await this.getAppVersion();
             const cleanCurrentVersion = currentVersion.split(' ')[0]; // Remove (Hot) suffix
+
+            // Status Update für Debugging
+            statusCallback?.(`Gefunden: ${remoteData.version} (Server) vs. ${cleanCurrentVersion} (Lokal)`);
 
             // Compare versions
             const isNewer = (v1: string, v2: string) => {
@@ -392,14 +397,15 @@ class LocalDataService implements IDataService {
                 return false;
             };
 
+            // Bei Force ignorieren wir den Version Check
             if (!force && !isNewer(remoteData.version, cleanCurrentVersion)) {
                 return false;
             }
 
-            statusCallback?.(`Neue Version gefunden: ${remoteData.version}. Lade Dateiliste...`);
+            statusCallback?.(`Starte Download für v${remoteData.version}...`);
 
             // 2. Fetch Manifest (Created by build-manifest.js)
-            const manifestResponse = await fetch(`${baseUrl}/manifest.json?t=${Date.now()}`);
+            const manifestResponse = await fetch(`${baseUrl}/manifest.json?t=${Date.now()}&r=${Math.random()}`);
             if (!manifestResponse.ok) throw new Error("Manifest nicht gefunden (Server-Fehler).");
             
             const files: string[] = await manifestResponse.json();
@@ -438,7 +444,7 @@ class LocalDataService implements IDataService {
         if (window.require) {
             try { return await window.require('electron').ipcRenderer.invoke('get-app-version'); } catch(e){}
         }
-        return '1.2.8'; 
+        return '1.2.11'; 
     }
 
     // ... Standard CRUD Implementations ...
