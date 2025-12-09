@@ -21,12 +21,62 @@ let server;
 const userDataPath = app.getPath('userData');
 const hotUpdatePath = path.join(userDataPath, 'hot_update');
 
+/**
+ * Vergleicht zwei Versionstrings (z.B. "1.2.0" vs "1.2.1").
+ * Gibt 1 zurück wenn v1 > v2, -1 wenn v1 < v2, 0 wenn gleich.
+ */
+function compareVersions(v1, v2) {
+    const p1 = v1.split('.').map(Number);
+    const p2 = v2.split('.').map(Number);
+    for (let i = 0; i < 3; i++) {
+        const n1 = p1[i] || 0;
+        const n2 = p2[i] || 0;
+        if (n1 > n2) return 1;
+        if (n1 < n2) return -1;
+    }
+    return 0;
+}
+
+/**
+ * Bereinigt den Hot-Update Ordner, falls die installierte Binary-Version
+ * neuer oder gleich alt ist wie das cached Update.
+ * Das garantiert, dass nach einem EXE-Install die neuen Daten genutzt werden.
+ */
+function cleanupStaleUpdates() {
+    try {
+        if (!fs.existsSync(hotUpdatePath)) return;
+
+        const versionFile = path.join(hotUpdatePath, 'version.json');
+        if (fs.existsSync(versionFile)) {
+            const hotUpdateData = JSON.parse(fs.readFileSync(versionFile, 'utf-8'));
+            const hotUpdateVersion = hotUpdateData.version;
+            const binaryVersion = app.getVersion();
+
+            console.log(`Checking versions - Binary: ${binaryVersion}, HotUpdate: ${hotUpdateVersion}`);
+
+            // Wenn Binary >= HotUpdate, dann ist das HotUpdate veraltet oder wir haben gerade
+            // frisch installiert. In beiden Fällen wollen wir die sauberen Daten aus der Binary nutzen.
+            if (compareVersions(binaryVersion, hotUpdateVersion) >= 0) {
+                console.log('Binary is newer or equal. Clearing stale hot_update folder.');
+                fs.rmSync(hotUpdatePath, { recursive: true, force: true });
+            }
+        } else {
+            // Hot Update Ordner existiert, aber keine version.json? Kaputt. Weg damit.
+            console.log('Corrupted hot_update folder detected. Clearing.');
+            fs.rmSync(hotUpdatePath, { recursive: true, force: true });
+        }
+    } catch (e) {
+        console.error("Error cleaning up updates:", e);
+    }
+}
+
 function startLocalServer() {
+  // Zuerst aufräumen!
+  cleanupStaleUpdates();
+
   const serverApp = express();
 
-  // FIX: Wir löschen den Ordner NICHT mehr.
-  // Stattdessen prüfen wir, ob ein Update existiert, und bedienen Dateien bevorzugt von dort.
-  
+  // Prüfen ob (nach dem Cleanup) noch ein valides Hot Update existiert
   if (fs.existsSync(hotUpdatePath)) {
       console.log('Serving updates from hot_update folder');
       // Express schaut zuerst hier nach Dateien (z.B. index.html, assets/...)
@@ -62,7 +112,7 @@ async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
-    title: "SyntaxLabCRM v1.2.1",
+    title: `SyntaxLabCRM v${app.getVersion()}`,
     icon: path.join(__dirname, 'dist/favicon.ico'),
     webPreferences: {
       nodeIntegration: true,
@@ -164,7 +214,12 @@ ipcMain.handle('install-update', async (event, files) => {
       }
 
       if (file.content) {
-          fs.writeFileSync(targetPath, file.content, 'utf-8');
+          // IMPORTANT: Handle Base64 Encoding for binary files (images, etc)
+          if (file.encoding === 'base64') {
+              fs.writeFileSync(targetPath, Buffer.from(file.content, 'base64'));
+          } else {
+              fs.writeFileSync(targetPath, file.content, 'utf-8');
+          }
       }
     }
     

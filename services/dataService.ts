@@ -741,7 +741,7 @@ class LocalDataService implements IDataService {
                 }
 
                 // 5. Extract Assets (Vite hashed JS and CSS)
-                const filesToDownload: { name: string, content: string, type: 'file' | 'asset' }[] = [];
+                const filesToDownload: { name: string, content: string, type: 'file' | 'asset', encoding?: string }[] = [];
                 filesToDownload.push({ name: 'index.html', content: indexText, type: 'file' });
 
                 // RegEx to find /assets/index-....js and .css
@@ -756,14 +756,28 @@ class LocalDataService implements IDataService {
                 // Also manually add version.json to the list to update local state next time
                 filesToDownload.push({ name: 'version.json', content: JSON.stringify({version: remoteVersion || '1.2.1'}), type: 'file' });
 
-                // 6. Download Assets
+                // 6. Download Assets (UPDATED to handle BINARY)
                 for (const assetName of assetsToFetch) {
                     statusCallback?.(`Lade Asset: ${assetName}...`);
                     try {
                         const assetRes = await fetch(`${baseUrl}/assets/${assetName}?t=${Date.now()}`, { cache: 'no-store' });
                         if(assetRes.ok) {
-                            const content = await assetRes.text();
-                            filesToDownload.push({ name: assetName, content: content, type: 'asset' });
+                            // Convert Blob to Base64 to safely pass through IPC
+                            const blob = await assetRes.blob();
+                            const base64 = await new Promise<string>((resolve) => {
+                                const reader = new FileReader();
+                                reader.onloadend = () => resolve(reader.result as string);
+                                reader.readAsDataURL(blob);
+                            });
+                            // Remove data URL prefix (e.g. "data:application/javascript;base64,")
+                            const cleanBase64 = base64.split(',')[1];
+                            
+                            filesToDownload.push({ 
+                                name: assetName, 
+                                content: cleanBase64, 
+                                type: 'asset',
+                                encoding: 'base64' // Flag for main process
+                            });
                         } else {
                             statusCallback?.(`Warnung: Asset ${assetName} nicht gefunden.`);
                         }
