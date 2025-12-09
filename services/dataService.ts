@@ -412,7 +412,8 @@ class LocalDataService implements IDataService {
             
             // 3. Construct Download List
             const downloadManifest = files.map(file => ({
-                url: `${baseUrl}/${file}`,
+                // Encode filename parts to handle spaces etc.
+                url: `${baseUrl}/${file.split('/').map(s => encodeURIComponent(s)).join('/')}`,
                 relativePath: file
             }));
             
@@ -436,6 +437,10 @@ class LocalDataService implements IDataService {
         } catch (e: any) {
             console.error("Update Error:", e);
             statusCallback?.(`Fehler: ${e.message}`);
+            // Explicitly Alert the user if they triggered this manually
+            if (statusCallback) {
+                alert(`Update fehlgeschlagen:\n${e.message}`);
+            }
             throw e;
         }
     }
@@ -444,7 +449,7 @@ class LocalDataService implements IDataService {
         if (window.require) {
             try { return await window.require('electron').ipcRenderer.invoke('get-app-version'); } catch(e){}
         }
-        return '1.2.11'; 
+        return '1.2.13'; 
     }
 
     // ... Standard CRUD Implementations ...

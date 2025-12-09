@@ -13,10 +13,11 @@ function getAllFiles(dirPath, arrayOfFiles) {
   arrayOfFiles = arrayOfFiles || [];
 
   files.forEach(function(file) {
-    if (fs.statSync(dirPath + "/" + file).isDirectory()) {
-      arrayOfFiles = getAllFiles(dirPath + "/" + file, arrayOfFiles);
+    const fullPath = path.join(dirPath, file);
+    if (fs.statSync(fullPath).isDirectory()) {
+      arrayOfFiles = getAllFiles(fullPath, arrayOfFiles);
     } else {
-      arrayOfFiles.push(path.join(dirPath, "/", file));
+      arrayOfFiles.push(fullPath);
     }
   });
 
@@ -25,19 +26,21 @@ function getAllFiles(dirPath, arrayOfFiles) {
 
 try {
     if (!fs.existsSync(distPath)) {
-        console.error("Dist folder not found!");
+        console.error("Dist folder not found! Run 'npm run build' first.");
         process.exit(1);
     }
 
     const files = getAllFiles(distPath);
+    
     const manifest = files.map(f => {
-        // Create relative path (e.g., "assets/index.js")
-        // Fix Windows backslashes
-        return f.replace(distPath, '').replace(/^[\/\\]/, '').replace(/\\/g, '/');
-    }).filter(f => f !== 'version.json' && f !== 'manifest.json'); // Exclude meta files from the list itself
+        // Use path.relative to get the path relative to 'dist'
+        const relativePath = path.relative(distPath, f);
+        // Force forward slashes (standard for web URLs) regardless of OS
+        return relativePath.split(path.sep).join('/');
+    }).filter(f => f !== 'version.json' && f !== 'manifest.json'); // Exclude meta files
 
     fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-    console.log(`Manifest generated with ${manifest.length} files.`);
+    console.log(`Manifest generated with ${manifest.length} files (POSIX paths).`);
 } catch (e) {
     console.error("Error generating manifest:", e);
     process.exit(1);
