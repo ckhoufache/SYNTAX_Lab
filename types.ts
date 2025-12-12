@@ -136,6 +136,9 @@ export interface Expense {
   attachmentName?: string;
   contactId?: string; // NEU: Zuordnung zu Kunde/Projekt
   contactName?: string; // NEU: Cache Name
+  
+  // NEU: Wiederkehrende Ausgaben
+  interval?: 'one_time' | 'monthly' | 'quarterly' | 'half_yearly' | 'yearly';
 }
 
 // NEW: Attachment Structure for Email Settings

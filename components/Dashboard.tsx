@@ -151,10 +151,9 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
     }
   }, [invoices]);
 
-  // --- RUNWAY FORECAST CALCULATION ---
+  // --- RUNWAY FORECAST CALCULATION (UPDATED LOGIC) ---
   const runwayData = useMemo(() => {
-    // 1. Current Liquid Assets (Start Point)
-    // Formula: Sum of ALL Paid Invoices - Sum of ALL Expenses
+    // 1. Current Liquid Assets
     const totalPaidRevenue = invoices.filter(i => i.isPaid).reduce((sum, i) => sum + i.amount, 0);
     const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
     let currentBalance = totalPaidRevenue - totalExpenses;
@@ -168,22 +167,35 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
         return sum + monthlyAmount;
     }, 0);
 
-    // 3. Burn Rate (Average Monthly Expenses - Last 3 Months)
+    // 3. Burn Rate Calculation (Split into Variable & Fixed)
+    // A) Fixed Recurring Costs (Based on ACTIVE recurring expenses)
+    const recurringExpenses = expenses.filter(e => e.interval && e.interval !== 'one_time');
+    const fixedMonthlyBurn = recurringExpenses.reduce((sum, e) => {
+        if (e.interval === 'monthly') return sum + e.amount;
+        if (e.interval === 'quarterly') return sum + (e.amount / 3);
+        if (e.interval === 'half_yearly') return sum + (e.amount / 6);
+        if (e.interval === 'yearly') return sum + (e.amount / 12);
+        return sum;
+    }, 0);
+
+    // B) Variable Costs (Average of 'one_time' expenses over last 3 months)
     const today = new Date();
     const threeMonthsAgo = new Date();
     threeMonthsAgo.setMonth(today.getMonth() - 3);
 
-    const recentExpenses = expenses.filter(e => new Date(e.date) >= threeMonthsAgo);
-    const recentExpensesSum = recentExpenses.reduce((sum, e) => sum + e.amount, 0);
-    // Use 3 months as divisor for stability, or actual months passed if < 3? 
-    // Using simple logic: Sum / 3 (assuming business exists > 3 months)
-    const burnRate = recentExpensesSum / 3;
+    const recentVariableExpenses = expenses.filter(e => 
+        (!e.interval || e.interval === 'one_time') && 
+        new Date(e.date) >= threeMonthsAgo
+    );
+    const variableBurnSum = recentVariableExpenses.reduce((sum, e) => sum + e.amount, 0);
+    const avgVariableBurn = variableBurnSum / 3; // Normalize to monthly
+
+    const totalBurnRate = fixedMonthlyBurn + avgVariableBurn;
 
     const data = [];
     const monthNames = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
 
     // Forecast for next 6 months
-    // Month 0 is "Now"
     for (let i = 0; i <= 6; i++) {
         const d = new Date();
         d.setMonth(d.getMonth() + i);
@@ -191,15 +203,15 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
         data.push({
             name: i === 0 ? 'Heute' : monthNames[d.getMonth()],
             balance: currentBalance,
-            burnRate: burnRate,
+            burnRate: totalBurnRate,
             mrr: mrr
         });
 
         // Calculate next month's starting balance
-        currentBalance = currentBalance + mrr - burnRate;
+        currentBalance = currentBalance + mrr - totalBurnRate;
     }
 
-    return { data, mrr, burnRate, currentBalance: totalPaidRevenue - totalExpenses };
+    return { data, mrr, burnRate: totalBurnRate, currentBalance: totalPaidRevenue - totalExpenses };
   }, [invoices, expenses, contacts]);
 
   // --- Notifications Logic ---
@@ -467,7 +479,7 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
                          <p className="font-bold text-green-600">+{runwayData.mrr.toLocaleString('de-DE', {maximumFractionDigits:0})} €</p>
                      </div>
                      <div className="text-right">
-                         <p className="text-slate-400 text-xs uppercase font-bold">Burn Rate (Ø 3M)</p>
+                         <p className="text-slate-400 text-xs uppercase font-bold">Burn Rate (Fix + Var)</p>
                          <p className="font-bold text-red-600">-{runwayData.burnRate.toLocaleString('de-DE', {maximumFractionDigits:0})} €</p>
                      </div>
                      <div className="text-right border-l pl-4 dark:border-slate-700">

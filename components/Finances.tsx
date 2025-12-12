@@ -1,5 +1,6 @@
+
 import React, { useState, useMemo } from 'react';
-import { Plus, X, Trash2, CheckCircle2, TrendingUp, TrendingDown, PiggyBank, Printer, Pencil, RefreshCw, Ban, Loader2 } from 'lucide-react';
+import { Plus, X, Trash2, CheckCircle2, TrendingUp, TrendingDown, PiggyBank, Printer, Pencil, RefreshCw, Ban, Loader2, Repeat } from 'lucide-react';
 import { Invoice, Contact, Expense, InvoiceConfig, Activity } from '../types';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { DataServiceFactory, compileInvoiceTemplate } from '../services/dataService';
@@ -65,7 +66,8 @@ export const Finances: React.FC<FinancesProps> = ({
         amount: 0,
         date: new Date().toISOString().split('T')[0],
         category: 'office',
-        contactId: ''
+        contactId: '',
+        interval: 'one_time'
     });
 
     // Stats
@@ -84,6 +86,17 @@ export const Finances: React.FC<FinancesProps> = ({
     }, [expenses]);
     
     const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
+
+    // Helper: Interval Label
+    const getIntervalLabel = (interval?: string) => {
+        switch(interval) {
+            case 'monthly': return 'mtl.';
+            case 'quarterly': return 'alle 3 Mon.';
+            case 'half_yearly': return 'alle 6 Mon.';
+            case 'yearly': return 'jährl.';
+            default: return '';
+        }
+    };
 
     // Handlers
     const handleInvoiceSubmit = (e: React.FormEvent) => {
@@ -165,7 +178,8 @@ export const Finances: React.FC<FinancesProps> = ({
                 amount: 0,
                 date: new Date().toISOString().split('T')[0],
                 category: 'office',
-                contactId: ''
+                contactId: '',
+                interval: 'one_time'
             });
         }
         setIsExpenseModalOpen(true);
@@ -348,9 +362,20 @@ export const Finances: React.FC<FinancesProps> = ({
                                     {expenses.length > 0 ? expenses.map(expense => (
                                         <tr key={expense.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
                                             <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{expense.date}</td>
-                                            <td className="px-6 py-4 font-medium dark:text-slate-200">{expense.title} {expense.contactName && <span className="text-xs text-slate-400 block">{expense.contactName}</span>}</td>
+                                            <td className="px-6 py-4 font-medium dark:text-slate-200">
+                                                {expense.title} 
+                                                {expense.contactName && <span className="text-xs text-slate-400 block">{expense.contactName}</span>}
+                                            </td>
                                             <td className="px-6 py-4"><span className="capitalize bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded text-xs text-slate-600 dark:text-slate-300">{expense.category}</span></td>
-                                            <td className="px-6 py-4 font-bold text-slate-800 dark:text-slate-200">{expense.amount.toLocaleString('de-DE')} €</td>
+                                            <td className="px-6 py-4">
+                                                <div className="font-bold text-slate-800 dark:text-slate-200">{expense.amount.toLocaleString('de-DE')} €</div>
+                                                {expense.interval && expense.interval !== 'one_time' && (
+                                                    <div className="flex items-center gap-1 text-[10px] text-slate-500 mt-0.5">
+                                                        <Repeat className="w-3 h-3" />
+                                                        {getIntervalLabel(expense.interval)}
+                                                    </div>
+                                                )}
+                                            </td>
                                             <td className="px-6 py-4 text-right flex justify-end gap-2">
                                                 <button onClick={() => openExpenseModal(expense)} className="p-1.5 text-slate-400 hover:text-blue-600 rounded hover:bg-slate-100 dark:hover:bg-slate-700" title="Bearbeiten"><Pencil className="w-4 h-4"/></button>
                                                 <button onClick={() => onDeleteExpense(expense.id)} className="p-1.5 text-slate-400 hover:text-red-600 rounded hover:bg-slate-100 dark:hover:bg-slate-700" title="Löschen"><Trash2 className="w-4 h-4"/></button>
@@ -444,6 +469,23 @@ export const Finances: React.FC<FinancesProps> = ({
                                     </select>
                                 </div>
                             </div>
+                            
+                            {/* NEU: Intervall Auswahl */}
+                            <div>
+                                <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Abrechnungs-Intervall</label>
+                                <select 
+                                    value={expenseForm.interval || 'one_time'} 
+                                    onChange={e=>setExpenseForm({...expenseForm, interval:e.target.value as any})} 
+                                    className="w-full border p-2 rounded mt-1 dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+                                >
+                                    <option value="one_time">Einmalig</option>
+                                    <option value="monthly">Monatlich</option>
+                                    <option value="quarterly">Vierteljährlich (alle 3 Mon.)</option>
+                                    <option value="half_yearly">Halbjährlich (alle 6 Mon.)</option>
+                                    <option value="yearly">Jährlich</option>
+                                </select>
+                            </div>
+
                             <div>
                                 <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Projekt / Kunde (Optional)</label>
                                 <select value={expenseForm.contactId} onChange={e=>setExpenseForm({...expenseForm, contactId:e.target.value})} className="w-full border p-2 rounded mt-1 dark:bg-slate-700 dark:border-slate-600 dark:text-white">
