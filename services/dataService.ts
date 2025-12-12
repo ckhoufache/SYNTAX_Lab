@@ -359,7 +359,6 @@ class LocalDataService implements IDataService {
 
     // --- UPDATE LOGIC (DIAGNOSTIC MODE) ---
     async checkAndInstallUpdate(url: string, statusCallback?: (status: string) => void, force: boolean = false): Promise<boolean> {
-        // ULTRA-SAFE ALERT: Must run if force is true
         if (force) window.alert(`[FORCE] checkAndInstallUpdate gestartet.\nURL: ${url}`);
         
         if (!url) {
@@ -370,7 +369,6 @@ class LocalDataService implements IDataService {
         const baseUrl = url.replace(/\/$/, "");
         
         // ROBUST ELECTRON CHECK
-        // If we have window.require, it's Electron.
         const isElectron = !!(window as any).require;
         
         if (!isElectron) {
@@ -399,7 +397,7 @@ class LocalDataService implements IDataService {
             const response = await fetch(versionUrl);
             
             if (!response.ok) {
-                const err = `Server antwortet nicht (Status ${response.status} ${response.statusText})`;
+                const err = `Server antwortet nicht (Status ${response.status} ${response.statusText}). URL: ${versionUrl}`;
                 if (force) window.alert(err);
                 throw new Error(err);
             }
@@ -420,8 +418,10 @@ class LocalDataService implements IDataService {
                 const p1 = v1.split('.').map(Number);
                 const p2 = v2.split('.').map(Number);
                 for (let i = 0; i < 3; i++) {
-                    if (p1[i] > p2[i]) return true;
-                    if (p1[i] < p2[i]) return false;
+                    const n1 = p1[i] || 0;
+                    const n2 = p2[i] || 0;
+                    if (n1 > n2) return true;
+                    if (n1 < n2) return false;
                 }
                 return false;
             };
@@ -442,18 +442,25 @@ class LocalDataService implements IDataService {
             
             // 3. Construct Download List
             const downloadManifest = files.map(file => ({
+                // Use encodeURIComponent for parts to handle spaces etc, but preserve structure
                 url: `${baseUrl}/${file.split('/').map(s => encodeURIComponent(s)).join('/')}`,
                 relativePath: file
             }));
             
+            // Ensure version.json is also downloaded (crucial for next checks)
             downloadManifest.push({
                 url: `${baseUrl}/version.json`,
                 relativePath: 'version.json'
             });
 
             // 4. Trigger Download in Main Process
-            statusCallback?.(`Lade ${files.length} Dateien herunter...`);
-            const result = await ipcRenderer.invoke('install-update', downloadManifest);
+            statusCallback?.(`Lade ${downloadManifest.length} Dateien herunter...`);
+            
+            // WICHTIG: Übergebe die Zielversion an den Main-Process, damit der korrekte Ordner erstellt wird
+            const result = await ipcRenderer.invoke('install-update', { 
+                manifest: downloadManifest, 
+                version: remoteData.version 
+            });
 
             if (result.success) {
                 statusCallback?.("Download abgeschlossen!");
@@ -465,7 +472,7 @@ class LocalDataService implements IDataService {
         } catch (e: any) {
             console.error("Update Error:", e);
             statusCallback?.(`Fehler: ${e.message}`);
-            window.alert(`Update Exception:\n${e.message}`);
+            if (force) window.alert(`Update Exception:\n${e.message}`);
             throw e;
         }
     }

@@ -11,127 +11,102 @@ const __dirname = path.dirname(__filename);
 const INTERNAL_PORT = 3000;
 const APP_URL = `http://localhost:${INTERNAL_PORT}`;
 
-// User Agent Spoofing für Google Auth (täuscht echten Chrome vor)
-const GOOGLE_AUTH_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+const APP_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 SyntaxLabCRM-Desktop';
 
 let mainWindow;
 let server;
 
-// HOT UPDATE PFAD
+// NEUE UPDATE STRUKTUR:
+// userData/updates/v1.0.1/
+// userData/updates/v1.0.2/
+// userData/active_version.json -> { "current": "v1.0.2" }
 const userDataPath = app.getPath('userData');
-const hotUpdatePath = path.join(userDataPath, 'hot_update');
-const hotUpdateTempPath = path.join(userDataPath, 'hot_update_temp'); // Temp folder for atomic writes
+const updatesRootDir = path.join(userDataPath, 'updates');
+const activeVersionFile = path.join(userDataPath, 'active_version.json');
+
+// Legacy Pfade zum Bereinigen
+const legacyHotUpdatePath = path.join(userDataPath, 'hot_update');
+const legacyTempPath = path.join(userDataPath, 'hot_update_temp');
 
 /**
- * PHASE 1: BOOTLOADER LOGIC
- * Diese Funktion läuft VOR dem Server-Start und VOR dem Fenster-Öffnen.
- * Sie prüft, ob ein fertiges Update im Temp-Ordner liegt und tauscht es aus.
- * Da hier noch nichts geladen ist, gibt es keine File-Locks (Windows).
+ * Hilfsfunktion: Safe Delete (wirft keinen Fehler, wenn File gelockt ist - ignoriert es einfach)
  */
-function applyPendingUpdates() {
+function safeDeleteFolder(folderPath) {
     try {
-        if (fs.existsSync(hotUpdateTempPath)) {
-            console.log("Found pending update in hot_update_temp. Applying...");
+        if (fs.existsSync(folderPath)) {
+            fs.rmSync(folderPath, { recursive: true, force: true });
+        }
+    } catch (e) {
+        console.warn(`Could not delete folder ${folderPath} (might be locked). Ignoring.`, e.message);
+    }
+}
 
-            // 1. Altes Update löschen (falls vorhanden)
-            if (fs.existsSync(hotUpdatePath)) {
-                try {
-                    fs.rmSync(hotUpdatePath, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
-                } catch (e) {
-                    console.error("Could not delete old hot_update folder. Aborting update apply.", e);
-                    // Wenn wir das alte nicht löschen können, behalten wir es und löschen das Temp beim nächsten Cleanup
-                    return; 
+/**
+ * Ermittelt den Pfad zur AKTUELLEN Version (oder null für Fallback)
+ */
+function getActiveUpdatePath() {
+    try {
+        // 1. Legacy Cleanup (einmalig)
+        safeDeleteFolder(legacyHotUpdatePath);
+        safeDeleteFolder(legacyTempPath);
+
+        if (fs.existsSync(activeVersionFile)) {
+            const data = JSON.parse(fs.readFileSync(activeVersionFile, 'utf-8'));
+            if (data.current) {
+                const versionDir = path.join(updatesRootDir, data.current);
+                // Sicherheitscheck: Existiert index.html dort?
+                if (fs.existsSync(path.join(versionDir, 'index.html'))) {
+                    return { path: versionDir, version: data.current };
                 }
             }
-
-            // 2. Temp umbenennen zu Live
-            try {
-                fs.renameSync(hotUpdateTempPath, hotUpdatePath);
-                console.log("Update applied successfully!");
-            } catch (e) {
-                console.error("Failed to move temp folder to live.", e);
-            }
         }
     } catch (e) {
-        console.error("Critical error in bootloader update logic:", e);
+        console.error("Error determining active update path:", e);
     }
+    return null;
 }
 
 /**
- * Vergleicht zwei Versionstrings (z.B. "1.2.0" vs "1.2.1").
- * Gibt 1 zurück wenn v1 > v2, -1 wenn v1 < v2, 0 wenn gleich.
+ * Bereinigt alte Versionen, behält nur die aktive und evtl. die neuste
  */
-function compareVersions(v1, v2) {
-    const p1 = v1.split('.').map(Number);
-    const p2 = v2.split('.').map(Number);
-    for (let i = 0; i < 3; i++) {
-        const n1 = p1[i] || 0;
-        const n2 = p2[i] || 0;
-        if (n1 > n2) return 1;
-        if (n1 < n2) return -1;
-    }
-    return 0;
-}
-
-/**
- * Bereinigt den Hot-Update Ordner, falls die EXE neuer ist.
- * Strategie:
- * - EXE > Update: Update ist veraltet -> Löschen.
- * - EXE == Update: Update ist ein Hotfix oder Re-Download -> Behalten.
- * - EXE < Update: Update ist neu -> Behalten.
- */
-function cleanupStaleUpdates() {
+function cleanupOldVersions(activeVersion) {
     try {
-        // Temp Folder immer bereinigen, falls Reste da sind (z.B. fehlgeschlagener Download)
-        // Aber NICHT, wenn wir gerade applyPendingUpdates ausführen wollten (das passiert davor).
-        // Hier gehen wir davon aus, dass applyPendingUpdates schon lief.
-        if (fs.existsSync(hotUpdateTempPath)) {
-             fs.rmSync(hotUpdateTempPath, { recursive: true, force: true });
-        }
-
-        if (!fs.existsSync(hotUpdatePath)) return;
-
-        const versionFile = path.join(hotUpdatePath, 'version.json');
-        if (fs.existsSync(versionFile)) {
-            const hotUpdateData = JSON.parse(fs.readFileSync(versionFile, 'utf-8'));
-            const hotUpdateVersion = hotUpdateData.version;
-            const binaryVersion = app.getVersion();
-
-            console.log(`Checking versions - Binary: ${binaryVersion}, HotUpdate: ${hotUpdateVersion}`);
-
-            // Wenn Binary STRICT GRÖSSER ist als HotUpdate, dann ist das Update alt.
-            if (compareVersions(binaryVersion, hotUpdateVersion) === 1) {
-                console.log('Binary is strictly newer. Clearing outdated hot_update folder.');
-                fs.rmSync(hotUpdatePath, { recursive: true, force: true });
-            } else {
-                console.log('Hot update is newer or equal (Hotfix). Keeping it.');
+        if (!fs.existsSync(updatesRootDir)) return;
+        
+        const versions = fs.readdirSync(updatesRootDir);
+        versions.forEach(v => {
+            if (v !== activeVersion) {
+                // Lösche alles, was nicht die aktive Version ist
+                // (Man könnte hier Logik bauen "keep last 2", aber keep simple for now)
+                const dirToRemove = path.join(updatesRootDir, v);
+                console.log(`Cleaning up old version: ${v}`);
+                safeDeleteFolder(dirToRemove);
             }
-        } else {
-            console.log('Corrupted hot_update folder detected (no version.json). Clearing.');
-            fs.rmSync(hotUpdatePath, { recursive: true, force: true });
-        }
+        });
     } catch (e) {
-        console.error("Error cleaning up updates:", e);
+        console.error("Cleanup error (non-critical):", e);
     }
 }
 
 function startLocalServer() {
   const serverApp = express();
+  const activeUpdate = getActiveUpdatePath();
 
-  // Prüfen ob ein valides Hot Update existiert
-  if (fs.existsSync(hotUpdatePath)) {
-      console.log('Serving updates from hot_update folder');
-      serverApp.use(express.static(hotUpdatePath));
+  if (activeUpdate) {
+      console.log(`Serving from UPDATE folder: ${activeUpdate.version}`);
+      serverApp.use(express.static(activeUpdate.path));
+      
+      // Cleanup im Hintergrund (nicht blockierend)
+      setTimeout(() => cleanupOldVersions(activeUpdate.version), 5000);
+  } else {
+      console.log('Serving from INTERNAL bundle (dist)');
+      serverApp.use(express.static(path.join(__dirname, 'dist')));
   }
-
-  // Fallback: Dateien aus der eingebauten App (dist Ordner).
-  console.log('Serving fallback from internal dist folder');
-  serverApp.use(express.static(path.join(__dirname, 'dist')));
   
   serverApp.get('*', (req, res) => {
-      // Auch beim SPA-Fallback: Zuerst im Update-Ordner schauen
-      if (fs.existsSync(path.join(hotUpdatePath, 'index.html'))) {
-          res.sendFile(path.join(hotUpdatePath, 'index.html'));
+      const currentActive = getActiveUpdatePath();
+      if (currentActive) {
+          res.sendFile(path.join(currentActive.path, 'index.html'));
       } else {
           res.sendFile(path.join(__dirname, 'dist', 'index.html'));
       }
@@ -143,9 +118,7 @@ function startLocalServer() {
 }
 
 async function createWindow() {
-  console.log('Clearing Cache...');
   await session.defaultSession.clearCache();
-  await session.defaultSession.clearStorageData({ storages: ['serviceworkers', 'cachestorage'] });
 
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -161,7 +134,7 @@ async function createWindow() {
     autoHideMenuBar: false, 
   });
 
-  mainWindow.webContents.setUserAgent(GOOGLE_AUTH_USER_AGENT);
+  mainWindow.webContents.setUserAgent(APP_USER_AGENT);
 
   const isDev = !app.isPackaged && process.env.NODE_ENV === 'development';
 
@@ -182,11 +155,7 @@ async function createWindow() {
           width: 600,
           height: 700,
           center: true,
-          webPreferences: {
-             nodeIntegration: false,
-             contextIsolation: true,
-             enableRemoteModule: false
-          }
+          webPreferences: { nodeIntegration: false, contextIsolation: true }
         }
       };
     }
@@ -197,8 +166,8 @@ async function createWindow() {
     return { action: 'allow' };
   });
 
-  mainWindow.webContents.on('did-create-window', (childWindow, details) => {
-      childWindow.webContents.setUserAgent(GOOGLE_AUTH_USER_AGENT);
+  mainWindow.webContents.on('did-create-window', (childWindow) => {
+      childWindow.webContents.setUserAgent(APP_USER_AGENT);
       childWindow.setMenuBarVisibility(false);
   });
 
@@ -207,69 +176,66 @@ async function createWindow() {
   });
 }
 
-// VERSION CHECK
+// IPC HANDLERS
 ipcMain.handle('get-app-version', () => {
-    // Versuche Version aus hot_update zu lesen, da diese relevanter ist
     try {
-        const versionFile = path.join(hotUpdatePath, 'version.json');
-        if (fs.existsSync(versionFile)) {
-            const data = JSON.parse(fs.readFileSync(versionFile, 'utf-8'));
-            return `${data.version} (Hot)`;
+        const active = getActiveUpdatePath();
+        if (active) {
+            // Versuche version.json im Ordner zu lesen für Details, oder nimm Ordnernamen
+            const vFile = path.join(active.path, 'version.json');
+            if (fs.existsSync(vFile)) {
+                const data = JSON.parse(fs.readFileSync(vFile, 'utf-8'));
+                return `${data.version} (Hot)`;
+            }
+            return `${active.version} (Hot)`;
         }
     } catch(e) {}
     return app.getVersion();
 });
 
-ipcMain.handle('open-dev-tools', () => {
-    if (mainWindow) {
-        mainWindow.webContents.openDevTools();
-    }
-});
+/**
+ * INSTALL UPDATE HANDLER (ROBUST VERSION)
+ * Payload: { manifest: [...], version: "1.0.5" }
+ */
+ipcMain.handle('install-update', async (event, payload) => {
+  const { manifest, version } = payload;
+  const targetDir = path.join(updatesRootDir, version);
 
-// Update Handler (DOWNLOAD ONLY - NO SWAP HERE)
-ipcMain.handle('install-update', async (event, downloadManifest) => {
   try {
-    // 1. Prepare Temp Directory (Clean Slate)
-    if (fs.existsSync(hotUpdateTempPath)) {
-        fs.rmSync(hotUpdateTempPath, { recursive: true, force: true });
+    console.log(`Starting update installation for version ${version}...`);
+
+    // 1. Ordner erstellen (Wenn er existiert, erst löschen um Clean State zu haben)
+    if (fs.existsSync(targetDir)) {
+        safeDeleteFolder(targetDir); 
     }
-    fs.mkdirSync(hotUpdateTempPath, { recursive: true });
-    
-    const assetsPath = path.join(hotUpdateTempPath, 'assets');
-    fs.mkdirSync(assetsPath, { recursive: true });
+    fs.mkdirSync(targetDir, { recursive: true });
 
-    console.log(`Starting batch download of ${downloadManifest.length} files to TEMP...`);
-
-    // 2. Download files directly in Main process
-    for (const item of downloadManifest) {
-        const targetPath = path.join(hotUpdateTempPath, item.relativePath);
+    // 2. Download files into NEW folder (No locking issues possible here)
+    for (const item of manifest) {
+        const targetPath = path.join(targetDir, item.relativePath);
         fs.mkdirSync(path.dirname(targetPath), { recursive: true });
 
-        const downloadUrl = `${item.url}?cb=${Date.now()}`; // Cache Buster
-        const response = await fetch(downloadUrl, { cache: 'no-store' });
+        const downloadUrl = `${item.url}?cb=${Date.now()}`;
+        const response = await fetch(downloadUrl, { headers: { 'User-Agent': APP_USER_AGENT } });
         
-        if (!response.ok) {
-            throw new Error(`Failed to download ${item.relativePath}: HTTP ${response.status}`);
-        }
-
+        if (!response.ok) throw new Error(`HTTP ${response.status} for ${item.relativePath}`);
+        
         const arrayBuffer = await response.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
-        fs.writeFileSync(targetPath, buffer);
+        fs.writeFileSync(targetPath, Buffer.from(arrayBuffer));
     }
+
+    // 3. Wenn alles erfolgreich heruntergeladen wurde, Pointer aktualisieren
+    // Das ist eine atomare Operation (File Write).
+    const newConfig = { current: version, installedAt: new Date().toISOString() };
+    fs.writeFileSync(activeVersionFile, JSON.stringify(newConfig, null, 2));
     
-    // 3. DO NOT SWAP HERE.
-    // Wir lassen den 'hot_update_temp' Ordner einfach liegen.
-    // Beim nächsten App-Start wird 'applyPendingUpdates()' ihn finden und austauschen.
-    
-    console.log("Download complete. Ready for restart.");
+    console.log(`Pointer updated to version ${version}. Ready for restart.`);
     return { success: true };
 
   } catch (error) {
-    console.error('Download failed:', error);
-    // Cleanup temp on failure
-    if (fs.existsSync(hotUpdateTempPath)) {
-        fs.rmSync(hotUpdateTempPath, { recursive: true, force: true });
-    }
+    console.error('Download/Install failed:', error);
+    // Cleanup failed partial folder
+    safeDeleteFolder(targetDir);
     return { success: false, error: error.message };
   }
 });
@@ -285,8 +251,7 @@ ipcMain.handle('generate-pdf', async (event, htmlContent) => {
         await pdfWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
         const pdfData = await pdfWindow.webContents.printToPDF({
             printBackground: true,
-            pageSize: 'A4',
-            margins: { top: 0, bottom: 0, left: 0, right: 0 }
+            pageSize: 'A4'
         });
         pdfWindow.close();
         pdfWindow = null;
@@ -297,9 +262,7 @@ ipcMain.handle('generate-pdf', async (event, htmlContent) => {
     }
 });
 
-// APP LIFECYCLE
 const gotTheLock = app.requestSingleInstanceLock();
-
 if (!gotTheLock) {
   app.quit();
 } else {
@@ -310,20 +273,10 @@ if (!gotTheLock) {
     }
   });
 
-  // WICHTIG: Updates anwenden BEVOR irgendetwas anderes passiert
-  // Wir machen das synchron/direkt hier im Top-Level oder im ready handler VOR createWindow
-  applyPendingUpdates();
-  
-  // Dann erst aufräumen
-  cleanupStaleUpdates();
-
   app.whenReady().then(() => {
     createWindow();
-
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) {
-        createWindow();
-      }
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
   });
 }
@@ -331,8 +284,6 @@ if (!gotTheLock) {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
-    if (server) {
-        server.close();
-    }
+    if (server) server.close();
   }
 });
