@@ -63,11 +63,17 @@ export class FirebaseDataService implements IDataService {
             if (!user.email) throw new Error("No email provided by Google");
 
             // 2. Now authenticated, check access in Firestore
-            const hasAccess = await this.checkUserAccess(user.email);
+            let hasAccess = false;
+            try {
+                hasAccess = await this.checkUserAccess(user.email);
+            } catch (accessError: any) {
+                // If checkUserAccess threw a specific error (like permission-denied), rethrow it
+                throw accessError;
+            }
             
             if (!hasAccess) {
                 await this.auth.signOut();
-                throw new Error("Zugriff verweigert. Ihre E-Mail ist nicht für dieses CRM freigeschaltet.");
+                throw new Error(`Zugriff verweigert. Die E-Mail '${user.email}' ist nicht in der 'allowed_users' Liste. Bitte bitten Sie einen Admin, Sie hinzuzufügen.`);
             }
             
             return {
@@ -101,19 +107,24 @@ export class FirebaseDataService implements IDataService {
             if (e.code === 'auth/user-disabled') {
                 throw new Error("Dieser Benutzer wurde deaktiviert.");
             }
+            // Pass through Firestore permission errors directly
+            if (e.message && e.message.includes('Firestore-Regeln')) {
+                throw e;
+            }
 
             throw e;
         }
     }
 
-    async checkUserAccess(email: string): Promise<boolean> {
+    async checkUserAccess(emailInput: string): Promise<boolean> {
         if (!this.db) return false;
         
+        // Normalize email to lowercase to match DB keys safely
+        const email = emailInput.toLowerCase().trim();
+
         try {
             // 1. Check if ANY users exist in allowed_users (to allow first user setup)
-            // NOTE: This query might fail if rules strictly forbid listing all docs.
-            // A better production pattern is pre-seeding or a public 'meta' doc.
-            // For now, assume if the user is signed in, they can at least read this collection.
+            // This requires READ permissions on the collection.
             const usersRef = collection(this.db, 'allowed_users');
             const snapshot = await getDocs(usersRef);
             
@@ -131,20 +142,38 @@ export class FirebaseDataService implements IDataService {
             return userDoc.exists();
         } catch (e: any) {
             console.error("Access Check Error:", e);
-            // If permission denied here, it likely means they are not on the list AND
-            // the rules say "allow read: if exists(/databases/$(database)/documents/allowed_users/$(request.auth.token.email))"
-            // So a permission error effectively means "Access Denied".
+            
+            // Check for specific Firestore Permission Error
+            if (e.code === 'permission-denied') {
+                throw new Error("Datenbank-Fehler: Berechtigung verweigert. Bitte prüfen Sie in der Firebase Console unter 'Firestore Database' > 'Rules', ob die Regeln 'allow read, write: if request.auth != null;' enthalten.");
+            }
+            
+            if (e.code === 'unavailable' || e.message.includes('offline')) {
+                throw new Error("Datenbank nicht erreichbar. Bitte prüfen Sie Ihre Internetverbindung oder ob die Firestore-Datenbank erstellt wurde.");
+            }
+
             return false;
         }
     }
 
-    async inviteUser(email: string, role: string): Promise<void> {
+    async inviteUser(emailInput: string, role: string): Promise<void> {
         if (!this.db) return;
-        await setDoc(doc(this.db, 'allowed_users', email), {
-            email,
-            role,
-            addedAt: new Date().toISOString()
-        });
+        
+        // Normalize email to lowercase to prevent duplicates/access issues
+        const email = emailInput.toLowerCase().trim();
+
+        try {
+            await setDoc(doc(this.db, 'allowed_users', email), {
+                email,
+                role,
+                addedAt: new Date().toISOString()
+            });
+        } catch (e: any) {
+             if (e.code === 'permission-denied') {
+                throw new Error("Kann Benutzer nicht anlegen: Fehlende Schreibrechte in Firestore.");
+            }
+            throw e;
+        }
     }
 
     // --- OAUTH & GMAIL ---

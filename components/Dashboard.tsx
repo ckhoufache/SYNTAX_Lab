@@ -18,8 +18,8 @@ interface DashboardProps {
   onNavigateToPipeline: (stages: DealStage[], focusId?: string) => void;
   onNavigateToTasks: (focusId?: string) => void;
   onNavigateToFinances: () => void;
-  invoices?: Invoice[]; // Default to empty
-  expenses: Expense[]; // New prop
+  invoices?: Invoice[]; 
+  expenses: Expense[]; 
   activities: Activity[]; 
 }
 
@@ -41,14 +41,11 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
   const [briefing, setBriefing] = useState<string>('');
   const [loadingBriefing, setLoadingBriefing] = useState<boolean>(false);
   
-  // Task Modal State
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [taskModalMode, setTaskModalMode] = useState<'view' | 'add'>('view');
   
-  // Chart View State
   const [chartType, setChartType] = useState<'area' | 'bar'>('area');
 
-  // Search State
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<{
       contacts: Contact[];
@@ -58,11 +55,9 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
   const [showSearchResults, setShowSearchResults] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
 
-  // Notification State
   const [showNotifications, setShowNotifications] = useState(false);
   const notificationRef = useRef<HTMLDivElement>(null);
   
-  // Dismissed Notifications Logic
   const [dismissedNotificationIds, setDismissedNotificationIds] = useState<string[]>(() => {
       const stored = localStorage.getItem('dismissed_notifications');
       return stored ? JSON.parse(stored) : [];
@@ -72,14 +67,15 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
       localStorage.setItem('dismissed_notifications', JSON.stringify(dismissedNotificationIds));
   }, [dismissedNotificationIds]);
 
-  // New Task Form State
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskType, setNewTaskType] = useState<Task['type']>('todo');
   const [newTaskPriority, setNewTaskPriority] = useState<Task['priority']>('medium');
   const [newTaskDate, setNewTaskDate] = useState(new Date().toISOString().split('T')[0]);
 
   // Derived Stats
-  const totalRevenue = invoices.reduce((acc, curr) => acc + curr.amount, 0); // Use Real Invoices
+  // Filter out commission invoices from revenue
+  const customerInvoices = useMemo(() => invoices.filter(i => i.type !== 'commission'), [invoices]);
+  const totalRevenue = customerInvoices.reduce((acc, curr) => acc + curr.amount, 0);
   
   const activeVolume = deals.reduce((acc, curr) => 
     (curr.stage === DealStage.NEGOTIATION || curr.stage === DealStage.PROPOSAL) 
@@ -89,7 +85,6 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
 
   const dueTasksCount = tasks.filter(t => !t.isCompleted).length;
 
-  // Filter für Widget: NUR HEUTE
   const upcomingTasks = tasks.filter(t => {
       if (t.isCompleted) return false;
       const taskDate = new Date(t.dueDate);
@@ -111,10 +106,9 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
     const currentDay = today.getDate();
 
     if (currentMonthIndex === 0 && currentDay < 7) {
-        // Daily View (Jan 1 to today)
         return Array.from({ length: currentDay }, (_, i) => {
             const day = i + 1;
-            const dailyRevenue = invoices
+            const dailyRevenue = customerInvoices
                 .filter(inv => {
                     const d = new Date(inv.date);
                     return d.getFullYear() === currentYear && d.getMonth() === 0 && d.getDate() === day;
@@ -123,11 +117,10 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
             return { name: `${day}. Jan`, value: dailyRevenue };
         });
     } else if (currentMonthIndex === 0) {
-        // Weekly View
         const weeks = Math.ceil(currentDay / 7);
         return Array.from({ length: weeks }, (_, i) => {
             const weekNum = i + 1;
-            const weeklyRevenue = invoices
+            const weeklyRevenue = customerInvoices
                 .filter(inv => {
                     const d = new Date(inv.date);
                     const dom = d.getDate();
@@ -137,10 +130,9 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
              return { name: `KW ${weekNum}`, value: weeklyRevenue };
         });
     } else {
-        // Monthly View
         const monthNames = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
         return Array.from({ length: currentMonthIndex + 1 }, (_, i) => {
-            const monthlyRevenue = invoices
+            const monthlyRevenue = customerInvoices
                 .filter(inv => {
                     const d = new Date(inv.date);
                     return d.getFullYear() === currentYear && d.getMonth() === i;
@@ -149,16 +141,17 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
             return { name: monthNames[i], value: monthlyRevenue };
         });
     }
-  }, [invoices]);
+  }, [customerInvoices]);
 
   // --- RUNWAY FORECAST CALCULATION (UPDATED LOGIC) ---
   const runwayData = useMemo(() => {
-    // 1. Current Liquid Assets
-    const totalPaidRevenue = invoices.filter(i => i.isPaid).reduce((sum, i) => sum + i.amount, 0);
+    const totalPaidRevenue = customerInvoices.filter(i => i.isPaid).reduce((sum, i) => sum + i.amount, 0);
     const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
-    let currentBalance = totalPaidRevenue - totalExpenses;
+    const totalPaidCommissions = invoices.filter(i => i.type === 'commission' && i.isPaid).reduce((sum, i) => sum + i.amount, 0);
+    
+    // Effective Balance
+    let currentBalance = totalPaidRevenue - totalExpenses - totalPaidCommissions;
 
-    // 2. MRR (Monthly Recurring Revenue from Active Retainers)
     const mrr = contacts.reduce((sum, c) => {
         if (!c.retainerActive || !c.retainerAmount) return sum;
         let monthlyAmount = c.retainerAmount;
@@ -167,8 +160,6 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
         return sum + monthlyAmount;
     }, 0);
 
-    // 3. Burn Rate Calculation (Split into Variable & Fixed)
-    // A) Fixed Recurring Costs (Based on ACTIVE recurring expenses)
     const recurringExpenses = expenses.filter(e => e.interval && e.interval !== 'one_time');
     const fixedMonthlyBurn = recurringExpenses.reduce((sum, e) => {
         if (e.interval === 'monthly') return sum + e.amount;
@@ -178,7 +169,6 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
         return sum;
     }, 0);
 
-    // B) Variable Costs (Average of 'one_time' expenses over last 3 months)
     const today = new Date();
     const threeMonthsAgo = new Date();
     threeMonthsAgo.setMonth(today.getMonth() - 3);
@@ -188,14 +178,13 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
         new Date(e.date) >= threeMonthsAgo
     );
     const variableBurnSum = recentVariableExpenses.reduce((sum, e) => sum + e.amount, 0);
-    const avgVariableBurn = variableBurnSum / 3; // Normalize to monthly
+    const avgVariableBurn = variableBurnSum / 3; 
 
     const totalBurnRate = fixedMonthlyBurn + avgVariableBurn;
 
     const data = [];
     const monthNames = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
 
-    // Forecast for next 6 months
     for (let i = 0; i <= 6; i++) {
         const d = new Date();
         d.setMonth(d.getMonth() + i);
@@ -207,14 +196,13 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
             mrr: mrr
         });
 
-        // Calculate next month's starting balance
         currentBalance = currentBalance + mrr - totalBurnRate;
     }
 
-    return { data, mrr, burnRate: totalBurnRate, currentBalance: totalPaidRevenue - totalExpenses };
-  }, [invoices, expenses, contacts]);
+    return { data, mrr, burnRate: totalBurnRate, currentBalance };
+  }, [invoices, expenses, contacts, customerInvoices]);
 
-  // --- Notifications Logic ---
+  // ... (Rest of component methods same as before) ...
   const notifications = useMemo(() => {
       const list = [];
       const today = new Date();
@@ -248,7 +236,6 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
           });
       });
 
-      // New: Check for Leads > 3 Days
       const staleLeads = deals.filter(d => {
           if (d.stage !== DealStage.LEAD) return false;
           if (!d.stageEnteredDate) return false;
@@ -266,17 +253,6 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
               type: 'warning',
               time: 'Handlungsbedarf',
               onClick: () => onNavigateToPipeline([DealStage.LEAD], d.id)
-          });
-      });
-
-      const negotiationDeals = deals.filter(d => d.stage === DealStage.NEGOTIATION);
-      negotiationDeals.forEach(d => {
-          list.push({
-              id: `deal-${d.id}`,
-              title: `In Verhandlung: ${d.title}`,
-              type: 'info',
-              time: `${d.value.toLocaleString()} €`,
-              onClick: () => onNavigateToPipeline([DealStage.NEGOTIATION], d.id)
           });
       });
 
@@ -457,13 +433,12 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <StatCard title="Gesamtumsatz" value={`${totalRevenue.toLocaleString('de-DE')} €`} sub="Rechnungen (Bezahlt & Offen)" icon={CheckCircle2} color="bg-emerald-500" onClick={onNavigateToFinances}/>
+          <StatCard title="Gesamtumsatz" value={`${totalRevenue.toLocaleString('de-DE')} €`} sub="Kundenrechnungen" icon={CheckCircle2} color="bg-emerald-500" onClick={onNavigateToFinances}/>
           <StatCard title="Aktive Pipeline" value={`${activeVolume.toLocaleString('de-DE')} €`} sub="Verhandlung & Angebot" icon={Calendar} color="bg-blue-500" onClick={() => onNavigateToPipeline([DealStage.PROPOSAL, DealStage.NEGOTIATION])}/>
           <StatCard title="Neue Kontakte" value={`+${contacts.length}`} sub="Gesamt" icon={Phone} color="bg-orange-500" onClick={() => onNavigateToContacts('recent')}/>
           <StatCard title="Offene Aufgaben" value={dueTasksCount} sub="Dringend" icon={Mail} color="bg-pink-500" onClick={() => onNavigateToTasks()}/>
         </div>
         
-        {/* NEW: RUNWAY CHART */}
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm">
             <div className="flex justify-between items-start mb-6">
                 <div>
@@ -496,10 +471,6 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
                         <linearGradient id="colorBalance" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.2}/>
                             <stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/>
-                        </linearGradient>
-                        <linearGradient id="colorNegative" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#ef4444" stopOpacity={0.2}/>
-                            <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
                         </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" strokeOpacity={0.5} />
@@ -586,7 +557,6 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
         </div>
       </main>
 
-      {/* Task Manager Modal */}
       {isTaskModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
             <div className={`bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col`}>

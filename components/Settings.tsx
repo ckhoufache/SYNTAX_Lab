@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle, Key, RefreshCw, Copy, FileText, Image as ImageIcon, Briefcase, Settings as SettingsIcon, HardDrive, Users, DownloadCloud, RefreshCcw, Sparkles, Sliders, Link, Paperclip, Star, PaperclipIcon, FileCode, Printer, Info, AlertOctagon, Repeat, Cloud, CloudLightning, ShieldAlert, Wifi, UserPlus } from 'lucide-react';
 import { UserProfile, Theme, ProductPreset, Contact, Deal, Task, BackupData, BackendConfig, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate, EmailAttachment, EmailAutomationConfig, FirebaseConfig } from '../types';
@@ -241,10 +242,11 @@ export const Settings: React.FC<SettingsProps> = ({
 
   const handleInviteUser = async () => {
       if (!inviteEmail) return;
+      const normalizedEmail = inviteEmail.toLowerCase().trim();
       setIsInviting(true);
       try {
-          await dataService.inviteUser(inviteEmail, 'Mitarbeiter');
-          alert(`Benutzer ${inviteEmail} wurde zur Whitelist hinzugefügt.`);
+          await dataService.inviteUser(normalizedEmail, 'Mitarbeiter');
+          alert(`Benutzer ${normalizedEmail} wurde zur Whitelist hinzugefügt.`);
           setInviteEmail('');
           const team = await dataService.getAllUsers();
           setTeamMembers(team);
@@ -322,7 +324,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                 <div className="flex gap-2">
                                     <input 
                                         value={inviteEmail} 
-                                        onChange={(e) => setInviteEmail(e.target.value)} 
+                                        onChange={(e) => setInviteEmail(e.target.value.toLowerCase())} 
                                         placeholder="kollege@gmail.com" 
                                         className="flex-1 px-3 py-2 text-sm border border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                                     />
@@ -334,6 +336,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                         {isInviting ? '...' : 'Hinzufügen'}
                                     </button>
                                 </div>
+                                <p className="text-[10px] text-indigo-600/70 mt-2">Hinweis: E-Mail Adressen werden automatisch kleingeschrieben gespeichert, um Anmeldeprobleme zu vermeiden.</p>
                             </div>
                         )}
 
@@ -466,6 +469,18 @@ export const Settings: React.FC<SettingsProps> = ({
          >
              <div className="px-6 pb-6 pt-2 space-y-4">
                  <SubSection title="Datenbank Verbindung" isDark={isDark} isOpen={activeSubSection === 'database_conn'} onToggle={() => toggleSubSection('database_conn')}>
+                     
+                     <div className="mb-4">
+                        <label className="text-xs font-bold uppercase text-slate-500">Google Client ID (OAuth)</label>
+                        <input 
+                            value={backendForm.googleClientId || ''} 
+                            onChange={e => setBackendForm({...backendForm, googleClientId: e.target.value})} 
+                            className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white" 
+                            placeholder="123...apps.googleusercontent.com"
+                        />
+                        <p className="text-[10px] text-slate-400 mt-1">Notwendig für Google Login & Cloud Sync.</p>
+                     </div>
+
                      <div className="flex gap-4 mb-6">
                          <button onClick={handleSwitchToLocal} className={`flex-1 p-4 rounded-xl border text-left transition-all ${backendConfig.mode === 'local' ? 'border-indigo-600 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50'}`}>
                              <div className="flex items-center gap-2 mb-2"><HardDrive className={`w-5 h-5 ${backendConfig.mode === 'local' ? 'text-indigo-600' : 'text-slate-400'}`} /><span className={`font-bold ${backendConfig.mode === 'local' ? 'text-indigo-700' : 'text-slate-600'}`}>Lokal (Browser)</span></div>

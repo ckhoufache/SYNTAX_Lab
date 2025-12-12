@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Plus, X, Trash2, CheckCircle2, TrendingUp, TrendingDown, PiggyBank, Printer, Pencil, RefreshCw, Ban, Loader2, Repeat } from 'lucide-react';
+import { Plus, X, Trash2, CheckCircle2, TrendingUp, TrendingDown, PiggyBank, Printer, Pencil, RefreshCw, Ban, Loader2, Repeat, Users, Percent, FileOutput } from 'lucide-react';
 import { Invoice, Contact, Expense, InvoiceConfig, Activity } from '../types';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { DataServiceFactory, compileInvoiceTemplate } from '../services/dataService';
@@ -12,7 +12,6 @@ interface FinancesProps {
     onUpdateInvoice: (invoice: Invoice) => void;
     onDeleteInvoice: (id: string) => void;
     
-    // NEU: Ausgaben & Config Props
     expenses: Expense[];
     onAddExpense: (expense: Expense) => void;
     onUpdateExpense: (expense: Expense) => void;
@@ -20,7 +19,6 @@ interface FinancesProps {
     invoiceConfig: InvoiceConfig;
     onAddActivity: (activity: Activity) => void;
     
-    // NEU: Retainer Automation
     onRunRetainer: () => void;
 }
 
@@ -39,7 +37,7 @@ export const Finances: React.FC<FinancesProps> = ({
     onRunRetainer
 }) => {
     // TABS
-    const [activeTab, setActiveTab] = useState<'income' | 'expenses'>('income');
+    const [activeTab, setActiveTab] = useState<'income' | 'expenses' | 'commissions'>('income');
 
     const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
@@ -58,7 +56,8 @@ export const Finances: React.FC<FinancesProps> = ({
         contactId: '',
         description: '',
         amount: 0,
-        isPaid: false
+        isPaid: false,
+        type: 'customer'
     });
 
     const [expenseForm, setExpenseForm] = useState<Partial<Expense>>({
@@ -71,9 +70,15 @@ export const Finances: React.FC<FinancesProps> = ({
     });
 
     // Stats
-    const totalIncome = invoices.reduce((sum, i) => sum + i.amount, 0);
+    const incomeInvoices = invoices.filter(i => i.type === 'customer' || !i.type); // Backward compat
+    const commissionInvoices = invoices.filter(i => i.type === 'commission');
+
+    const totalIncome = incomeInvoices.reduce((sum, i) => sum + i.amount, 0);
     const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
-    const profit = totalIncome - totalExpenses;
+    const totalCommissionsPaid = commissionInvoices.filter(i => i.isPaid).reduce((sum, i) => sum + i.amount, 0);
+    
+    // Effective Profit: Income - Expenses - Paid Commissions
+    const profit = totalIncome - totalExpenses - totalCommissionsPaid;
     
     // Data for Charts
     const expenseData = useMemo(() => {
@@ -116,7 +121,8 @@ export const Finances: React.FC<FinancesProps> = ({
              const newInvoice: Invoice = {
                 id: crypto.randomUUID(),
                 ...invoiceForm as Invoice,
-                invoiceNumber: invoiceForm.invoiceNumber || `Rechnung-${Date.now()}`, // Fallback if user didn't provide number
+                type: 'customer', // Manual created are customers by default
+                invoiceNumber: invoiceForm.invoiceNumber || `Rechnung-${Date.now()}`,
                 contactName: contact ? contact.name : 'Unbekannt',
             };
             onAddInvoice(newInvoice);
@@ -154,14 +160,14 @@ export const Finances: React.FC<FinancesProps> = ({
             setInvoiceForm(invoice);
         } else {
             setEditingInvoiceId(null);
-            // Auto-generate invoice number logic could go here
             setInvoiceForm({
                 invoiceNumber: '',
                 date: new Date().toISOString().split('T')[0],
                 contactId: '',
                 description: '',
                 amount: 0,
-                isPaid: false
+                isPaid: false,
+                type: 'customer'
             });
         }
         setIsInvoiceModalOpen(true);
@@ -188,18 +194,13 @@ export const Finances: React.FC<FinancesProps> = ({
     const handlePrintInvoice = async (invoice: Invoice) => {
         setIsPrinting(invoice.id);
         try {
-            // 1. Create Data Service (Local)
             const storedConfig = localStorage.getItem('backend_config');
             const config = storedConfig ? JSON.parse(storedConfig) : { mode: 'local' };
             const service = DataServiceFactory.create(config);
 
-            // 2. Compile Template
             const html = compileInvoiceTemplate(invoice, invoiceConfig);
-
-            // 3. Generate PDF Base64
             const base64Pdf = await service.generatePdf(html);
 
-            // 4. Convert to Blob
             const byteCharacters = atob(base64Pdf);
             const byteNumbers = new Array(byteCharacters.length);
             for (let i = 0; i < byteCharacters.length; i++) {
@@ -208,7 +209,6 @@ export const Finances: React.FC<FinancesProps> = ({
             const byteArray = new Uint8Array(byteNumbers);
             const blob = new Blob([byteArray], { type: 'application/pdf' });
 
-            // 5. Open in new window
             const blobUrl = URL.createObjectURL(blob);
             window.open(blobUrl, '_blank');
 
@@ -219,13 +219,18 @@ export const Finances: React.FC<FinancesProps> = ({
             setIsPrinting(null);
         }
     };
+    
+    // Toggle Invoice Paid Status
+    const togglePaid = (invoice: Invoice) => {
+        onUpdateInvoice({ ...invoice, isPaid: !invoice.isPaid });
+    };
 
     return (
         <div className="flex-1 bg-slate-50 dark:bg-slate-950 h-screen overflow-y-auto flex flex-col relative">
             <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-8 py-6 shrink-0 flex justify-between items-center">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Finanzen</h1>
-                    <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Übersicht über Einnahmen und Ausgaben.</p>
+                    <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Übersicht über Einnahmen, Ausgaben und Provisionen.</p>
                 </div>
                 <div className="flex gap-3">
                      <button onClick={onRunRetainer} className="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2">
@@ -235,11 +240,11 @@ export const Finances: React.FC<FinancesProps> = ({
                         <button onClick={() => openInvoiceModal()} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2">
                             <Plus className="w-4 h-4" /> Rechnung erstellen
                         </button>
-                    ) : (
+                    ) : activeTab === 'expenses' ? (
                         <button onClick={() => openExpenseModal()} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2">
                             <Plus className="w-4 h-4" /> Ausgabe erfassen
                         </button>
-                    )}
+                    ) : null}
                 </div>
             </header>
 
@@ -293,11 +298,17 @@ export const Finances: React.FC<FinancesProps> = ({
                     >
                         Ausgaben & Belege
                     </button>
+                    <button 
+                        onClick={() => setActiveTab('commissions')}
+                        className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'commissions' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}
+                    >
+                        Provisionen (Vertrieb)
+                    </button>
                 </div>
             </div>
 
             <div className="flex-1 overflow-y-auto px-8 pb-8">
-                {activeTab === 'income' ? (
+                {activeTab === 'income' && (
                     <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
                         <table className="w-full text-left text-sm">
                             <thead className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
@@ -311,7 +322,7 @@ export const Finances: React.FC<FinancesProps> = ({
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                                {invoices.length > 0 ? invoices.map(invoice => (
+                                {incomeInvoices.length > 0 ? incomeInvoices.map(invoice => (
                                     <tr key={invoice.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
                                         <td className="px-6 py-4 font-medium dark:text-slate-200">{invoice.invoiceNumber}</td>
                                         <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{invoice.date}</td>
@@ -321,9 +332,9 @@ export const Finances: React.FC<FinancesProps> = ({
                                             {invoice.isCancelled ? (
                                                  <span className="bg-red-100 text-red-700 text-xs px-2 py-1 rounded-full font-medium">Storniert</span>
                                             ) : invoice.isPaid ? (
-                                                <span className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full font-medium flex items-center w-fit gap-1"><CheckCircle2 className="w-3 h-3"/> Bezahlt</span>
+                                                <button onClick={() => togglePaid(invoice)} className="bg-green-100 hover:bg-green-200 text-green-700 text-xs px-2 py-1 rounded-full font-medium flex items-center w-fit gap-1"><CheckCircle2 className="w-3 h-3"/> Bezahlt</button>
                                             ) : (
-                                                <span className="bg-amber-100 text-amber-700 text-xs px-2 py-1 rounded-full font-medium">Offen</span>
+                                                <button onClick={() => togglePaid(invoice)} className="bg-amber-100 hover:bg-amber-200 text-amber-700 text-xs px-2 py-1 rounded-full font-medium">Offen</button>
                                             )}
                                         </td>
                                         <td className="px-6 py-4 text-right flex justify-end gap-2">
@@ -345,7 +356,9 @@ export const Finances: React.FC<FinancesProps> = ({
                             </tbody>
                         </table>
                     </div>
-                ) : (
+                )}
+                
+                {activeTab === 'expenses' && (
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         <div className="lg:col-span-2 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
                              <table className="w-full text-left text-sm">
@@ -403,6 +416,64 @@ export const Finances: React.FC<FinancesProps> = ({
                         </div>
                     </div>
                 )}
+
+                {activeTab === 'commissions' && (
+                    <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden p-6">
+                        <div className="flex justify-between items-start mb-6">
+                            <div>
+                                <h3 className="text-lg font-bold mb-1 flex items-center gap-2">
+                                    <Users className="w-5 h-5 text-indigo-600" />
+                                    Provisionsabrechnung (Vertrieb)
+                                </h3>
+                                <p className="text-sm text-slate-500">Separates Rechnungsbuch für Vertriebspartner.</p>
+                            </div>
+                            <div className="text-right">
+                                <p className="text-xs uppercase text-slate-400 font-bold">Ausbezahlt (Gesamt)</p>
+                                <p className="text-xl font-bold text-indigo-600">{totalCommissionsPaid.toLocaleString('de-DE')} €</p>
+                            </div>
+                        </div>
+                        
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
+                                    <tr>
+                                        <th className="px-6 py-3 font-semibold text-slate-500">Abrechnung Nr.</th>
+                                        <th className="px-6 py-3 font-semibold text-slate-500">Datum</th>
+                                        <th className="px-6 py-3 font-semibold text-slate-500">Vertriebler</th>
+                                        <th className="px-6 py-3 font-semibold text-slate-500">Beschreibung</th>
+                                        <th className="px-6 py-3 font-semibold text-slate-500">Betrag</th>
+                                        <th className="px-6 py-3 font-semibold text-slate-500">Status</th>
+                                        <th className="px-6 py-3 font-semibold text-slate-500 text-right">Aktionen</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {commissionInvoices.length > 0 ? commissionInvoices.map((inv) => (
+                                        <tr key={inv.id} className="hover:bg-slate-50 transition-colors">
+                                            <td className="px-6 py-4 font-mono text-slate-600">{inv.invoiceNumber}</td>
+                                            <td className="px-6 py-4">{inv.date}</td>
+                                            <td className="px-6 py-4 font-bold text-slate-800">{inv.contactName}</td>
+                                            <td className="px-6 py-4 text-slate-500 truncate max-w-[200px]">{inv.description}</td>
+                                            <td className="px-6 py-4 font-bold text-indigo-600">{inv.amount.toLocaleString('de-DE')} €</td>
+                                            <td className="px-6 py-4">
+                                                {inv.isPaid ? (
+                                                    <button onClick={() => togglePaid(inv)} className="bg-green-100 hover:bg-green-200 text-green-700 text-xs px-2 py-1 rounded-full font-medium flex items-center gap-1"><CheckCircle2 className="w-3 h-3"/> Ausbezahlt</button>
+                                                ) : (
+                                                    <button onClick={() => togglePaid(inv)} className="bg-amber-100 hover:bg-amber-200 text-amber-700 text-xs px-2 py-1 rounded-full font-medium">Offen</button>
+                                                )}
+                                            </td>
+                                            <td className="px-6 py-4 text-right flex justify-end gap-2">
+                                                <button onClick={() => handlePrintInvoice(inv)} className="p-1.5 text-slate-400 hover:text-indigo-600 rounded hover:bg-slate-100" title="Gutschrift PDF drucken"><FileOutput className="w-4 h-4"/></button>
+                                                <button onClick={() => onDeleteInvoice(inv.id)} className="p-1.5 text-slate-400 hover:text-red-600 rounded hover:bg-slate-100" title="Löschen"><Trash2 className="w-4 h-4"/></button>
+                                            </td>
+                                        </tr>
+                                    )) : (
+                                        <tr><td colSpan={7} className="px-6 py-12 text-center text-slate-400">Keine offenen Provisionsabrechnungen.</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* INVOICE MODAL */}
@@ -420,13 +491,13 @@ export const Finances: React.FC<FinancesProps> = ({
                             </div>
                             <div>
                                 <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Kunde</label>
-                                <select value={invoiceForm.contactId} onChange={e=>setInvoiceForm({...invoiceForm, contactId:e.target.value})} className="w-full border p-2 rounded mt-1 dark:bg-slate-700 dark:border-slate-600 dark:text-white" required>
+                                <select value={invoiceForm.contactId} onChange={e => setInvoiceForm({...invoiceForm, contactId: e.target.value})} className="w-full border p-2 rounded mt-1 dark:bg-slate-700 dark:border-slate-600 dark:text-white" required>
                                     <option value="">Wählen...</option>
                                     {contacts.map(c => <option key={c.id} value={c.id}>{c.name} ({c.company})</option>)}
                                 </select>
                             </div>
                             <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Beschreibung</label><input value={invoiceForm.description} onChange={e=>setInvoiceForm({...invoiceForm, description:e.target.value})} className="w-full border p-2 rounded mt-1 dark:bg-slate-700 dark:border-slate-600 dark:text-white" placeholder="Leistung..." required /></div>
-                            <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Betrag (Netto)</label><input type="number" step="0.01" value={invoiceForm.amount} onChange={e=>setInvoiceForm({...invoiceForm, amount:parseFloat(e.target.value)})} className="w-full border p-2 rounded mt-1 dark:bg-slate-700 dark:border-slate-600 dark:text-white" required /></div>
+                            <div><label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Betrag (Netto)</label><input type="number" step="0.01" value={invoiceForm.amount} onChange={e => setInvoiceForm({...invoiceForm, amount: parseFloat(e.target.value)})} className="w-full border p-2 rounded mt-1 dark:bg-slate-700 dark:border-slate-600 dark:text-white" required /></div>
                             
                             <div className="flex items-center gap-2 pt-2">
                                 <input type="checkbox" checked={invoiceForm.isPaid} onChange={e=>setInvoiceForm({...invoiceForm, isPaid:e.target.checked})} id="isPaidInv" className="w-4 h-4 text-indigo-600 rounded" />

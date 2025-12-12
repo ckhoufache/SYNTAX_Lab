@@ -74,8 +74,13 @@ export const App = () => {
           
           if(up) setUserProfile(up);
           
-      } catch (err) {
+      } catch (err: any) {
           console.error("Load failed", err);
+          if (err.code === 'permission-denied') {
+              alert("Fehler beim Laden der Daten: Zugriff verweigert. Bitte prüfen Sie Ihre Rechte.");
+          } else {
+              alert("Daten konnten nicht geladen werden. Bitte prüfen Sie Ihre Verbindung.");
+          }
       } finally {
           setIsLoading(false);
       }

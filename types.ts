@@ -12,7 +12,7 @@ export enum DealStage {
   LOST = 'Verloren'
 }
 
-export type ContactType = 'lead' | 'customer' | 'partner' | 'newsletter';
+export type ContactType = 'lead' | 'customer' | 'partner' | 'newsletter' | 'sales'; 
 
 export type BackendMode = 'local' | 'firebase';
 
@@ -30,15 +30,15 @@ export interface BackendConfig {
   apiUrl?: string;
   apiToken?: string;
   googleClientId?: string;
-  apiKey?: string; // Für externen Zugriff auf DIESE App
-  firebaseConfig?: FirebaseConfig; // NEU
+  apiKey?: string; 
+  firebaseConfig?: FirebaseConfig; 
 }
 
 export interface ProductPreset {
   id: string;
   title: string;
   value: number;
-  isSubscription?: boolean; // NEU: Abo / Einmalig
+  isSubscription?: boolean; 
 }
 
 export interface UserProfile {
@@ -61,11 +61,14 @@ export interface Contact {
   linkedin?: string;
   notes?: string;
   tags?: string[];
-  type?: ContactType; // NEU: Typisierung für Tabs
+  type?: ContactType; 
   
+  // Vertrieb & Provision
+  salesRepId?: string; 
+
   // Retainer Details
   retainerActive?: boolean;
-  retainerAmount?: number; // Monthly Netto
+  retainerAmount?: number; 
   retainerStartDate?: string;
   retainerNextBilling?: string;
   retainerInterval?: 'monthly' | 'quarterly' | 'yearly';
@@ -77,10 +80,10 @@ export interface Activity {
     id: string;
     contactId: string;
     type: ActivityType;
-    content: string; // "Hat Rechnung 2025-101 erhalten" oder "Notiz: Kunde will Rabatt"
-    date: string; // YYYY-MM-DD
-    timestamp: string; // ISO String für Sortierung
-    relatedId?: string; // ID von Deal oder Invoice
+    content: string; 
+    date: string; 
+    timestamp: string; 
+    relatedId?: string; 
 }
 
 export interface Deal {
@@ -111,10 +114,11 @@ export interface Task {
 
 export interface Invoice {
   id: string;
+  type: 'customer' | 'commission'; // NEU: Unterscheidung
   invoiceNumber: string;
   description: string;
   date: string;
-  contactId: string;
+  contactId: string; // Bei type='commission' ist dies der Vertriebler
   contactName: string;
   amount: number;
   sentDate?: string;
@@ -122,7 +126,12 @@ export interface Invoice {
   isPaid: boolean;
   // GoBD Fields
   isCancelled?: boolean;
-  relatedInvoiceId?: string; // ID der Stornorechnung oder der Originalrechnung
+  relatedInvoiceId?: string; // ID der Stornorechnung oder Verknüpfung Commission <-> Customer Inv
+  
+  // Provision Tracking (Optional für Customer Invoice zur Referenz)
+  salesRepId?: string;     
+  salesRepName?: string;   
+  commissionAmount?: number; 
 }
 
 export interface Expense {
@@ -134,27 +143,23 @@ export interface Expense {
   notes?: string;
   attachment?: string;
   attachmentName?: string;
-  contactId?: string; // NEU: Zuordnung zu Kunde/Projekt
-  contactName?: string; // NEU: Cache Name
-  
-  // NEU: Wiederkehrende Ausgaben
+  contactId?: string; 
+  contactName?: string; 
   interval?: 'one_time' | 'monthly' | 'quarterly' | 'half_yearly' | 'yearly';
 }
 
-// NEW: Attachment Structure for Email Settings
 export interface EmailAttachment {
     name: string;
-    data: string; // Base64
-    type: string; // MIME type
+    data: string; 
+    type: string; 
     size: number;
 }
 
-// NEW: Automation Config Structure per Type
 export interface EmailAutomationConfig {
     subject: string;
     body: string;
     attachments: EmailAttachment[];
-    enabled?: boolean; // Only relevant for auto-triggers like Welcome
+    enabled?: boolean; 
 }
 
 export interface EmailSettings {
@@ -176,9 +181,9 @@ export interface InvoiceConfig {
   website: string;
   logoBase64?: string;
   footerText?: string;
-  taxRule?: 'small_business' | 'standard'; // NEU: Steuermodus
-  emailSettings?: EmailSettings; // NEU: Strukturiertes E-Mail Setting
-  pdfTemplate?: string; // NEU: HTML Template für PDF Generierung
+  taxRule?: 'small_business' | 'standard'; 
+  emailSettings?: EmailSettings; 
+  pdfTemplate?: string; 
 }
 
 export interface EmailTemplate {

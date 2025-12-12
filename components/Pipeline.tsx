@@ -1,6 +1,7 @@
+
 import React, { useState, DragEvent, useMemo } from 'react';
 import { Deal, DealStage, Contact, ProductPreset, Task, Invoice, Activity, InvoiceConfig, EmailTemplate } from '../types';
-import { Plus, MoreHorizontal, DollarSign, X, Calendar, Trash2, User, Filter, Eye, EyeOff, Package, Pencil, Search } from 'lucide-react';
+import { Plus, X, Calendar, Trash2, Filter, Eye, EyeOff, Package, Pencil, Search } from 'lucide-react';
 import { DataServiceFactory, compileInvoiceTemplate } from '../services/dataService';
 
 interface PipelineProps {
@@ -22,7 +23,6 @@ interface PipelineProps {
   onAddActivity: (activity: Activity) => void;
   onNavigateToContacts: (filter: 'all' | 'recent', focusId?: string) => void;
   
-  // NEW PROPS for Automation
   invoiceConfig: InvoiceConfig | null;
   emailTemplates: EmailTemplate[];
 }
@@ -77,12 +77,23 @@ export const Pipeline: React.FC<PipelineProps> = ({
   };
 
   const generateNextInvoiceNumber = () => {
-      if (invoices.length === 0) return '2025-101';
-      const maxNum = invoices.reduce((max, inv) => {
+      const customerInvoices = invoices.filter(i => i.type === 'customer');
+      if (customerInvoices.length === 0) return '2025-101';
+      const maxNum = customerInvoices.reduce((max, inv) => {
           const numPart = parseInt(inv.invoiceNumber.split('-')[1]);
           return isNaN(numPart) ? max : Math.max(max, numPart);
       }, 100);
       return `2025-${maxNum + 1}`;
+  };
+  
+  const generateNextCommissionNumber = () => {
+      const commInvoices = invoices.filter(i => i.type === 'commission');
+      if (commInvoices.length === 0) return 'PROV-2025-001';
+      const maxNum = commInvoices.reduce((max, inv) => {
+          const numPart = parseInt(inv.invoiceNumber.split('-')[2]);
+          return isNaN(numPart) ? max : Math.max(max, numPart);
+      }, 0);
+      return `PROV-2025-${String(maxNum + 1).padStart(3, '0')}`;
   };
 
   const handleDragStart = (e: DragEvent<HTMLDivElement>, id: string) => {
@@ -139,9 +150,10 @@ export const Pipeline: React.FC<PipelineProps> = ({
         const contact = contacts.find(c => c.id === deal.contactId);
         const contactName = contact ? `${contact.name} (${contact.company})` : 'Unbekannt';
         
-        // 1. Auto Invoice
+        // 1. Create CUSTOMER Invoice (Full Amount)
         const newInvoice: Invoice = {
             id: crypto.randomUUID(),
+            type: 'customer',
             invoiceNumber: generateNextInvoiceNumber(),
             date: new Date().toISOString().split('T')[0],
             contactId: deal.contactId,
@@ -152,17 +164,46 @@ export const Pipeline: React.FC<PipelineProps> = ({
         };
         onAddInvoice(newInvoice);
 
-        // 2. Auto Welcome Email (UPDATED)
+        // 2. Check for Sales Rep & Create COMMISSION Invoice (Separate)
+        if (contact && contact.salesRepId) {
+             const rep = contacts.find(c => c.id === contact.salesRepId);
+             if (rep) {
+                 const commission = deal.value * 0.20; // 20% Provision
+                 const commInvoice: Invoice = {
+                     id: crypto.randomUUID(),
+                     type: 'commission',
+                     invoiceNumber: generateNextCommissionNumber(),
+                     date: new Date().toISOString().split('T')[0],
+                     contactId: rep.id, // Assigned to Sales Rep
+                     contactName: rep.name,
+                     description: `Provision für Auftrag ${newInvoice.invoiceNumber} (${contact.company})`,
+                     amount: commission,
+                     isPaid: false,
+                     relatedInvoiceId: newInvoice.id // Link to original invoice
+                 };
+                 onAddInvoice(commInvoice);
+                 
+                 // Log Activity for Sales Rep
+                 onAddActivity({
+                    id: crypto.randomUUID(),
+                    contactId: rep.id,
+                    type: 'system_invoice',
+                    content: `Provision ${commission.toLocaleString('de-DE')}€ für ${contact.company} vorgemerkt.`,
+                    date: new Date().toISOString().split('T')[0],
+                    timestamp: new Date().toISOString()
+                 });
+             }
+        }
+
+        // 3. Auto Welcome Email (Only for Customer)
         if (invoiceConfig && invoiceConfig.emailSettings?.welcome?.enabled && contact && contact.email) {
              const welcomeConfig = invoiceConfig.emailSettings.welcome;
              
              if (welcomeConfig.subject && welcomeConfig.body) {
-                 // Check Google Connection Logic (Local Implementation)
                  const storedConfig = localStorage.getItem('backend_config');
                  const config = storedConfig ? JSON.parse(storedConfig) : { mode: 'local' };
                  const service = DataServiceFactory.create(config);
                  
-                 // Generate PDF content using service
                  const invoiceHtml = compileInvoiceTemplate(newInvoice, invoiceConfig);
                  let pdfBase64 = '';
                  
@@ -172,19 +213,16 @@ export const Pipeline: React.FC<PipelineProps> = ({
                      console.error("PDF Generation failed", e);
                  }
 
-                 // Attachments list
                  const attachments = [...(welcomeConfig.attachments || [])];
                  if (pdfBase64) {
                      attachments.push({
                          name: `Rechnung_${newInvoice.invoiceNumber}.pdf`,
                          data: pdfBase64,
                          type: 'application/pdf',
-                         size: 0 // Size not strictly required for sending
+                         size: 0 
                      });
                  }
 
-                 // --- PLACEHOLDER REPLACEMENT FOR EMAIL BODY ---
-                 // Using simple split/join to avoid Regex special character issues with { }
                  const replacements: Record<string, string> = {
                     '{name}': contact.name || '',
                     '{firstName}': contact.name.split(' ')[0] || '',
@@ -200,12 +238,10 @@ export const Pipeline: React.FC<PipelineProps> = ({
                  let subject = welcomeConfig.subject;
 
                  Object.entries(replacements).forEach(([key, value]) => {
-                     // Replace all occurrences safely without Regex
                      body = body.split(key).join(value);
                      subject = subject.split(key).join(value);
                  });
                  
-                 // Send non-blocking with attachments
                  service.sendMail(contact.email, subject, body, attachments).then(success => {
                      if (success) {
                          onAddActivity({
@@ -280,7 +316,6 @@ export const Pipeline: React.FC<PipelineProps> = ({
     setIsModalOpen(false);
   };
 
-  // OPTIMIZATION: Memoize deals grouped by stage to avoid O(N*M) filtering on every render
   const dealsByStage = useMemo(() => {
     const acc: Record<string, Deal[]> = {};
     Object.values(DealStage).forEach(s => acc[s] = []);
@@ -321,14 +356,13 @@ export const Pipeline: React.FC<PipelineProps> = ({
       <div className="flex-1 overflow-x-auto p-6">
         <div className="flex gap-6 h-full min-w-max">
           {columns.filter(col => visibleStages.includes(col.id as DealStage)).map((col) => {
-             // Sorting Logic: For LEADS, sort by stageEnteredDate ASC (oldest first = longest waiting)
              let stageDeals = getDealsForStage(col.id as DealStage);
              
              if (col.id === DealStage.LEAD) {
                  stageDeals = [...stageDeals].sort((a, b) => {
                      const dateA = a.stageEnteredDate ? new Date(a.stageEnteredDate).getTime() : 0;
                      const dateB = b.stageEnteredDate ? new Date(b.stageEnteredDate).getTime() : 0;
-                     return dateA - dateB; // Oldest date first
+                     return dateA - dateB; 
                  });
              }
              
@@ -339,7 +373,6 @@ export const Pipeline: React.FC<PipelineProps> = ({
                 </div>
                 
                 <div className={`flex-1 bg-slate-100/50 rounded-xl p-2 border border-slate-200/60 overflow-y-auto custom-scrollbar transition-colors ${draggedDealId ? 'bg-slate-100/80 border-dashed border-slate-300' : ''}`}>
-                  {/* GRID LAYOUT FOR 2-COLUMN CARDS */}
                   <div className="grid grid-cols-2 gap-2 content-start min-h-[50px]">
                     {stageDeals.map(deal => {
                        const contact = contacts.find(c => c.id === deal.contactId);
@@ -354,7 +387,6 @@ export const Pipeline: React.FC<PipelineProps> = ({
                             className="bg-white p-2.5 rounded-lg shadow-sm border border-slate-200 hover:shadow-md hover:border-indigo-300 transition-all cursor-pointer active:cursor-grabbing group relative flex flex-col justify-between h-20"
                             title={`${deal.title} - ${contact?.name}`}
                         >
-                            {/* Actions overlay */}
                             <div className="absolute top-1 right-1 flex gap-0.5 opacity-0 group-hover:opacity-100 bg-white/90 rounded shadow-sm z-10">
                                 <button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => openEditModal(e, deal)} className="text-slate-400 hover:text-indigo-600 p-1"><Pencil className="w-3 h-3" /></button>
                                 <button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => handleDeleteClick(e, deal.id)} className="text-slate-400 hover:text-red-500 p-1"><Trash2 className="w-3 h-3" /></button>

@@ -1,7 +1,7 @@
 
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Search, Filter, MoreHorizontal, Mail, Phone, Plus, Linkedin, X, FileText, Pencil, Trash, Trash2, Clock, Check, Send, Briefcase, Banknote, Calendar, Building, Globe, Upload, ArrowUpDown, ArrowUp, ArrowDown, TrendingUp, TrendingDown, Percent, Zap, History, Star, User } from 'lucide-react';
+import { Search, Filter, MoreHorizontal, Mail, Phone, Plus, Linkedin, X, FileText, Pencil, Trash, Trash2, Clock, Check, Send, Briefcase, Banknote, Calendar, Building, Globe, Upload, ArrowUpDown, ArrowUp, ArrowDown, TrendingUp, TrendingDown, Percent, Zap, History, Star, User, Users } from 'lucide-react';
 import { Contact, Activity, ActivityType, EmailTemplate, Invoice, Expense, ContactType, InvoiceConfig } from '../types';
 import { DataServiceFactory, replaceEmailPlaceholders } from '../services/dataService'; 
 
@@ -50,7 +50,7 @@ export const Contacts: React.FC<ContactsProps> = ({
   invoiceConfig
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'all' | 'customer' | 'lead' | 'newsletter'>('all'); // NEU: Tabs
+  const [activeTab, setActiveTab] = useState<'all' | 'customer' | 'lead' | 'sales' | 'newsletter'>('all');
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingContactId, setEditingContactId] = useState<string | null>(null);
@@ -85,6 +85,9 @@ export const Contacts: React.FC<ContactsProps> = ({
   const availableCompanies = useMemo(() => Array.from(new Set(contacts.map(c => c.company))).sort(), [contacts]);
   const availableRoles = useMemo(() => Array.from(new Set(contacts.map(c => c.role))).sort(), [contacts]);
 
+  // Find all available Sales Reps for assignment
+  const availableSalesReps = useMemo(() => contacts.filter(c => c.type === 'sales'), [contacts]);
+
   const [formData, setFormData] = useState<Partial<Contact>>({
     name: '',
     role: '',
@@ -94,6 +97,7 @@ export const Contacts: React.FC<ContactsProps> = ({
     linkedin: '',
     notes: '',
     type: 'lead', // Default
+    salesRepId: '', // NEU
     retainerActive: false,
     retainerAmount: 0,
     retainerStartDate: '',
@@ -137,7 +141,7 @@ export const Contacts: React.FC<ContactsProps> = ({
       setIsModalOpen(false);
       setEditingContactId(null);
       // Explicitly wipe state
-      setFormData({ name: '', role: '', company: '', companyUrl: '', email: '', linkedin: '', notes: '', type: 'lead', retainerActive: false, retainerAmount: 0, retainerStartDate: '', retainerNextBilling: '', retainerInterval: 'monthly' });
+      setFormData({ name: '', role: '', company: '', companyUrl: '', email: '', linkedin: '', notes: '', type: 'lead', salesRepId: '', retainerActive: false, retainerAmount: 0, retainerStartDate: '', retainerNextBilling: '', retainerInterval: 'monthly' });
       setNewActivityContent('');
   };
 
@@ -151,6 +155,7 @@ export const Contacts: React.FC<ContactsProps> = ({
         if (activeTab !== 'all') {
              if (activeTab === 'customer' && c.type !== 'customer') return false;
              if (activeTab === 'lead' && c.type !== 'lead') return false;
+             if (activeTab === 'sales' && c.type !== 'sales') return false;
              if (activeTab === 'newsletter' && c.type !== 'newsletter') return false;
         }
 
@@ -278,7 +283,7 @@ export const Contacts: React.FC<ContactsProps> = ({
 
   const openCreateModal = () => {
     setEditingContactId(null);
-    setFormData({ name: '', role: '', company: '', companyUrl: '', email: '', linkedin: '', notes: '', type: 'lead', retainerActive: false, retainerAmount: 0, retainerStartDate: '', retainerNextBilling: '', retainerInterval: 'monthly' });
+    setFormData({ name: '', role: '', company: '', companyUrl: '', email: '', linkedin: '', notes: '', type: 'lead', salesRepId: '', retainerActive: false, retainerAmount: 0, retainerStartDate: '', retainerNextBilling: '', retainerInterval: 'monthly' });
     setIsModalOpen(true);
   };
 
@@ -293,6 +298,7 @@ export const Contacts: React.FC<ContactsProps> = ({
       linkedin: contact.linkedin || '',
       notes: contact.notes || '',
       type: contact.type || 'lead',
+      salesRepId: contact.salesRepId || '',
       retainerActive: contact.retainerActive || false,
       retainerAmount: contact.retainerAmount || 0,
       retainerStartDate: contact.retainerStartDate || '',
@@ -325,6 +331,7 @@ export const Contacts: React.FC<ContactsProps> = ({
           linkedin: formData.linkedin,
           notes: formData.notes,
           type: formData.type || 'lead',
+          salesRepId: formData.salesRepId,
           retainerActive: formData.retainerActive,
           retainerAmount: Number(formData.retainerAmount),
           retainerStartDate: formData.retainerStartDate,
@@ -344,6 +351,7 @@ export const Contacts: React.FC<ContactsProps> = ({
         linkedin: formData.linkedin,
         notes: formData.notes,
         type: formData.type || 'lead',
+        salesRepId: formData.salesRepId,
         avatar: '', // No auto-generation
         lastContact: new Date().toISOString().split('T')[0],
         retainerActive: formData.retainerActive,
@@ -539,7 +547,7 @@ export const Contacts: React.FC<ContactsProps> = ({
       <header className="bg-white border-b border-slate-200 px-8 py-6 flex justify-between items-center shrink-0">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Kontakte</h1>
-          <p className="text-slate-500 text-sm mt-1">Verwalten Sie Ihre Kunden und Leads.</p>
+          <p className="text-slate-500 text-sm mt-1">Verwalten Sie Ihre Kunden, Leads und Vertriebspartner.</p>
         </div>
         <div className="flex gap-3">
              <input type="file" ref={fileInputRef} hidden accept=".csv" onChange={handleFileChange} />
@@ -557,6 +565,7 @@ export const Contacts: React.FC<ContactsProps> = ({
           <button onClick={() => setActiveTab('all')} className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'all' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Alle</button>
           <button onClick={() => setActiveTab('lead')} className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'lead' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Leads</button>
           <button onClick={() => setActiveTab('customer')} className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'customer' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Kunden</button>
+          <button onClick={() => setActiveTab('sales')} className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'sales' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Vertrieb</button>
           <button onClick={() => setActiveTab('newsletter')} className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'newsletter' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Newsletter</button>
       </div>
 
@@ -681,6 +690,7 @@ export const Contacts: React.FC<ContactsProps> = ({
                           <div className="flex items-center gap-2">
                              <p className="text-sm font-semibold text-slate-900">{contact.name}</p>
                              {contact.retainerActive && <span className="bg-green-100 text-green-700 text-[10px] px-1.5 py-0.5 rounded-full font-bold">Retainer</span>}
+                             {contact.type === 'sales' && <span className="bg-purple-100 text-purple-700 text-[10px] px-1.5 py-0.5 rounded-full font-bold flex items-center gap-1"><Users className="w-3 h-3"/> Vertrieb</span>}
                           </div>
                           <p className="text-xs text-slate-500">{contact.email}</p>
                       </div>
@@ -787,16 +797,39 @@ export const Contacts: React.FC<ContactsProps> = ({
                                         <select name="type" value={formData.type || 'lead'} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
                                             <option value="lead">Lead (Interessent)</option>
                                             <option value="customer">Kunde (Customer)</option>
+                                            <option value="sales">Vertrieb (Mitarbeiter)</option>
                                             <option value="partner">Partner</option>
                                             <option value="newsletter">Newsletter Abonnent</option>
                                         </select>
                                     </div>
+                                    
+                                    {/* VERTRIEBZUWEISUNG (Nur wenn Typ nicht 'sales' ist) */}
+                                    {formData.type !== 'sales' && (
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1">
+                                                <Users className="w-3 h-3" /> Zuständiger Vertriebler
+                                            </label>
+                                            <select 
+                                                name="salesRepId" 
+                                                value={formData.salesRepId || ''} 
+                                                onChange={handleInputChange} 
+                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                                            >
+                                                <option value="">-- Kein Vertriebler zugewiesen --</option>
+                                                {availableSalesReps.map(rep => (
+                                                    <option key={rep.id} value={rep.id}>{rep.name}</option>
+                                                ))}
+                                            </select>
+                                            <p className="text-[10px] text-slate-400">Erhält 20% Provision bei erfolgreichen Abschlüssen.</p>
+                                        </div>
+                                    )}
+
                                     <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1"><Linkedin className="w-3 h-3 text-blue-600" /> LinkedIn Profil</label><input name="linkedin" value={formData.linkedin} onChange={handleInputChange} type="url" className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="https://linkedin.com/in/..."/></div>
                                     <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase">Allgemeine Notiz</label><textarea name="notes" value={formData.notes} onChange={handleInputChange} rows={3} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none resize-none" placeholder="Statische Infos..."/></div>
                                 </div>
                             </div>
 
-                            {/* Retainer / Vertrag Section (Neu) */}
+                            {/* Retainer / Vertrag Section */}
                             <div className="pt-4 border-t border-slate-100">
                                 <div className="flex items-center justify-between mb-4">
                                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2"><Banknote className="w-4 h-4"/> Retainer / Vertrag</h3>

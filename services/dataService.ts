@@ -1,7 +1,7 @@
+
 import { Contact, Deal, Task, Invoice, Expense, Activity, UserProfile, ProductPreset, Theme, BackendConfig, BackendMode, BackupData, InvoiceConfig, EmailTemplate, EmailAttachment, DealStage } from '../types';
 import { FirebaseDataService } from './firebaseService';
 
-// Declare Google Types globally for TS
 declare global {
     interface Window {
         google: any;
@@ -37,7 +37,7 @@ export const DEFAULT_PDF_TEMPLATE = `<!DOCTYPE html>
 <body>
     <div class="header">
         <div class="logo">{companyName}</div>
-        <div class="invoice-title">RECHNUNG</div>
+        <div class="invoice-title">{docTitle}</div>
     </div>
     <div class="details">
         <div class="bill-to">
@@ -47,7 +47,7 @@ export const DEFAULT_PDF_TEMPLATE = `<!DOCTYPE html>
         </div>
         <div class="meta">
             <table>
-                <tr><td class="label">Rechnungs-Nr.</td><td>{invoiceNumber}</td></tr>
+                <tr><td class="label">{docNumberLabel}</td><td>{invoiceNumber}</td></tr>
                 <tr><td class="label">Datum</td><td>{date}</td></tr>
             </table>
         </div>
@@ -83,6 +83,8 @@ export const compileInvoiceTemplate = (invoice: Invoice, config: InvoiceConfig):
     const taxRate = config.taxRule === 'small_business' ? 0 : 0.19;
     const tax = invoice.amount * taxRate;
     const total = invoice.amount + tax;
+    
+    const isCommission = invoice.type === 'commission';
 
     const replacements: Record<string, string> = {
         '{companyName}': config.companyName || 'Meine Firma',
@@ -90,12 +92,15 @@ export const compileInvoiceTemplate = (invoice: Invoice, config: InvoiceConfig):
         '{invoiceNumber}': invoice.invoiceNumber,
         '{date}': invoice.date,
         '{description}': invoice.description,
-        '{amount}': invoice.amount.toFixed(2),
-        '{tax}': tax.toFixed(2),
-        '{total}': total.toFixed(2),
+        '{amount}': invoice.amount.toLocaleString('de-DE', {minimumFractionDigits: 2}),
+        '{tax}': tax.toLocaleString('de-DE', {minimumFractionDigits: 2}),
+        '{total}': total.toLocaleString('de-DE', {minimumFractionDigits: 2}),
         '{iban}': config.iban || '',
         '{taxId}': config.taxId || '',
-        '{footerText}': config.footerText || ''
+        '{footerText}': config.footerText || '',
+        // Dynamic labels based on type
+        '{docTitle}': isCommission ? 'GUTSCHRIFT' : 'RECHNUNG',
+        '{docNumberLabel}': isCommission ? 'Gutschrift-Nr.' : 'Rechnungs-Nr.'
     };
 
     Object.entries(replacements).forEach(([key, val]) => {
@@ -123,14 +128,11 @@ export const replaceEmailPlaceholders = (text: string, contact: Contact, config?
    return res;
 };
 
-// Helper to make base64 URL safe for Gmail API
 const makeUrlSafeBase64 = (base64: string) => {
     return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 };
 
-// Interface extension
 export interface IDataService {
-    // ... Existing CRUD methods ...
     init(): Promise<void>;
     getContacts(): Promise<Contact[]>;
     saveContact(contact: Contact): Promise<Contact>;
@@ -171,18 +173,15 @@ export interface IDataService {
     updateEmailTemplate(template: EmailTemplate): Promise<EmailTemplate>;
     deleteEmailTemplate(id: string): Promise<void>;
     
-    // Auth & Integration
-    authenticate(token: string): Promise<UserProfile | null>; // NEW
+    authenticate(token: string): Promise<UserProfile | null>; 
     connectGoogle(service: 'calendar' | 'mail', clientId?: string): Promise<boolean>;
     disconnectGoogle(service: 'calendar' | 'mail'): Promise<boolean>;
     getIntegrationStatus(service: 'calendar' | 'mail'): Promise<boolean>;
     sendMail(to: string, subject: string, body: string, attachments?: EmailAttachment[]): Promise<boolean>;
     
-    // Access Control (NEW)
     checkUserAccess(email: string): Promise<boolean>;
     inviteUser(email: string, role: string): Promise<void>;
 
-    // System
     processDueRetainers(): Promise<{ updatedContacts: Contact[], newInvoices: Invoice[], newActivities: Activity[] }>;
     checkAndInstallUpdate(url: string, statusCallback?: (status: string) => void, force?: boolean): Promise<boolean>;
     getAppVersion(): Promise<string>;
@@ -193,7 +192,6 @@ export interface IDataService {
 class LocalDataService implements IDataService {
     private googleClientId?: string;
     private initialized: boolean = false;
-    // Store OAuth access tokens in memory (not LS for security best practice, though this resets on refresh)
     private accessTokens: { [key: string]: string } = {};
     
     private cache: {
@@ -243,7 +241,6 @@ class LocalDataService implements IDataService {
 
     async authenticate(token: string): Promise<UserProfile | null> {
         try {
-            // Local mode: Just decode the token without verification
             const payload = JSON.parse(atob(token.split('.')[1]));
             return {
                 firstName: payload.given_name || payload.name,
@@ -376,7 +373,6 @@ class LocalDataService implements IDataService {
         alert("Benutzer-Einladungen sind nur im Firebase Cloud Modus notwendig/verfügbar.");
     }
 
-    // --- UPDATE LOGIC (DIAGNOSTIC MODE) ---
     async checkAndInstallUpdate(url: string, statusCallback?: (status: string) => void, force: boolean = false): Promise<boolean> {
         if (force) console.log(`[FORCE] checkAndInstallUpdate gestartet. URL: ${url}`);
         
@@ -405,8 +401,6 @@ class LocalDataService implements IDataService {
 
         try {
             statusCallback?.("Verbinde mit Server...");
-            
-            // 1. Fetch remote version
             const versionUrl = `${baseUrl}/version.json?t=${Date.now()}`;
             const response = await fetch(versionUrl);
             
@@ -445,14 +439,12 @@ class LocalDataService implements IDataService {
 
             statusCallback?.(`Starte Download für v${remoteData.version}...`);
 
-            // 2. Fetch Manifest
             const manifestUrl = `${baseUrl}/manifest.json?t=${Date.now()}`;
             const manifestResponse = await fetch(manifestUrl);
             if (!manifestResponse.ok) throw new Error(`Manifest nicht gefunden (Status ${manifestResponse.status})`);
             
             const files: string[] = await manifestResponse.json();
             
-            // 3. Construct Download List - Simplified without encodeURIComponent for standard paths
             const downloadManifest = files.map(file => ({
                 url: `${baseUrl}/${file}`, 
                 relativePath: file
@@ -463,7 +455,6 @@ class LocalDataService implements IDataService {
                 relativePath: 'version.json'
             });
 
-            // 4. Trigger Download
             statusCallback?.(`Lade ${downloadManifest.length} Dateien herunter...`);
             
             const result = await ipcRenderer.invoke('install-update', { 
@@ -477,7 +468,6 @@ class LocalDataService implements IDataService {
             } else {
                 const errMsg = result.error || "Download fehlgeschlagen (Unbekannt)";
                 console.error("Update Failed:", errMsg);
-                // Alert the user so they know WHY it failed
                 window.alert(`Update Fehler im Hintergrundprozess:\n${errMsg}\n\nEin Log wurde in AppData/update_log.txt geschrieben.`);
                 throw new Error(errMsg);
             }
@@ -497,14 +487,12 @@ class LocalDataService implements IDataService {
         return '1.2.17'; 
     }
 
-    // ... Standard CRUD Implementations ...
     async getContacts(): Promise<Contact[]> { return this.getFromStorage('contacts', []); }
     async saveContact(c: Contact): Promise<Contact> { const l=await this.getContacts(); this.set('contacts','contacts',[c,...l]); return c; }
     async updateContact(c: Contact): Promise<Contact> { const l=await this.getContacts(); const n=l.map(x=>x.id===c.id?c:x); this.set('contacts','contacts',n); return c; }
     async deleteContact(id: string): Promise<void> { 
         const c=await this.getContacts(); 
         this.set('contacts','contacts',c.filter(x=>x.id!==id)); 
-        // Cascade
         const d=await this.getDeals(); this.set('deals','deals',d.filter(x=>x.contactId!==id));
         const t=await this.getTasks(); this.set('tasks','tasks',t.filter(x=>x.relatedEntityId!==id));
         const a=await this.getActivities(); this.set('activities','activities',a.filter(x=>x.contactId!==id));
@@ -610,7 +598,6 @@ class LocalDataService implements IDataService {
     async wipeAllData(): Promise<void> { localStorage.clear(); window.location.reload(); }
 }
 
-// ... Singleton Logic ...
 let instance: IDataService | null = null;
 export class DataServiceFactory {
     static create(config: BackendConfig): IDataService {
