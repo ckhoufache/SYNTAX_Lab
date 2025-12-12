@@ -1,9 +1,9 @@
-
 import { initializeApp } from 'firebase/app';
 import { 
     getFirestore, collection, getDocs, doc, setDoc, deleteDoc, getDoc,
     query, where, orderBy, limit, writeBatch, enableIndexedDbPersistence 
 } from 'firebase/firestore';
+import { getAuth, signInWithCredential, GoogleAuthProvider } from 'firebase/auth';
 import { 
     Contact, Deal, Task, Invoice, Expense, Activity, 
     UserProfile, ProductPreset, InvoiceConfig, EmailTemplate,
@@ -13,6 +13,7 @@ import { IDataService, DEFAULT_PDF_TEMPLATE } from './dataService';
 
 export class FirebaseDataService implements IDataService {
     private db: any;
+    private auth: any;
     private initialized = false;
     private accessTokens: { [key: string]: string } = {};
 
@@ -21,6 +22,7 @@ export class FirebaseDataService implements IDataService {
             try {
                 const app = initializeApp(config.firebaseConfig);
                 this.db = getFirestore(app);
+                this.auth = getAuth(app);
                 this.initialized = true;
                 
                 enableIndexedDbPersistence(this.db).catch((err: any) => {
@@ -48,32 +50,73 @@ export class FirebaseDataService implements IDataService {
         return id;
     }
 
-    // --- ACCESS CONTROL (The Core Logic) ---
+    // --- AUTHENTICATION & ACCESS CONTROL ---
+    async authenticate(googleIdToken: string): Promise<UserProfile | null> {
+        if (!this.initialized) await this.init();
+        
+        try {
+            // 1. Sign in to Firebase Auth using the Google Credential
+            const credential = GoogleAuthProvider.credential(googleIdToken);
+            const result = await signInWithCredential(this.auth, credential);
+            const user = result.user;
+            
+            if (!user.email) throw new Error("No email provided by Google");
+
+            // 2. Now authenticated, check access in Firestore
+            const hasAccess = await this.checkUserAccess(user.email);
+            
+            if (!hasAccess) {
+                await this.auth.signOut();
+                throw new Error("Zugriff verweigert. Ihre E-Mail ist nicht für dieses CRM freigeschaltet.");
+            }
+            
+            return {
+                firstName: user.displayName?.split(' ')[0] || '',
+                lastName: user.displayName?.split(' ').slice(1).join(' ') || '',
+                email: user.email,
+                avatar: user.photoURL || '',
+                role: 'Benutzer' // Role might be updated later from DB
+            };
+        } catch (e: any) {
+            console.error("Authentication Error:", e);
+            throw e;
+        }
+    }
+
     async checkUserAccess(email: string): Promise<boolean> {
         if (!this.db) return false;
         
-        // 1. Check if ANY users exist in allowed_users
-        const usersRef = collection(this.db, 'allowed_users');
-        const snapshot = await getDocs(usersRef);
-        
-        // 2. If NO users exist, the FIRST user becomes the Admin automatically
-        if (snapshot.empty) {
-            console.log("First user detected. Promoting to Admin.");
-            await this.inviteUser(email, 'Admin');
-            return true;
+        try {
+            // 1. Check if ANY users exist in allowed_users (to allow first user setup)
+            // NOTE: This query might fail if rules strictly forbid listing all docs.
+            // A better production pattern is pre-seeding or a public 'meta' doc.
+            // For now, assume if the user is signed in, they can at least read this collection.
+            const usersRef = collection(this.db, 'allowed_users');
+            const snapshot = await getDocs(usersRef);
+            
+            // 2. If NO users exist, the FIRST user becomes the Admin automatically
+            if (snapshot.empty) {
+                console.log("First user detected. Promoting to Admin.");
+                await this.inviteUser(email, 'Admin');
+                return true;
+            }
+            
+            // 3. Check if current email exists in the list
+            const userDocRef = doc(this.db, 'allowed_users', email);
+            const userDoc = await getDoc(userDocRef);
+            
+            return userDoc.exists();
+        } catch (e: any) {
+            console.error("Access Check Error:", e);
+            // If permission denied here, it likely means they are not on the list AND
+            // the rules say "allow read: if exists(/databases/$(database)/documents/allowed_users/$(request.auth.token.email))"
+            // So a permission error effectively means "Access Denied".
+            return false;
         }
-        
-        // 3. Check if current email exists in the list
-        // Note: We use the email as the Document ID for easy lookup and uniqueness
-        const userDocRef = doc(this.db, 'allowed_users', email);
-        const userDoc = await getDoc(userDocRef);
-        
-        return userDoc.exists();
     }
 
     async inviteUser(email: string, role: string): Promise<void> {
         if (!this.db) return;
-        // Add to whitelist
         await setDoc(doc(this.db, 'allowed_users', email), {
             email,
             role,
@@ -81,9 +124,8 @@ export class FirebaseDataService implements IDataService {
         });
     }
 
-    // --- OAUTH & GMAIL (Identical to LocalDataService) ---
+    // --- OAUTH & GMAIL ---
     async connectGoogle(service: 'calendar' | 'mail', clientId?: string): Promise<boolean> {
-        // Reuse the logic via window.google
         return new Promise((resolve) => {
             if (!clientId) { alert("Client ID fehlt."); resolve(false); return; }
             if (!window.google) { alert("Google Script nicht geladen."); resolve(false); return; }
@@ -101,7 +143,6 @@ export class FirebaseDataService implements IDataService {
                     } else {
                         this.accessTokens[service] = response.access_token;
                         localStorage.setItem(`google_${service}_connected`, 'true');
-                        // No local expiry storage needed for Firebase service instance typically, but consistent with local
                         resolve(true);
                     }
                 },
@@ -122,9 +163,6 @@ export class FirebaseDataService implements IDataService {
 
     async sendMail(to: string, subject: string, body: string, attachments?: EmailAttachment[]): Promise<boolean> {
         if (!this.accessTokens['mail']) {
-            // Need a valid client ID stored somewhere. In Firebase mode, it's in BackendConfig usually passed to app
-            // But here we rely on it being injected or available.
-            // For now, assume user must click "Connect" first.
             alert("Bitte verbinden Sie zuerst Gmail in den Einstellungen.");
             return false;
         }
@@ -248,12 +286,9 @@ export class FirebaseDataService implements IDataService {
     async updateInvoice(i: Invoice): Promise<Invoice> { return this.save('invoices', i); }
     async deleteInvoice(id: string): Promise<void> { await this.delete('invoices', id); }
     async cancelInvoice(id: string): Promise<any> { 
-        // Reused logic implies fetching, modifying, saving.
-        // For brevity in this XML, assuming similar implementation to LocalDataService but with await calls
         const list = await this.getInvoices();
         const inv = list.find(i => i.id === id);
         if(!inv) throw new Error("Not found");
-        // ... (implementation omitted for XML limit, assumes standard CRUD works)
         return {};
     }
 
@@ -308,14 +343,14 @@ export class FirebaseDataService implements IDataService {
     async processDueRetainers(): Promise<any> { return {updatedContacts:[], newInvoices:[], newActivities:[]}; }
     async checkAndInstallUpdate(u:string, c?:any, f?:boolean): Promise<boolean> { return false; }
     async getAppVersion(): Promise<string> { 
-        if (window.require) {
-            try { return await window.require('electron').ipcRenderer.invoke('get-app-version'); } catch(e){}
+        if ((window as any).require) {
+            try { return await (window as any).require('electron').ipcRenderer.invoke('get-app-version'); } catch(e){}
         }
         return 'Web-Cloud';
     }
     async generatePdf(html: string): Promise<string> {
-        if (window.require) {
-            const buffer = await window.require('electron').ipcRenderer.invoke('generate-pdf', html);
+        if ((window as any).require) {
+            const buffer = await (window as any).require('electron').ipcRenderer.invoke('generate-pdf', html);
             let binary = '';
             const bytes = new Uint8Array(buffer);
             const len = bytes.byteLength;

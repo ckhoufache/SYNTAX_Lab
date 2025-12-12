@@ -24,15 +24,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   
   const isDark = false; // Forced Light Mode
 
-  // JWT Decoder (Simple implementation to avoid external lib dependency)
-  const parseJwt = (token: string) => {
-      try {
-        return JSON.parse(atob(token.split('.')[1]));
-      } catch (e) {
-        return null;
-      }
-  };
-
   useEffect(() => {
     // 1. Check if Client ID is present
     if (!backendConfig.googleClientId) {
@@ -73,32 +64,20 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
   const handleCredentialResponse = async (response: any) => {
       setErrorMsg(null);
-      setStatusMsg("Prüfe Zugriffsrechte...");
+      setStatusMsg("Anmeldung läuft...");
       
       try {
-          const payload = parseJwt(response.credential);
-          if (!payload) throw new Error("Konnte Login-Daten nicht verarbeiten.");
-
-          const userProfile: UserProfile = {
-              firstName: payload.given_name || payload.name,
-              lastName: payload.family_name || '',
-              email: payload.email,
-              avatar: payload.picture,
-              role: 'Benutzer' // Default, will be updated by DB
-          };
-
-          // CHECK WHITELIST / ACCESS CONTROL
           const service = DataServiceFactory.create(backendConfig);
           await service.init();
           
-          const hasAccess = await service.checkUserAccess(userProfile.email);
+          // Delegate authentication to the service (Local or Firebase)
+          const userProfile = await service.authenticate(response.credential);
           
-          if (hasAccess) {
-              setStatusMsg("Zugriff genehmigt. Lade Daten...");
+          if (userProfile) {
+              setStatusMsg("Erfolgreich angemeldet. Lade Daten...");
               onLogin(userProfile);
           } else {
-              setErrorMsg("Zugriff verweigert. Ihre E-Mail ist nicht für dieses CRM freigeschaltet.");
-              setStatusMsg("");
+              throw new Error("Authentifizierung fehlgeschlagen.");
           }
 
       } catch (e: any) {

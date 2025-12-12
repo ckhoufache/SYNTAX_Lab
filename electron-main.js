@@ -16,75 +16,66 @@ const APP_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/53
 let mainWindow;
 let server;
 
-// NEUE UPDATE STRUKTUR:
-// userData/updates/v1.0.1/
-// userData/updates/v1.0.2/
-// userData/active_version.json -> { "current": "v1.0.2" }
+// NEUE UPDATE STRUKTUR
 const userDataPath = app.getPath('userData');
 const updatesRootDir = path.join(userDataPath, 'updates');
 const activeVersionFile = path.join(userDataPath, 'active_version.json');
+const logFile = path.join(userDataPath, 'update_log.txt');
 
-// Legacy Pfade zum Bereinigen
-const legacyHotUpdatePath = path.join(userDataPath, 'hot_update');
-const legacyTempPath = path.join(userDataPath, 'hot_update_temp');
+// Logging Funktion für Debugging
+function log(message) {
+    const timestamp = new Date().toISOString();
+    const msg = `[${timestamp}] ${message}\n`;
+    console.log(msg.trim());
+    try {
+        fs.appendFileSync(logFile, msg);
+    } catch (e) {
+        console.error("Logging failed:", e);
+    }
+}
 
-/**
- * Hilfsfunktion: Safe Delete (wirft keinen Fehler, wenn File gelockt ist - ignoriert es einfach)
- */
 function safeDeleteFolder(folderPath) {
     try {
         if (fs.existsSync(folderPath)) {
             fs.rmSync(folderPath, { recursive: true, force: true });
         }
     } catch (e) {
-        console.warn(`Could not delete folder ${folderPath} (might be locked). Ignoring.`, e.message);
+        log(`Warnung: Konnte Ordner ${folderPath} nicht löschen: ${e.message}`);
     }
 }
 
-/**
- * Ermittelt den Pfad zur AKTUELLEN Version (oder null für Fallback)
- */
 function getActiveUpdatePath() {
     try {
-        // 1. Legacy Cleanup (einmalig)
-        safeDeleteFolder(legacyHotUpdatePath);
-        safeDeleteFolder(legacyTempPath);
-
         if (fs.existsSync(activeVersionFile)) {
             const data = JSON.parse(fs.readFileSync(activeVersionFile, 'utf-8'));
             if (data.current) {
                 const versionDir = path.join(updatesRootDir, data.current);
-                // Sicherheitscheck: Existiert index.html dort?
                 if (fs.existsSync(path.join(versionDir, 'index.html'))) {
                     return { path: versionDir, version: data.current };
+                } else {
+                    log(`Fehler: Aktive Version ${data.current} hat keine index.html. Fallback auf Bundle.`);
                 }
             }
         }
     } catch (e) {
-        console.error("Error determining active update path:", e);
+        log(`Fehler beim Lesen der aktiven Version: ${e.message}`);
     }
     return null;
 }
 
-/**
- * Bereinigt alte Versionen, behält nur die aktive und evtl. die neuste
- */
 function cleanupOldVersions(activeVersion) {
     try {
         if (!fs.existsSync(updatesRootDir)) return;
-        
         const versions = fs.readdirSync(updatesRootDir);
         versions.forEach(v => {
             if (v !== activeVersion) {
-                // Lösche alles, was nicht die aktive Version ist
-                // (Man könnte hier Logik bauen "keep last 2", aber keep simple for now)
                 const dirToRemove = path.join(updatesRootDir, v);
-                console.log(`Cleaning up old version: ${v}`);
+                log(`Bereinige alte Version: ${v}`);
                 safeDeleteFolder(dirToRemove);
             }
         });
     } catch (e) {
-        console.error("Cleanup error (non-critical):", e);
+        log(`Cleanup Fehler: ${e.message}`);
     }
 }
 
@@ -93,13 +84,11 @@ function startLocalServer() {
   const activeUpdate = getActiveUpdatePath();
 
   if (activeUpdate) {
-      console.log(`Serving from UPDATE folder: ${activeUpdate.version}`);
+      log(`Server startet mit UPDATE Version: ${activeUpdate.version}`);
       serverApp.use(express.static(activeUpdate.path));
-      
-      // Cleanup im Hintergrund (nicht blockierend)
-      setTimeout(() => cleanupOldVersions(activeUpdate.version), 5000);
+      setTimeout(() => cleanupOldVersions(activeUpdate.version), 10000);
   } else {
-      console.log('Serving from INTERNAL bundle (dist)');
+      log('Server startet mit BUNDLED Version (dist)');
       serverApp.use(express.static(path.join(__dirname, 'dist')));
   }
   
@@ -113,7 +102,7 @@ function startLocalServer() {
   });
 
   server = serverApp.listen(INTERNAL_PORT, () => {
-    console.log(`Internal server running at ${APP_URL}`);
+    log(`Internal server running at ${APP_URL}`);
   });
 }
 
@@ -166,11 +155,6 @@ async function createWindow() {
     return { action: 'allow' };
   });
 
-  mainWindow.webContents.on('did-create-window', (childWindow) => {
-      childWindow.webContents.setUserAgent(APP_USER_AGENT);
-      childWindow.setMenuBarVisibility(false);
-  });
-
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -181,68 +165,78 @@ ipcMain.handle('get-app-version', () => {
     try {
         const active = getActiveUpdatePath();
         if (active) {
-            // Versuche version.json im Ordner zu lesen für Details, oder nimm Ordnernamen
-            const vFile = path.join(active.path, 'version.json');
-            if (fs.existsSync(vFile)) {
-                const data = JSON.parse(fs.readFileSync(vFile, 'utf-8'));
-                return `${data.version} (Hot)`;
-            }
             return `${active.version} (Hot)`;
         }
     } catch(e) {}
     return app.getVersion();
 });
 
-/**
- * INSTALL UPDATE HANDLER (ROBUST VERSION)
- * Payload: { manifest: [...], version: "1.0.5" }
- */
 ipcMain.handle('install-update', async (event, payload) => {
   const { manifest, version } = payload;
   const targetDir = path.join(updatesRootDir, version);
+  log(`--- UPDATE START: v${version} ---`);
 
   try {
-    console.log(`Starting update installation for version ${version}...`);
-
-    // 1. Ordner erstellen (Wenn er existiert, erst löschen um Clean State zu haben)
+    // 1. Ordner vorbereiten
     if (fs.existsSync(targetDir)) {
+        log(`Zielordner existiert bereits, lösche: ${targetDir}`);
         safeDeleteFolder(targetDir); 
     }
     fs.mkdirSync(targetDir, { recursive: true });
 
-    // 2. Download files into NEW folder (No locking issues possible here)
+    // 2. Download
+    log(`Starte Download von ${manifest.length} Dateien...`);
     for (const item of manifest) {
-        const targetPath = path.join(targetDir, item.relativePath);
-        fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-
-        const downloadUrl = `${item.url}?cb=${Date.now()}`;
-        const response = await fetch(downloadUrl, { headers: { 'User-Agent': APP_USER_AGENT } });
+        // Normalize path separators to OS specific
+        const normalizedRelativePath = item.relativePath.split('/').join(path.sep);
+        const targetPath = path.join(targetDir, normalizedRelativePath);
         
-        if (!response.ok) throw new Error(`HTTP ${response.status} for ${item.relativePath}`);
+        // Ensure dir exists
+        const dirName = path.dirname(targetPath);
+        if (!fs.existsSync(dirName)) {
+            fs.mkdirSync(dirName, { recursive: true });
+        }
+
+        log(`Lade: ${item.relativePath}`);
+        
+        const response = await fetch(item.url, { 
+            headers: { 'User-Agent': APP_USER_AGENT },
+            cache: 'no-store'
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status} beim Laden von ${item.url}`);
+        }
         
         const arrayBuffer = await response.arrayBuffer();
         fs.writeFileSync(targetPath, Buffer.from(arrayBuffer));
     }
 
-    // 3. Wenn alles erfolgreich heruntergeladen wurde, Pointer aktualisieren
-    // Das ist eine atomare Operation (File Write).
+    // 3. Verifikation
+    if (!fs.existsSync(path.join(targetDir, 'index.html'))) {
+        throw new Error("Update fehlerhaft: index.html fehlt im Zielordner.");
+    }
+
+    // 4. Pointer aktualisieren
     const newConfig = { current: version, installedAt: new Date().toISOString() };
     fs.writeFileSync(activeVersionFile, JSON.stringify(newConfig, null, 2));
     
-    console.log(`Pointer updated to version ${version}. Ready for restart.`);
+    log(`Update erfolgreich installiert. Pointer gesetzt auf ${version}`);
     return { success: true };
 
   } catch (error) {
-    console.error('Download/Install failed:', error);
-    // Cleanup failed partial folder
+    log(`CRITICAL UPDATE ERROR: ${error.message}`);
+    log(error.stack);
+    // Cleanup
     safeDeleteFolder(targetDir);
     return { success: false, error: error.message };
   }
 });
 
 ipcMain.handle('restart-app', () => {
+  log("Neustart angefordert.");
   app.relaunch();
-  app.exit();
+  app.exit(0);
 });
 
 ipcMain.handle('generate-pdf', async (event, htmlContent) => {
@@ -275,9 +269,6 @@ if (!gotTheLock) {
 
   app.whenReady().then(() => {
     createWindow();
-    app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
-    });
   });
 }
 

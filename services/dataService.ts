@@ -6,6 +6,7 @@ declare global {
     interface Window {
         google: any;
         gapi: any;
+        require: any;
     }
 }
 
@@ -171,6 +172,7 @@ export interface IDataService {
     deleteEmailTemplate(id: string): Promise<void>;
     
     // Auth & Integration
+    authenticate(token: string): Promise<UserProfile | null>; // NEW
     connectGoogle(service: 'calendar' | 'mail', clientId?: string): Promise<boolean>;
     disconnectGoogle(service: 'calendar' | 'mail'): Promise<boolean>;
     getIntegrationStatus(service: 'calendar' | 'mail'): Promise<boolean>;
@@ -237,6 +239,23 @@ class LocalDataService implements IDataService {
     private set<T>(key: keyof typeof this.cache, storageKey: string, data: T): void {
         this.cache[key] = data as any;
         localStorage.setItem(storageKey, JSON.stringify(data));
+    }
+
+    async authenticate(token: string): Promise<UserProfile | null> {
+        try {
+            // Local mode: Just decode the token without verification
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            return {
+                firstName: payload.given_name || payload.name,
+                lastName: payload.family_name || '',
+                email: payload.email,
+                avatar: payload.picture,
+                role: 'Lokaler Benutzer'
+            };
+        } catch (e) {
+            console.error("Local Auth Parse Error", e);
+            throw new Error("Token ungültig.");
+        }
     }
 
     async connectGoogle(service: 'calendar' | 'mail', clientId?: string): Promise<boolean> {
@@ -359,7 +378,7 @@ class LocalDataService implements IDataService {
 
     // --- UPDATE LOGIC (DIAGNOSTIC MODE) ---
     async checkAndInstallUpdate(url: string, statusCallback?: (status: string) => void, force: boolean = false): Promise<boolean> {
-        if (force) window.alert(`[FORCE] checkAndInstallUpdate gestartet.\nURL: ${url}`);
+        if (force) console.log(`[FORCE] checkAndInstallUpdate gestartet. URL: ${url}`);
         
         if (!url) {
             const msg = "Fehler: Keine Update-URL in den Einstellungen.";
@@ -368,17 +387,14 @@ class LocalDataService implements IDataService {
         }
         const baseUrl = url.replace(/\/$/, "");
         
-        // ROBUST ELECTRON CHECK
         const isElectron = !!(window as any).require;
         
         if (!isElectron) {
-            const msg = "Update fehlgeschlagen: Die App läuft scheinbar nicht im Electron-Modus (window.require fehlt). Updates sind nur in der Desktop-App möglich.";
-            console.error(msg);
+            const msg = "Updates sind nur in der Desktop-App möglich.";
             if (force) window.alert(msg);
             return false;
         }
 
-        // Safe IPC Access
         let ipcRenderer;
         try {
             ipcRenderer = (window as any).require('electron').ipcRenderer;
@@ -390,30 +406,27 @@ class LocalDataService implements IDataService {
         try {
             statusCallback?.("Verbinde mit Server...");
             
-            // 1. Fetch remote version with heavy cache busting
+            // 1. Fetch remote version
             const versionUrl = `${baseUrl}/version.json?t=${Date.now()}`;
-            if (force) console.log(`Rufe Version ab: ${versionUrl}`);
-
             const response = await fetch(versionUrl);
             
             if (!response.ok) {
-                const err = `Server antwortet nicht (Status ${response.status} ${response.statusText}). URL: ${versionUrl}`;
+                const err = `Server antwortet nicht (Status ${response.status}). URL: ${versionUrl}`;
                 if (force) window.alert(err);
                 throw new Error(err);
             }
             
             const remoteData = await response.json();
             const currentVersion = await this.getAppVersion();
-            const cleanCurrentVersion = currentVersion.split(' ')[0]; // Remove (Hot) suffix
+            const cleanCurrentVersion = currentVersion.split(' ')[0];
 
             const msg = `Gefunden: ${remoteData.version} (Server) vs. ${cleanCurrentVersion} (Lokal)`;
             statusCallback?.(msg);
             
             if (force) {
-                window.alert(`Version Check:\n${msg}\n\nRemote JSON:\n${JSON.stringify(remoteData)}`);
+                console.log(`Version Check: ${msg}`);
             }
 
-            // Compare versions
             const isNewer = (v1: string, v2: string) => {
                 const p1 = v1.split('.').map(Number);
                 const p2 = v2.split('.').map(Number);
@@ -426,7 +439,6 @@ class LocalDataService implements IDataService {
                 return false;
             };
 
-            // Bei Force ignorieren wir den Version Check
             if (!force && !isNewer(remoteData.version, cleanCurrentVersion)) {
                 return false;
             }
@@ -440,23 +452,20 @@ class LocalDataService implements IDataService {
             
             const files: string[] = await manifestResponse.json();
             
-            // 3. Construct Download List
+            // 3. Construct Download List - Simplified without encodeURIComponent for standard paths
             const downloadManifest = files.map(file => ({
-                // Use encodeURIComponent for parts to handle spaces etc, but preserve structure
-                url: `${baseUrl}/${file.split('/').map(s => encodeURIComponent(s)).join('/')}`,
+                url: `${baseUrl}/${file}`, 
                 relativePath: file
             }));
             
-            // Ensure version.json is also downloaded (crucial for next checks)
             downloadManifest.push({
                 url: `${baseUrl}/version.json`,
                 relativePath: 'version.json'
             });
 
-            // 4. Trigger Download in Main Process
+            // 4. Trigger Download
             statusCallback?.(`Lade ${downloadManifest.length} Dateien herunter...`);
             
-            // WICHTIG: Übergebe die Zielversion an den Main-Process, damit der korrekte Ordner erstellt wird
             const result = await ipcRenderer.invoke('install-update', { 
                 manifest: downloadManifest, 
                 version: remoteData.version 
@@ -466,22 +475,26 @@ class LocalDataService implements IDataService {
                 statusCallback?.("Download abgeschlossen!");
                 return true;
             } else {
-                throw new Error(result.error || "Download fehlgeschlagen");
+                const errMsg = result.error || "Download fehlgeschlagen (Unbekannt)";
+                console.error("Update Failed:", errMsg);
+                // Alert the user so they know WHY it failed
+                window.alert(`Update Fehler im Hintergrundprozess:\n${errMsg}\n\nEin Log wurde in AppData/update_log.txt geschrieben.`);
+                throw new Error(errMsg);
             }
 
         } catch (e: any) {
             console.error("Update Error:", e);
             statusCallback?.(`Fehler: ${e.message}`);
-            if (force) window.alert(`Update Exception:\n${e.message}`);
+            if (force) window.alert(`Update Exception UI:\n${e.message}`);
             throw e;
         }
     }
 
     async getAppVersion(): Promise<string> { 
-        if (window.require) {
-            try { return await window.require('electron').ipcRenderer.invoke('get-app-version'); } catch(e){}
+        if ((window as any).require) {
+            try { return await (window as any).require('electron').ipcRenderer.invoke('get-app-version'); } catch(e){}
         }
-        return '1.2.16'; 
+        return '1.2.17'; 
     }
 
     // ... Standard CRUD Implementations ...
@@ -584,8 +597,8 @@ class LocalDataService implements IDataService {
     async deleteEmailTemplate(id: string): Promise<void> { const l=await this.getEmailTemplates(); this.set('emailTemplates','emailTemplates',l.filter(x=>x.id!==id)); }
     async processDueRetainers(): Promise<any> { return {updatedContacts:[], newInvoices:[], newActivities:[]}; }
     async generatePdf(html: string): Promise<string> {
-        if (window.require) {
-            const buffer = await window.require('electron').ipcRenderer.invoke('generate-pdf', html);
+        if ((window as any).require) {
+            const buffer = await (window as any).require('electron').ipcRenderer.invoke('generate-pdf', html);
             let binary = '';
             const bytes = new Uint8Array(buffer);
             const len = bytes.byteLength;
