@@ -79,6 +79,7 @@ export const Settings: React.FC<SettingsProps> = ({
   dataService, invoiceConfig, onUpdateInvoiceConfig, emailTemplates, onAddTemplate, onUpdateTemplate, onDeleteTemplate
 }) => {
   const isDark = false; // Forced Light Mode
+  const CONST_UPDATE_URL = "https://ckhoufache.github.io/SYNTAX_Lab/";
   
   // State
   const [activeSection, setActiveSection] = useState<string | null>('profile');
@@ -99,7 +100,6 @@ export const Settings: React.FC<SettingsProps> = ({
   const [isConnecting, setIsConnecting] = useState<'calendar' | 'mail' | null>(null);
   
   const [appVersion, setAppVersion] = useState('Checking...');
-  const [updateUrl, setUpdateUrl] = useState(localStorage.getItem('update_url') || '');
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<string>('');
 
@@ -212,7 +212,7 @@ export const Settings: React.FC<SettingsProps> = ({
       setIsUpdating(true);
       setUpdateStatus('Prüfe auf Updates...');
       try {
-          const hasUpdate = await dataService.checkAndInstallUpdate(updateUrl, setUpdateStatus, force);
+          const hasUpdate = await dataService.checkAndInstallUpdate(CONST_UPDATE_URL, setUpdateStatus, force);
           if (hasUpdate) {
               if (confirm("Update installiert. Jetzt neu starten?")) {
                   if ((window as any).require) {
@@ -539,7 +539,7 @@ export const Settings: React.FC<SettingsProps> = ({
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                          <div className="flex items-center justify-between mb-4">
                              <div><h4 className="font-bold text-slate-800 flex items-center gap-2"><RefreshCw className="w-4 h-4"/> System Update</h4><p className="text-xs text-slate-500">Installierte Version: <span className="font-mono bg-white px-1 rounded border">{appVersion}</span></p></div>
-                             <div className="flex flex-col items-end gap-1"><input value={updateUrl} onChange={(e) => { setUpdateUrl(e.target.value); localStorage.setItem('update_url', e.target.value); }} placeholder="Update Server URL..." className="border rounded px-2 py-1 text-xs w-64"/></div>
+                             <div className="flex flex-col items-end gap-1"><span className="text-xs text-slate-400 font-mono select-all bg-white px-2 py-1 rounded border">{CONST_UPDATE_URL}</span></div>
                          </div>
                          <div className="flex gap-4">
                              <button onClick={() => handleCheckUpdate(false)} disabled={isUpdating} className="flex-1 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50">{isUpdating && updateStatus.includes('Prüfe') ? <Loader2 className="w-4 h-4 animate-spin"/> : <RefreshCcw className="w-4 h-4"/>} Nach Updates suchen</button>

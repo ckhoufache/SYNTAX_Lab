@@ -1,4 +1,3 @@
-
 import { Contact, Deal, Task, Invoice, Expense, Activity, UserProfile, ProductPreset, Theme, BackendConfig, BackendMode, BackupData, InvoiceConfig, EmailTemplate, EmailAttachment, DealStage } from '../types';
 import { FirebaseDataService } from './firebaseService';
 
@@ -484,7 +483,7 @@ class LocalDataService implements IDataService {
         if ((window as any).require) {
             try { return await (window as any).require('electron').ipcRenderer.invoke('get-app-version'); } catch(e){}
         }
-        return '1.2.17'; 
+        return '1.2.19'; 
     }
 
     async getContacts(): Promise<Contact[]> { return this.getFromStorage('contacts', []); }
