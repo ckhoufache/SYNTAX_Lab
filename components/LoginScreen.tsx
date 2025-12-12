@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Hexagon, Globe, Settings, Check, AlertCircle, WifiOff, RefreshCcw, Trash2, Bug, LogIn, ShieldAlert } from 'lucide-react';
 import { BackendConfig, UserProfile } from '../types';
@@ -175,7 +174,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                         <h3 className="font-bold text-sm">Google API Setup</h3>
                     </div>
                     <p className="text-xs mb-4 text-slate-500">
-                        Bitte geben Sie Ihre <strong>Google Client ID</strong> ein, um sich anzumelden und Dienste wie Gmail oder Kalender zu nutzen.
+                        Kopieren Sie die <strong>Web client ID</strong> aus Ihrer Firebase Console (Authentication &gt; Sign-in method &gt; Google) und fügen Sie sie hier ein.
                     </p>
                     <form onSubmit={handleSaveConfig} className="space-y-4">
                         <div>

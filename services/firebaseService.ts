@@ -36,7 +36,7 @@ export class FirebaseDataService implements IDataService {
     }
 
     async init(): Promise<void> {
-        if (!this.initialized) throw new Error("Firebase not initialized. Check config.");
+        if (!this.initialized) throw new Error("Firebase Config ist unvollständig oder ungültig. Bitte prüfen Sie die Einstellungen oder führen Sie einen Reset durch.");
         return Promise.resolve();
     }
 
@@ -79,6 +79,29 @@ export class FirebaseDataService implements IDataService {
             };
         } catch (e: any) {
             console.error("Authentication Error:", e);
+            
+            // Handle Client ID Mismatch specifically
+            if (e.message && e.message.includes('audience (OAuth 2.0 client ID)') && e.message.includes('not authorized')) {
+                throw new Error("Client ID Mismatch: Die Client ID in Ihrer App stimmt nicht mit der in Firebase überein. Bitte kopieren Sie die 'Web client ID' aus der Firebase Console (Authentication > Google) und fügen Sie sie in die App-Konfiguration ein.");
+            }
+
+            // User-friendly Error Mapping
+            if (e.code === 'auth/configuration-not-found') {
+                throw new Error("Fehler: Google Sign-In ist im Firebase Projekt nicht aktiviert. Bitte aktivieren Sie den 'Google' Provider in der Firebase Console unter Authentication > Sign-in method.");
+            }
+            if (e.code === 'auth/operation-not-allowed') {
+                throw new Error("Fehler: Diese Anmeldemethode ist im Firebase Projekt deaktiviert.");
+            }
+            if (e.code === 'auth/invalid-api-key') {
+                throw new Error("Fehler: Der Firebase API Key ist ungültig.");
+            }
+            if (e.code === 'auth/invalid-credential') {
+                throw new Error("Fehler: Die Google Anmeldedaten waren ungültig oder abgelaufen.");
+            }
+            if (e.code === 'auth/user-disabled') {
+                throw new Error("Dieser Benutzer wurde deaktiviert.");
+            }
+
             throw e;
         }
     }
