@@ -1,3 +1,4 @@
+
 import { Contact, Deal, Task, Invoice, Expense, Activity, UserProfile, ProductPreset, Theme, BackendConfig, BackendMode, BackupData, InvoiceConfig, EmailTemplate, EmailAttachment, DealStage } from '../types';
 import { FirebaseDataService } from './firebaseService';
 
@@ -400,8 +401,13 @@ class LocalDataService implements IDataService {
 
         try {
             statusCallback?.("Verbinde mit Server...");
-            const versionUrl = `${baseUrl}/version.json?t=${Date.now()}`;
-            const response = await fetch(versionUrl);
+            // EXTRA CACHE BUSTING
+            const versionUrl = `${baseUrl}/version.json?t=${Date.now()}&r=${Math.random()}`;
+            
+            // EXPLICIT NO-CACHE HEADERS
+            const response = await fetch(versionUrl, {
+                headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' }
+            });
             
             if (!response.ok) {
                 const err = `Server antwortet nicht (Status ${response.status}). URL: ${versionUrl}`;
@@ -411,14 +417,13 @@ class LocalDataService implements IDataService {
             
             const remoteData = await response.json();
             const currentVersion = await this.getAppVersion();
-            const cleanCurrentVersion = currentVersion.split(' ')[0];
+            const cleanCurrentVersion = currentVersion.split(' ')[0].replace('(Hot)', '').trim();
 
-            const msg = `Gefunden: ${remoteData.version} (Server) vs. ${cleanCurrentVersion} (Lokal)`;
-            statusCallback?.(msg);
+            const debugMsg = `Server: ${remoteData.version}\nLokal: ${cleanCurrentVersion}`;
             
-            if (force) {
-                console.log(`Version Check: ${msg}`);
-            }
+            // ALERT FOR DEBUGGING
+            window.alert(`UPDATE CHECK:\n${debugMsg}`);
+            console.log(debugMsg);
 
             const isNewer = (v1: string, v2: string) => {
                 const p1 = v1.split('.').map(Number);
@@ -432,6 +437,7 @@ class LocalDataService implements IDataService {
                 return false;
             };
 
+            // Force update if force is true OR if versions differ and remote is newer
             if (!force && !isNewer(remoteData.version, cleanCurrentVersion)) {
                 return false;
             }
@@ -439,7 +445,7 @@ class LocalDataService implements IDataService {
             statusCallback?.(`Starte Download für v${remoteData.version}...`);
 
             const manifestUrl = `${baseUrl}/manifest.json?t=${Date.now()}`;
-            const manifestResponse = await fetch(manifestUrl);
+            const manifestResponse = await fetch(manifestUrl, { headers: { 'Cache-Control': 'no-cache' } });
             if (!manifestResponse.ok) throw new Error(`Manifest nicht gefunden (Status ${manifestResponse.status})`);
             
             const files: string[] = await manifestResponse.json();
@@ -481,9 +487,14 @@ class LocalDataService implements IDataService {
 
     async getAppVersion(): Promise<string> { 
         if ((window as any).require) {
-            try { return await (window as any).require('electron').ipcRenderer.invoke('get-app-version'); } catch(e){}
+            try { 
+                const v = await (window as any).require('electron').ipcRenderer.invoke('get-app-version'); 
+                return v || '0.0.0'; // Fallback to 0.0.0 so we force update if IPC fails
+            } catch(e) {
+                console.error("Version Check IPC Failed:", e);
+            }
         }
-        return '1.2.19'; 
+        return '0.0.0'; // Safe fallback
     }
 
     async getContacts(): Promise<Contact[]> { return this.getFromStorage('contacts', []); }
