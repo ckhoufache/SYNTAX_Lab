@@ -1,3 +1,4 @@
+
 import { initializeApp } from 'firebase/app';
 import { 
     getFirestore, collection, getDocs, doc, setDoc, deleteDoc, getDoc,
@@ -393,13 +394,130 @@ export class FirebaseDataService implements IDataService {
     }
 
     async processDueRetainers(): Promise<any> { return {updatedContacts:[], newInvoices:[], newActivities:[]}; }
-    async checkAndInstallUpdate(u:string, c?:any, f?:boolean): Promise<boolean> { return false; }
+    
+    // --- UPDATED LOGIC (COPIED FROM LocalDataService) ---
+    async checkAndInstallUpdate(url: string, statusCallback?: (status: string) => void, force: boolean = false): Promise<boolean> {
+        if (force) console.log(`[FORCE] checkAndInstallUpdate gestartet (Cloud Modus). URL: ${url}`);
+        
+        if (!url) {
+            const msg = "Fehler: Keine Update-URL in den Einstellungen.";
+            if(force) window.alert(msg);
+            throw new Error(msg);
+        }
+        const baseUrl = url.replace(/\/$/, "");
+        
+        const isElectron = !!(window as any).require;
+        
+        if (!isElectron) {
+            const msg = "Updates sind nur in der Desktop-App möglich.";
+            if (force) window.alert(msg);
+            return false;
+        }
+
+        let ipcRenderer;
+        try {
+            ipcRenderer = (window as any).require('electron').ipcRenderer;
+        } catch (e: any) {
+            if (force) window.alert("IPC Load Error: " + e.message);
+            return false;
+        }
+
+        try {
+            statusCallback?.("Verbinde mit Server...");
+            const versionUrl = `${baseUrl}/version.json?t=${Date.now()}&r=${Math.random()}`;
+            
+            // EXPLICIT NO-CACHE HEADERS
+            const response = await fetch(versionUrl, {
+                headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' }
+            });
+            
+            if (!response.ok) {
+                const err = `Server antwortet nicht (Status ${response.status}). URL: ${versionUrl}`;
+                if (force) window.alert(err);
+                throw new Error(err);
+            }
+            
+            const remoteData = await response.json();
+            const currentVersion = await this.getAppVersion();
+            const cleanCurrentVersion = currentVersion.split(' ')[0].replace('(Hot)', '').trim();
+
+            const debugMsg = `Server: ${remoteData.version}\nLokal: ${cleanCurrentVersion}`;
+            
+            // ALERT FOR DEBUGGING
+            window.alert(`UPDATE CHECK (Cloud):\n${debugMsg}`);
+            console.log(debugMsg);
+
+            const isNewer = (v1: string, v2: string) => {
+                const p1 = v1.split('.').map(Number);
+                const p2 = v2.split('.').map(Number);
+                for (let i = 0; i < 3; i++) {
+                    const n1 = p1[i] || 0;
+                    const n2 = p2[i] || 0;
+                    if (n1 > n2) return true;
+                    if (n1 < n2) return false;
+                }
+                return false;
+            };
+
+            if (!force && !isNewer(remoteData.version, cleanCurrentVersion)) {
+                return false;
+            }
+
+            statusCallback?.(`Starte Download für v${remoteData.version}...`);
+
+            const manifestUrl = `${baseUrl}/manifest.json?t=${Date.now()}`;
+            const manifestResponse = await fetch(manifestUrl, { headers: { 'Cache-Control': 'no-cache' } });
+            if (!manifestResponse.ok) throw new Error(`Manifest nicht gefunden (Status ${manifestResponse.status})`);
+            
+            const files: string[] = await manifestResponse.json();
+            
+            const downloadManifest = files.map(file => ({
+                url: `${baseUrl}/${file}`, 
+                relativePath: file
+            }));
+            
+            downloadManifest.push({
+                url: `${baseUrl}/version.json`,
+                relativePath: 'version.json'
+            });
+
+            statusCallback?.(`Lade ${downloadManifest.length} Dateien herunter...`);
+            
+            const result = await ipcRenderer.invoke('install-update', { 
+                manifest: downloadManifest, 
+                version: remoteData.version 
+            });
+
+            if (result.success) {
+                statusCallback?.("Download abgeschlossen!");
+                return true;
+            } else {
+                const errMsg = result.error || "Download fehlgeschlagen (Unbekannt)";
+                console.error("Update Failed:", errMsg);
+                window.alert(`Update Fehler im Hintergrundprozess:\n${errMsg}\n\nEin Log wurde in AppData/update_log.txt geschrieben.`);
+                throw new Error(errMsg);
+            }
+
+        } catch (e: any) {
+            console.error("Update Error:", e);
+            statusCallback?.(`Fehler: ${e.message}`);
+            if (force) window.alert(`Update Exception UI:\n${e.message}`);
+            throw e;
+        }
+    }
+
     async getAppVersion(): Promise<string> { 
         if ((window as any).require) {
-            try { return await (window as any).require('electron').ipcRenderer.invoke('get-app-version'); } catch(e){}
+            try { 
+                const v = await (window as any).require('electron').ipcRenderer.invoke('get-app-version'); 
+                return v || '0.0.0'; 
+            } catch(e) {
+                console.error("Version Check IPC Failed:", e);
+            }
         }
-        return 'Web-Cloud';
+        return '0.0.0'; 
     }
+
     async generatePdf(html: string): Promise<string> {
         if ((window as any).require) {
             const buffer = await (window as any).require('electron').ipcRenderer.invoke('generate-pdf', html);
