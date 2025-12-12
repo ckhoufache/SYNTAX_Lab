@@ -1,3 +1,4 @@
+
 import { app, BrowserWindow, shell, ipcMain, session } from 'electron';
 import path from 'path';
 import express from 'express';
@@ -44,10 +45,44 @@ function safeDeleteFolder(folderPath) {
     }
 }
 
+// Simple Semver Compare: Returns 1 if v1 > v2, -1 if v1 < v2, 0 if equal
+function compareVersions(v1, v2) {
+    const p1 = v1.split('.').map(Number);
+    const p2 = v2.split('.').map(Number);
+    for (let i = 0; i < 3; i++) {
+        const n1 = p1[i] || 0;
+        const n2 = p2[i] || 0;
+        if (n1 > n2) return 1;
+        if (n1 < n2) return -1;
+    }
+    return 0;
+}
+
 function getActiveUpdatePath() {
     try {
         if (fs.existsSync(activeVersionFile)) {
             const data = JSON.parse(fs.readFileSync(activeVersionFile, 'utf-8'));
+            
+            // SECURITY CHECK: 
+            // Wenn die native App Version neuer ist als das heruntergeladene Update,
+            // müssen wir das alte Update verwerfen, damit der neue Code (aus der .exe) greift.
+            const nativeVersion = app.getVersion();
+            const updateVersion = data.current;
+
+            // Wenn Native >= Update (oder Update fehlerhaft), lösche Pointer
+            if (compareVersions(nativeVersion, updateVersion) >= 0) {
+                log(`Native Version (${nativeVersion}) ist neuer oder gleich alt wie Hot-Update (${updateVersion}). Lösche veraltetes Update.`);
+                try {
+                    fs.unlinkSync(activeVersionFile);
+                    // Optional: Aufräumen des Ordners
+                    const versionDir = path.join(updatesRootDir, updateVersion);
+                    safeDeleteFolder(versionDir);
+                } catch(err) {
+                    log("Fehler beim Löschen des veralteten Pointers: " + err.message);
+                }
+                return null;
+            }
+
             if (data.current) {
                 const versionDir = path.join(updatesRootDir, data.current);
                 if (fs.existsSync(path.join(versionDir, 'index.html'))) {
@@ -88,7 +123,7 @@ function startLocalServer() {
       serverApp.use(express.static(activeUpdate.path));
       setTimeout(() => cleanupOldVersions(activeUpdate.version), 10000);
   } else {
-      log('Server startet mit BUNDLED Version (dist)');
+      log(`Server startet mit BUNDLED Version (dist) - Native v${app.getVersion()}`);
       serverApp.use(express.static(path.join(__dirname, 'dist')));
   }
   
