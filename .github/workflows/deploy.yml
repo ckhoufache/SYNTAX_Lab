@@ -30,8 +30,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
         
-      - name: Build
+      - name: Build Web Interface
         run: npm run build
+        
+      # NEU: Kopiere die Windows-Installer Dateien in den öffentlichen Ordner
+      - name: Copy Release Files to Public
+        run: |
+          # Prüfen ob release Dateien existieren und kopieren
+          # || true verhindert Fehler, falls noch keine exe da ist
+          cp release/*.exe dist/ || true
+          cp release/*.yml dist/ || true
+          cp release/*.blockmap dist/ || true
+          
+          # Debugging: Zeige Inhalt von dist an
+          ls -la dist/
         
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
