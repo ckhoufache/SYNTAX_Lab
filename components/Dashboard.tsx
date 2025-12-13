@@ -76,7 +76,7 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
 
   // Derived Stats
   // Filter out commission invoices from revenue
-  const customerInvoices = useMemo(() => invoices.filter(i => i.type !== 'commission'), [invoices]);
+  const customerInvoices = useMemo(() => invoices.filter(i => i.type === 'customer' || !i.type), [invoices]);
   const totalRevenue = customerInvoices.reduce((acc, curr) => acc + curr.amount, 0);
   
   const activeVolume = deals.reduce((acc, curr) => 
@@ -151,7 +151,7 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
     const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
     const totalPaidCommissions = invoices.filter(i => i.type === 'commission' && i.isPaid).reduce((sum, i) => sum + i.amount, 0);
     
-    // Effective Balance
+    // Effective Balance (Cash)
     let currentBalance = totalPaidRevenue - totalExpenses - totalPaidCommissions;
 
     const mrr = contacts.reduce((sum, c) => {
@@ -210,6 +210,7 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
       const today = new Date();
       today.setHours(0,0,0,0);
 
+      // 1. Overdue Tasks
       const overdueTasks = tasks.filter(t => {
           if (t.isCompleted) return false;
           const d = new Date(t.dueDate);
@@ -227,6 +228,7 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
           });
       });
 
+      // 2. Urgent Tasks Today
       const urgentToday = upcomingTasks.filter(t => t.priority === 'high');
       urgentToday.forEach(t => {
           list.push({
@@ -238,6 +240,7 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
           });
       });
 
+      // 3. Stale Leads
       const staleLeads = deals.filter(d => {
           if (d.stage !== DealStage.LEAD) return false;
           if (!d.stageEnteredDate) return false;
@@ -258,8 +261,35 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
           });
       });
 
+      // 4. NEU: Unpaid Commission Invoices (created via Batch but not paid)
+      const unpaidCommissions = invoices.filter(i => i.type === 'commission' && !i.isPaid);
+      unpaidCommissions.forEach(inv => {
+          list.push({
+              id: `unpaid-comm-${inv.id}`,
+              title: `Provision auszahlen: ${inv.contactName} (${inv.amount.toLocaleString('de-DE')} €)`,
+              type: 'alert', // High Priority
+              time: 'Wartet auf Zahlung',
+              onClick: () => onNavigateToFinances()
+          });
+      });
+
+      // 5. NEU: Commission Batch Reminder (3 days before 15th)
+      const currentDay = today.getDate();
+      // Prüfen ob es überhaupt provisionierbare Umsätze gibt
+      const hasPendingCommissions = customerInvoices.some(inv => inv.isPaid && !inv.commissionProcessed && inv.salesRepId);
+      
+      if (hasPendingCommissions && currentDay >= 12 && currentDay <= 15) {
+          list.push({
+              id: `comm-batch-reminder-${today.getMonth()}`, // One per month
+              title: 'Provisionslauf starten (Fällig am 15.)',
+              type: 'warning',
+              time: 'Abrechnung',
+              onClick: () => onNavigateToFinances()
+          });
+      }
+
       return list.filter(n => !dismissedNotificationIds.includes(n.id));
-  }, [tasks, deals, upcomingTasks, dismissedNotificationIds]);
+  }, [tasks, deals, upcomingTasks, dismissedNotificationIds, invoices, customerInvoices]);
 
   const handleNotificationClick = (id: string, action: () => void) => {
       const newDismissedIds = [...dismissedNotificationIds, id];
@@ -439,7 +469,7 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <StatCard title="Gesamtumsatz" value={`${totalRevenue.toLocaleString('de-DE')} €`} sub="Kundenrechnungen" icon={CheckCircle2} color="bg-emerald-500" onClick={onNavigateToFinances}/>
+          <StatCard title="Gesamtumsatz" value={`${totalRevenue.toLocaleString('de-DE')} €`} sub="Kundenrechnungen (Netto)" icon={CheckCircle2} color="bg-emerald-500" onClick={onNavigateToFinances}/>
           <StatCard title="Aktive Pipeline" value={`${activeVolume.toLocaleString('de-DE')} €`} sub="Verhandlung & Angebot" icon={Calendar} color="bg-blue-500" onClick={() => onNavigateToPipeline([DealStage.PROPOSAL, DealStage.NEGOTIATION])}/>
           <StatCard title="Neue Kontakte" value={`+${contacts.length}`} sub="Gesamt" icon={Phone} color="bg-orange-500" onClick={() => onNavigateToContacts('recent')}/>
           <StatCard title="Offene Aufgaben" value={dueTasksCount} sub="Dringend" icon={Mail} color="bg-pink-500" onClick={() => onNavigateToTasks()}/>
@@ -452,7 +482,7 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
                         <TrendingUp className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                         Liquiditäts-Forecast (Runway)
                      </h3>
-                     <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Projektion der Liquidität für 6 Monate.</p>
+                     <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Projektion der Liquidität für 6 Monate (Netto).</p>
                 </div>
                 <div className="flex gap-4 text-sm">
                      <div className="text-right">

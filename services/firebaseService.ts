@@ -395,7 +395,107 @@ export class FirebaseDataService implements IDataService {
 
     async processDueRetainers(): Promise<any> { return {updatedContacts:[], newInvoices:[], newActivities:[]}; }
     
-    // --- UPDATED LOGIC (COPIED FROM LocalDataService) ---
+    // --- IMPLEMENTATION OF BATCH RUN ---
+    async runCommissionBatch(year: number, month: number): Promise<{ createdInvoices: Invoice[], updatedSourceInvoices: Invoice[] }> {
+        const invoices = await this.getInvoices();
+        const contacts = await this.getContacts();
+        
+        const startDate = new Date(year, month - 1, 1);
+        const endDate = new Date(year, month, 0); // Last day of month
+        
+        const eligibleInvoices = invoices.filter(inv => {
+            if (inv.type === 'commission') return false;
+            if (!inv.isPaid) return false;
+            if (inv.commissionProcessed) return false;
+            if (!inv.salesRepId) return false;
+            if (!inv.paidDate) return false;
+
+            const paidDate = new Date(inv.paidDate);
+            return paidDate >= startDate && paidDate <= endDate;
+        });
+
+        if (eligibleInvoices.length === 0) {
+            return { createdInvoices: [], updatedSourceInvoices: [] };
+        }
+
+        const repGroups: Record<string, Invoice[]> = {};
+        eligibleInvoices.forEach(inv => {
+            const repId = inv.salesRepId!;
+            if (!repGroups[repId]) repGroups[repId] = [];
+            repGroups[repId].push(inv);
+        });
+
+        const newCommissionInvoices: Invoice[] = [];
+        const updatedSources: Invoice[] = [];
+
+        const monthName = startDate.toLocaleString('de-DE', { month: 'long', year: 'numeric' });
+        const existingCommissions = invoices.filter(i => i.type === 'commission');
+        
+        let nextNum = 1;
+        if (existingCommissions.length > 0) {
+             const maxNum = existingCommissions.reduce((max, inv) => {
+                const parts = inv.invoiceNumber.split('-');
+                const numPart = parseInt(parts[parts.length - 1]);
+                return isNaN(numPart) ? max : Math.max(max, numPart);
+            }, 0);
+            nextNum = maxNum + 1;
+        }
+
+        for (const [repId, sourceInvoices] of Object.entries(repGroups)) {
+            const rep = contacts.find(c => c.id === repId);
+            if (!rep) continue;
+
+            const commissionRate = 0.20; 
+            const totalRevenue = sourceInvoices.reduce((sum, inv) => sum + inv.amount, 0);
+            const totalCommission = totalRevenue * commissionRate;
+
+            let descriptionHTML = `<strong>Provisionsabrechnung ${monthName}</strong><br><br>`;
+            descriptionHTML += `Basis: ${sourceInvoices.length} bezahlte Kundenrechnungen<br>`;
+            descriptionHTML += `<ul style="margin-top:5px; padding-left:15px; font-size:11px;">`;
+            sourceInvoices.forEach(inv => {
+                descriptionHTML += `<li>${inv.invoiceNumber} (${inv.contactName}): ${inv.amount.toLocaleString('de-DE')}€</li>`;
+            });
+            descriptionHTML += `</ul>`;
+
+            const newInv: Invoice = {
+                id: crypto.randomUUID(),
+                type: 'commission',
+                invoiceNumber: `PROV-${year}-${String(nextNum).padStart(3, '0')}`,
+                date: new Date().toISOString().split('T')[0],
+                contactId: rep.id,
+                contactName: rep.name,
+                description: descriptionHTML, 
+                amount: totalCommission,
+                isPaid: false,
+                salesRepId: rep.id
+            };
+            
+            newCommissionInvoices.push(newInv);
+            nextNum++;
+
+            sourceInvoices.forEach(inv => {
+                const updated = { ...inv, commissionProcessed: true };
+                updatedSources.push(updated);
+            });
+        }
+
+        if (this.db) {
+            const batch = writeBatch(this.db);
+            
+            newCommissionInvoices.forEach(inv => {
+                batch.set(doc(this.db, 'invoices', inv.id), inv);
+            });
+
+            updatedSources.forEach(inv => {
+                batch.update(doc(this.db, 'invoices', inv.id), { commissionProcessed: true });
+            });
+
+            await batch.commit();
+        }
+
+        return { createdInvoices: newCommissionInvoices, updatedSourceInvoices: updatedSources };
+    }
+
     async checkAndInstallUpdate(url: string, statusCallback?: (status: string) => void, force: boolean = false): Promise<boolean> {
         if (!(window as any).require) {
             statusCallback?.("Updates nur in Desktop-App möglich.");

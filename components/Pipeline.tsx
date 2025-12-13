@@ -10,6 +10,7 @@ interface PipelineProps {
   onAddDeal: (deal: Deal) => void;
   onUpdateDeal: (deal: Deal) => void;
   onDeleteDeal: (id: string) => void;
+  onUpdateContact: (contact: Contact) => void; // NEU: Benötigt um Kontakt bei Won zu updaten
   visibleStages: DealStage[];
   setVisibleStages: (stages: DealStage[]) => void;
   productPresets: ProductPreset[];
@@ -33,6 +34,7 @@ export const Pipeline: React.FC<PipelineProps> = ({
   onAddDeal, 
   onUpdateDeal, 
   onDeleteDeal,
+  onUpdateContact, // Added
   visibleStages,
   setVisibleStages,
   productPresets,
@@ -60,7 +62,7 @@ export const Pipeline: React.FC<PipelineProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMinVal, setFilterMinVal] = useState<string>('');
   const [filterMaxVal, setFilterMaxVal] = useState<string>('');
-  const [filterSalesRepId, setFilterSalesRepId] = useState<string>(''); // NEU: Vertriebler Filter
+  const [filterSalesRepId, setFilterSalesRepId] = useState<string>(''); 
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
   // Get available Sales Reps for Dropdown
@@ -94,16 +96,6 @@ export const Pipeline: React.FC<PipelineProps> = ({
           return isNaN(numPart) ? max : Math.max(max, numPart);
       }, 100);
       return `2025-${maxNum + 1}`;
-  };
-  
-  const generateNextCommissionNumber = () => {
-      const commInvoices = invoices.filter(i => i.type === 'commission');
-      if (commInvoices.length === 0) return 'PROV-2025-001';
-      const maxNum = commInvoices.reduce((max, inv) => {
-          const numPart = parseInt(inv.invoiceNumber.split('-')[2]);
-          return isNaN(numPart) ? max : Math.max(max, numPart);
-      }, 0);
-      return `PROV-2025-${String(maxNum + 1).padStart(3, '0')}`;
   };
 
   // --- FILTER LOGIC ---
@@ -171,6 +163,21 @@ export const Pipeline: React.FC<PipelineProps> = ({
         return;
     }
 
+    // 1. UPDATE UI/DB STATE IMMEDIATELY (Fix for UI lag/sticking)
+    if (deal.stage !== targetStage) {
+        const updatedDeal: Deal = { 
+            ...deal, 
+            stage: targetStage,
+            stageEnteredDate: new Date().toISOString().split('T')[0]
+        };
+        if (targetStage === DealStage.LOST) updatedDeal.lostDate = new Date().toISOString().split('T')[0];
+        onUpdateDeal(updatedDeal);
+    }
+    setDraggedDealId(null); // Clear drag state instantly
+
+    // 2. Handle Side Effects (Tasks, Invoices, Retainer)
+    // Run these effectively "in background" so they don't block the UI update
+    
     // AUTO TASK: LEAD -> CONTACTED
     if (deal.stage === DealStage.LEAD && targetStage === DealStage.CONTACTED) {
         const futureDate = new Date();
@@ -199,129 +206,124 @@ export const Pipeline: React.FC<PipelineProps> = ({
 
     // LOGIC FOR "WON"
     if (targetStage === DealStage.WON && deal.stage !== DealStage.WON) {
-        const contact = contacts.find(c => c.id === deal.contactId);
-        const contactName = contact ? `${contact.name} (${contact.company})` : 'Unbekannt';
-        
-        // 1. Create CUSTOMER Invoice (Full Amount)
-        const newInvoice: Invoice = {
-            id: crypto.randomUUID(),
-            type: 'customer',
-            invoiceNumber: generateNextInvoiceNumber(),
-            date: new Date().toISOString().split('T')[0],
-            contactId: deal.contactId,
-            contactName: contactName,
-            description: deal.title,
-            amount: deal.value,
-            isPaid: false
-        };
-        onAddInvoice(newInvoice);
+        // Use try-catch to prevent side-effect errors from crashing the app
+        try {
+            const contact = contacts.find(c => c.id === deal.contactId);
+            const contactName = contact ? `${contact.name} (${contact.company})` : 'Unbekannt';
+            
+            // 1. Create CUSTOMER Invoice (Full Amount)
+            const newInvoice: Invoice = {
+                id: crypto.randomUUID(),
+                type: 'customer',
+                invoiceNumber: generateNextInvoiceNumber(),
+                date: new Date().toISOString().split('T')[0],
+                contactId: deal.contactId,
+                contactName: contactName,
+                description: deal.title,
+                amount: deal.value,
+                isPaid: false,
+                salesRepId: contact?.salesRepId, // WICHTIG: Link für späteren Provisionslauf
+                commissionProcessed: false 
+            };
+            onAddInvoice(newInvoice);
 
-        // 2. Check for Sales Rep & Create COMMISSION Invoice (Separate)
-        if (contact && contact.salesRepId) {
-             const rep = contacts.find(c => c.id === contact.salesRepId);
-             if (rep) {
-                 const commission = deal.value * 0.20; // 20% Provision
-                 const commInvoice: Invoice = {
-                     id: crypto.randomUUID(),
-                     type: 'commission',
-                     invoiceNumber: generateNextCommissionNumber(),
-                     date: new Date().toISOString().split('T')[0],
-                     contactId: rep.id, // Assigned to Sales Rep
-                     contactName: rep.name,
-                     description: `Provision für Auftrag ${newInvoice.invoiceNumber} (${contact.company})`,
-                     amount: commission,
-                     isPaid: false,
-                     relatedInvoiceId: newInvoice.id // Link to original invoice
-                 };
-                 onAddInvoice(commInvoice);
-                 
-                 // Log Activity for Sales Rep
-                 onAddActivity({
+            // 2. CHECK FOR RETAINER PRESET MATCH & UPDATE CONTACT
+            // Try to match the deal title with a product preset
+            const matchedPreset = productPresets.find(p => p.title === deal.title);
+            if (matchedPreset && matchedPreset.isRetainer && contact) {
+                // Automatically activate retainer on contact
+                const nextMonth = new Date();
+                nextMonth.setMonth(nextMonth.getMonth() + 1);
+                
+                const updatedContact: Contact = {
+                    ...contact,
+                    retainerActive: true,
+                    retainerAmount: matchedPreset.value,
+                    retainerInterval: matchedPreset.retainerInterval || 'monthly',
+                    retainerStartDate: new Date().toISOString().split('T')[0],
+                    retainerNextBilling: nextMonth.toISOString().split('T')[0]
+                };
+                onUpdateContact(updatedContact); // This saves to DB via App wrapper
+                
+                // Add activity log
+                onAddActivity({
                     id: crypto.randomUUID(),
-                    contactId: rep.id,
-                    type: 'system_invoice',
-                    content: `Provision ${commission.toLocaleString('de-DE')}€ für ${contact.company} vorgemerkt.`,
+                    contactId: contact.id,
+                    type: 'system_deal',
+                    content: `Retainer aktiviert (Preset: ${matchedPreset.title})`,
                     date: new Date().toISOString().split('T')[0],
                     timestamp: new Date().toISOString()
-                 });
-             }
-        }
+                });
+            }
 
-        // 3. Auto Welcome Email (Only for Customer)
-        if (invoiceConfig && invoiceConfig.emailSettings?.welcome?.enabled && contact && contact.email) {
-             const welcomeConfig = invoiceConfig.emailSettings.welcome;
-             
-             if (welcomeConfig.subject && welcomeConfig.body) {
-                 const storedConfig = localStorage.getItem('backend_config');
-                 const config = storedConfig ? JSON.parse(storedConfig) : { mode: 'local' };
-                 const service = DataServiceFactory.create(config);
+            // 3. Auto Welcome Email (Only for Customer)
+            if (invoiceConfig && invoiceConfig.emailSettings?.welcome?.enabled && contact && contact.email) {
+                 const welcomeConfig = invoiceConfig.emailSettings.welcome;
                  
-                 const invoiceHtml = compileInvoiceTemplate(newInvoice, invoiceConfig);
-                 let pdfBase64 = '';
-                 
-                 try {
-                     pdfBase64 = await service.generatePdf(invoiceHtml);
-                 } catch (e) {
-                     console.error("PDF Generation failed", e);
-                 }
+                 if (welcomeConfig.subject && welcomeConfig.body) {
+                     const storedConfig = localStorage.getItem('backend_config');
+                     const config = storedConfig ? JSON.parse(storedConfig) : { mode: 'local' };
+                     const service = DataServiceFactory.create(config);
+                     
+                     // Wrap PDF generation in separate try-catch to be safe
+                     let pdfBase64 = '';
+                     try {
+                         const invoiceHtml = compileInvoiceTemplate(newInvoice, invoiceConfig);
+                         pdfBase64 = await service.generatePdf(invoiceHtml);
+                     } catch (e) {
+                         console.error("PDF Generation failed", e);
+                     }
 
-                 const attachments = [...(welcomeConfig.attachments || [])];
-                 if (pdfBase64) {
-                     attachments.push({
-                         name: `Rechnung_${newInvoice.invoiceNumber}.pdf`,
-                         data: pdfBase64,
-                         type: 'application/pdf',
-                         size: 0 
+                     const attachments = [...(welcomeConfig.attachments || [])];
+                     if (pdfBase64) {
+                         attachments.push({
+                             name: `Rechnung_${newInvoice.invoiceNumber}.pdf`,
+                             data: pdfBase64,
+                             type: 'application/pdf',
+                             size: 0 
+                         });
+                     }
+
+                     const replacements: Record<string, string> = {
+                        '{name}': contact.name || '',
+                        '{firstName}': contact.name.split(' ')[0] || '',
+                        '{lastName}': contact.name.split(' ').slice(1).join(' ') || '',
+                        '{company}': contact.company || '',
+                        '{invoiceNumber}': newInvoice.invoiceNumber,
+                        '{amount}': newInvoice.amount.toLocaleString('de-DE') + ' €',
+                        '{date}': new Date().toLocaleDateString('de-DE'),
+                        '{myCompany}': invoiceConfig.companyName || ''
+                     };
+
+                     let body = welcomeConfig.body;
+                     let subject = welcomeConfig.subject;
+
+                     Object.entries(replacements).forEach(([key, value]) => {
+                         body = body.split(key).join(value);
+                         subject = subject.split(key).join(value);
+                     });
+                     
+                     service.sendMail(contact.email, subject, body, attachments).then(success => {
+                         if (success) {
+                             onAddActivity({
+                                id: crypto.randomUUID(),
+                                contactId: contact.id,
+                                type: 'email',
+                                content: `Automatische Willkommens-Mail gesendet (mit Rechnung PDF)`,
+                                date: new Date().toISOString().split('T')[0],
+                                timestamp: new Date().toISOString()
+                            });
+                         } else {
+                             console.error("Failed to send automatic email");
+                         }
                      });
                  }
-
-                 const replacements: Record<string, string> = {
-                    '{name}': contact.name || '',
-                    '{firstName}': contact.name.split(' ')[0] || '',
-                    '{lastName}': contact.name.split(' ').slice(1).join(' ') || '',
-                    '{company}': contact.company || '',
-                    '{invoiceNumber}': newInvoice.invoiceNumber,
-                    '{amount}': newInvoice.amount.toLocaleString('de-DE') + ' €',
-                    '{date}': new Date().toLocaleDateString('de-DE'),
-                    '{myCompany}': invoiceConfig.companyName || ''
-                 };
-
-                 let body = welcomeConfig.body;
-                 let subject = welcomeConfig.subject;
-
-                 Object.entries(replacements).forEach(([key, value]) => {
-                     body = body.split(key).join(value);
-                     subject = subject.split(key).join(value);
-                 });
-                 
-                 service.sendMail(contact.email, subject, body, attachments).then(success => {
-                     if (success) {
-                         onAddActivity({
-                            id: crypto.randomUUID(),
-                            contactId: contact.id,
-                            type: 'email',
-                            content: `Automatische Willkommens-Mail gesendet (mit Rechnung PDF)`,
-                            date: new Date().toISOString().split('T')[0],
-                            timestamp: new Date().toISOString()
-                        });
-                     } else {
-                         console.error("Failed to send automatic email");
-                     }
-                 });
-             }
+            }
+        } catch (error) {
+            console.error("Error processing WON logic:", error);
+            // Even if this fails, the deal is already moved in the UI.
         }
     }
-
-    if (deal.stage !== targetStage) {
-      const updatedDeal: Deal = { 
-          ...deal, 
-          stage: targetStage,
-          stageEnteredDate: new Date().toISOString().split('T')[0]
-      };
-      if (targetStage === DealStage.LOST) updatedDeal.lostDate = new Date().toISOString().split('T')[0];
-      onUpdateDeal(updatedDeal);
-    }
-    setDraggedDealId(null);
   };
 
   const handleDeleteClick = (e: React.MouseEvent, id: string) => {
@@ -344,10 +346,61 @@ export const Pipeline: React.FC<PipelineProps> = ({
   const handleProductSelectForGhostDeal = (product: ProductPreset) => {
       if (!productSelectionDeal) return;
       const { deal, targetStage } = productSelectionDeal;
-      onUpdateDeal({
+      
+      const updatedDeal = {
           ...deal, stage: targetStage, title: product.title, value: product.value, isPlaceholder: false,
           dueDate: new Date().toISOString().split('T')[0], stageEnteredDate: new Date().toISOString().split('T')[0]
-      });
+      };
+      
+      onUpdateDeal(updatedDeal);
+      
+      // TRIGGER WON LOGIC MANUALLY IF TARGET IS WON
+      if (targetStage === DealStage.WON) {
+          try {
+              // Re-use logic: Check if preset is retainer and update contact
+              const contact = contacts.find(c => c.id === deal.contactId);
+              if (product.isRetainer && contact) {
+                   const nextMonth = new Date();
+                   nextMonth.setMonth(nextMonth.getMonth() + 1);
+                   const updatedContact: Contact = {
+                        ...contact,
+                        retainerActive: true,
+                        retainerAmount: product.value,
+                        retainerInterval: product.retainerInterval || 'monthly',
+                        retainerStartDate: new Date().toISOString().split('T')[0],
+                        retainerNextBilling: nextMonth.toISOString().split('T')[0]
+                   };
+                   onUpdateContact(updatedContact);
+                   onAddActivity({
+                        id: crypto.randomUUID(),
+                        contactId: contact.id,
+                        type: 'system_deal',
+                        content: `Retainer aktiviert (Preset: ${product.title})`,
+                        date: new Date().toISOString().split('T')[0],
+                        timestamp: new Date().toISOString()
+                   });
+              }
+              
+              const contactName = contact ? `${contact.name} (${contact.company})` : 'Unbekannt';
+              const newInvoice: Invoice = {
+                    id: crypto.randomUUID(),
+                    type: 'customer',
+                    invoiceNumber: generateNextInvoiceNumber(),
+                    date: new Date().toISOString().split('T')[0],
+                    contactId: deal.contactId,
+                    contactName: contactName,
+                    description: product.title,
+                    amount: product.value,
+                    isPaid: false,
+                    salesRepId: contact?.salesRepId,
+                    commissionProcessed: false 
+              };
+              onAddInvoice(newInvoice);
+          } catch (e) {
+              console.error("Error in Ghost Deal Won Logic", e);
+          }
+      }
+
       setProductSelectionDeal(null);
   };
 
@@ -384,14 +437,13 @@ export const Pipeline: React.FC<PipelineProps> = ({
   return (
     <div className="flex-1 bg-slate-50 h-screen flex flex-col overflow-hidden relative">
       <header className="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center shrink-0">
+        {/* ... (Header UI remains same) ... */}
         <div>
             <h1 className="text-xl font-bold text-slate-800">Pipeline</h1>
             <p className="text-xs text-slate-500 mt-0.5">Ziehen Sie Karten, um den Status zu ändern. Klicken Sie auf eine Karte, um den Kontakt zu öffnen.</p>
         </div>
         
-        {/* ACTION BAR */}
         <div className="flex items-center gap-3">
-             {/* SEARCH & FILTER */}
              <div className="flex items-center gap-2 bg-slate-100 rounded-lg p-1 border border-slate-200">
                 <div className="relative">
                     <Search className="absolute left-2.5 top-1.5 w-4 h-4 text-slate-400" />
@@ -573,6 +625,7 @@ export const Pipeline: React.FC<PipelineProps> = ({
            </div>
        )}
 
+       {/* ... (Modal Logic Remains Same) ... */}
        {isModalOpen && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden">

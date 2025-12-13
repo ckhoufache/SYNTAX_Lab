@@ -1,7 +1,6 @@
 
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Search, Filter, MoreHorizontal, Mail, Phone, Plus, Linkedin, X, FileText, Pencil, Trash, Trash2, Clock, Check, Send, Briefcase, Banknote, Calendar, Building, Globe, Upload, ArrowUpDown, ArrowUp, ArrowDown, TrendingUp, TrendingDown, Percent, Zap, History, Star, User, Users } from 'lucide-react';
+import { Search, Filter, MoreHorizontal, Mail, Phone, Plus, Linkedin, X, FileText, Pencil, Trash, Trash2, Clock, Check, Send, Briefcase, Banknote, Calendar, Building, Globe, Upload, ArrowUpDown, ArrowUp, ArrowDown, TrendingUp, TrendingDown, Percent, Zap, History, Star, User, Users, MapPin, Receipt } from 'lucide-react';
 import { Contact, Activity, ActivityType, EmailTemplate, Invoice, Expense, ContactType, InvoiceConfig } from '../types';
 import { DataServiceFactory, replaceEmailPlaceholders } from '../services/dataService'; 
 
@@ -97,12 +96,17 @@ export const Contacts: React.FC<ContactsProps> = ({
     linkedin: '',
     notes: '',
     type: 'lead', // Default
-    salesRepId: '', // NEU
+    salesRepId: '', 
     retainerActive: false,
     retainerAmount: 0,
     retainerStartDate: '',
     retainerNextBilling: '',
-    retainerInterval: 'monthly'
+    retainerInterval: 'monthly',
+    street: '',
+    zip: '',
+    city: '',
+    taxId: '',
+    taxStatus: 'standard'
   });
 
   // Updated Static Options
@@ -141,7 +145,7 @@ export const Contacts: React.FC<ContactsProps> = ({
       setIsModalOpen(false);
       setEditingContactId(null);
       // Explicitly wipe state
-      setFormData({ name: '', role: '', company: '', companyUrl: '', email: '', linkedin: '', notes: '', type: 'lead', salesRepId: '', retainerActive: false, retainerAmount: 0, retainerStartDate: '', retainerNextBilling: '', retainerInterval: 'monthly' });
+      setFormData({ name: '', role: '', company: '', companyUrl: '', email: '', linkedin: '', notes: '', type: 'lead', salesRepId: '', retainerActive: false, retainerAmount: 0, retainerStartDate: '', retainerNextBilling: '', retainerInterval: 'monthly', street: '', zip: '', city: '', taxId: '', taxStatus: 'standard' });
       setNewActivityContent('');
   };
 
@@ -283,7 +287,7 @@ export const Contacts: React.FC<ContactsProps> = ({
 
   const openCreateModal = () => {
     setEditingContactId(null);
-    setFormData({ name: '', role: '', company: '', companyUrl: '', email: '', linkedin: '', notes: '', type: 'lead', salesRepId: '', retainerActive: false, retainerAmount: 0, retainerStartDate: '', retainerNextBilling: '', retainerInterval: 'monthly' });
+    setFormData({ name: '', role: '', company: '', companyUrl: '', email: '', linkedin: '', notes: '', type: 'lead', salesRepId: '', retainerActive: false, retainerAmount: 0, retainerStartDate: '', retainerNextBilling: '', retainerInterval: 'monthly', street: '', zip: '', city: '', taxId: '', taxStatus: 'standard' });
     setIsModalOpen(true);
   };
 
@@ -303,7 +307,12 @@ export const Contacts: React.FC<ContactsProps> = ({
       retainerAmount: contact.retainerAmount || 0,
       retainerStartDate: contact.retainerStartDate || '',
       retainerNextBilling: contact.retainerNextBilling || '',
-      retainerInterval: contact.retainerInterval || 'monthly'
+      retainerInterval: contact.retainerInterval || 'monthly',
+      street: contact.street || '',
+      zip: contact.zip || '',
+      city: contact.city || '',
+      taxId: contact.taxId || '',
+      taxStatus: contact.taxStatus || 'standard'
     });
     setNewActivityContent(''); 
     setIsModalOpen(true);
@@ -336,7 +345,12 @@ export const Contacts: React.FC<ContactsProps> = ({
           retainerAmount: Number(formData.retainerAmount),
           retainerStartDate: formData.retainerStartDate,
           retainerNextBilling: formData.retainerNextBilling,
-          retainerInterval: formData.retainerInterval as any
+          retainerInterval: formData.retainerInterval as any,
+          street: formData.street,
+          zip: formData.zip,
+          city: formData.city,
+          taxId: formData.taxId,
+          taxStatus: formData.taxStatus as any
         };
         onUpdateContact(updatedContact);
       }
@@ -358,13 +372,19 @@ export const Contacts: React.FC<ContactsProps> = ({
         retainerAmount: Number(formData.retainerAmount),
         retainerStartDate: formData.retainerStartDate,
         retainerNextBilling: formData.retainerNextBilling,
-        retainerInterval: formData.retainerInterval as any
+        retainerInterval: formData.retainerInterval as any,
+        street: formData.street,
+        zip: formData.zip,
+        city: formData.city,
+        taxId: formData.taxId,
+        taxStatus: formData.taxStatus as any
       };
       onAddContact(newContact);
     }
     handleCloseModal();
   };
 
+  // ... (Rest of handlers same as before) ...
   const handleAddManualActivity = () => {
       if (!editingContactId || !newActivityContent.trim()) return;
 
@@ -386,32 +406,26 @@ export const Contacts: React.FC<ContactsProps> = ({
       );
   };
   
-  // Helper to get Latest Activity for Table
   const getLastActivity = (contactId: string) => {
       const relevant = activities.filter(a => a.contactId === contactId);
       if (!relevant.length) return null;
       return relevant.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
   };
 
-  // --- FINANCIAL CALCULATION HELPER ---
   const getProfitability = (contactId: string) => {
-      // 1. Total Revenue (Invoices)
       const revenue = invoices
-          .filter(i => i.contactId === contactId) // Sum all invoices (paid & unpaid for 'total billed revenue') or filter i.isPaid for 'realized revenue'. Using ALL for now.
+          .filter(i => i.contactId === contactId) 
           .reduce((sum, i) => sum + i.amount, 0);
 
-      // 2. Variable Costs (Expenses assigned to this contact)
       const costs = expenses
           .filter(e => e.contactId === contactId)
           .reduce((sum, e) => sum + e.amount, 0);
 
-      // 3. Margin
       const margin = revenue - costs;
       const marginPercent = revenue > 0 ? (margin / revenue) * 100 : 0;
       
       return { revenue, costs, margin, marginPercent };
   };
-
 
   const ActivityIcon = ({ type }: { type: ActivityType }) => {
       switch(type) {
@@ -434,7 +448,6 @@ export const Contacts: React.FC<ContactsProps> = ({
       }
   };
 
-
   const handleEmailClick = (contact: Contact) => {
       setEmailData({
           to: contact.email,
@@ -453,13 +466,11 @@ export const Contacts: React.FC<ContactsProps> = ({
       let subject = '';
       let body = '';
 
-      // Check Custom Templates
       const customTpl = emailTemplates?.find(t => t.id === val);
       if (customTpl) {
           subject = customTpl.subject;
           body = customTpl.body;
       } 
-      // Check System Templates from invoiceConfig
       else if (invoiceConfig && invoiceConfig.emailSettings) {
            if (val === 'sys_welcome' && invoiceConfig.emailSettings.welcome) {
                subject = invoiceConfig.emailSettings.welcome.subject;
@@ -477,16 +488,11 @@ export const Contacts: React.FC<ContactsProps> = ({
       }
 
       if (subject || body) {
-          // Perform Placeholder Replacement
           const currentContact = contacts.find(c => c.id === emailData.contactId);
           if (currentContact && invoiceConfig) {
-              // We pass invoiceConfig. For Invoice placeholders we'd need an invoice object, 
-              // but here we are in Contact view, so invoice specific placeholders ({invoiceNumber}) won't work well 
-              // unless we pick a specific invoice. For general emails (Welcome), it works fine.
               subject = replaceEmailPlaceholders(subject, currentContact, invoiceConfig);
               body = replaceEmailPlaceholders(body, currentContact, invoiceConfig);
           }
-
           setEmailData(prev => ({ ...prev, subject, body }));
       }
   };
@@ -543,7 +549,7 @@ export const Contacts: React.FC<ContactsProps> = ({
 
   return (
     <div className="flex-1 bg-slate-50 h-screen overflow-y-auto flex flex-col relative">
-      {/* Header */}
+      {/* Header, Tabs, Toolbar, Table same as before ... */}
       <header className="bg-white border-b border-slate-200 px-8 py-6 flex justify-between items-center shrink-0">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Kontakte</h1>
@@ -560,7 +566,7 @@ export const Contacts: React.FC<ContactsProps> = ({
         </div>
       </header>
 
-      {/* Tabs (NEU) */}
+      {/* Tabs */}
       <div className="bg-white px-8 border-b border-slate-100 flex gap-1">
           <button onClick={() => setActiveTab('all')} className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'all' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Alle</button>
           <button onClick={() => setActiveTab('lead')} className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'lead' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Leads</button>
@@ -569,7 +575,7 @@ export const Contacts: React.FC<ContactsProps> = ({
           <button onClick={() => setActiveTab('newsletter')} className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'newsletter' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Newsletter</button>
       </div>
 
-      {/* Toolbar */}
+      {/* Toolbar & Filter ... */}
       <div className="px-8 py-4 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-4">
             {!focusedId && (
@@ -634,24 +640,9 @@ export const Contacts: React.FC<ContactsProps> = ({
                         className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
                      />
                 </th>
-                <th 
-                    className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 cursor-pointer hover:bg-slate-100 group transition-colors select-none"
-                    onClick={() => handleSort('name')}
-                >
-                    <div className="flex items-center">Name {renderSortIcon('name')}</div>
-                </th>
-                <th 
-                    className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 cursor-pointer hover:bg-slate-100 group transition-colors select-none"
-                    onClick={() => handleSort('role')}
-                >
-                    <div className="flex items-center">Rolle {renderSortIcon('role')}</div>
-                </th>
-                <th 
-                    className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 cursor-pointer hover:bg-slate-100 group transition-colors select-none"
-                    onClick={() => handleSort('company')}
-                >
-                    <div className="flex items-center">Firma {renderSortIcon('company')}</div>
-                </th>
+                <th onClick={() => handleSort('name')} className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 cursor-pointer hover:bg-slate-100 group transition-colors select-none"><div className="flex items-center">Name {renderSortIcon('name')}</div></th>
+                <th onClick={() => handleSort('role')} className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 cursor-pointer hover:bg-slate-100 group transition-colors select-none"><div className="flex items-center">Rolle {renderSortIcon('role')}</div></th>
+                <th onClick={() => handleSort('company')} className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 cursor-pointer hover:bg-slate-100 group transition-colors select-none"><div className="flex items-center">Firma {renderSortIcon('company')}</div></th>
                 <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200">Letzte Aktivität</th>
                 <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200">Quick-Notiz</th>
                 <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 text-right">Aktionen</th>
@@ -665,26 +656,13 @@ export const Contacts: React.FC<ContactsProps> = ({
                     className={`hover:bg-slate-50 transition-colors group cursor-pointer ${selectedIds.has(contact.id) ? 'bg-indigo-50/50 hover:bg-indigo-50' : ''}`}
                 >
                   <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                       <input 
-                            type="checkbox" 
-                            checked={selectedIds.has(contact.id)}
-                            onChange={() => toggleSelection(contact.id)}
-                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
-                        />
+                       <input type="checkbox" checked={selectedIds.has(contact.id)} onChange={() => toggleSelection(contact.id)} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer" />
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center gap-3">
                       <div className="flex items-center gap-2 relative">
-                         {contact.avatar ? (
-                             <img src={contact.avatar} alt={contact.name} className="w-9 h-9 rounded-full object-cover ring-2 ring-white" />
-                         ) : (
-                             <div className="w-9 h-9 rounded-full bg-slate-200 ring-2 ring-white flex items-center justify-center">
-                                 <User className="w-5 h-5 text-slate-500" />
-                             </div>
-                         )}
-                         {contact.linkedin && (
-                            <a href={contact.linkedin} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="p-0.5 text-blue-600 bg-white rounded-full absolute -bottom-1 -right-1 shadow-sm border border-slate-100 hover:scale-110 transition-transform" title="LinkedIn Profil"><Linkedin className="w-3 h-3 fill-current" /></a>
-                         )}
+                         {contact.avatar ? <img src={contact.avatar} alt={contact.name} className="w-9 h-9 rounded-full object-cover ring-2 ring-white" /> : <div className="w-9 h-9 rounded-full bg-slate-200 ring-2 ring-white flex items-center justify-center"><User className="w-5 h-5 text-slate-500" /></div>}
+                         {contact.linkedin && <a href={contact.linkedin} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="p-0.5 text-blue-600 bg-white rounded-full absolute -bottom-1 -right-1 shadow-sm border border-slate-100 hover:scale-110 transition-transform" title="LinkedIn Profil"><Linkedin className="w-3 h-3 fill-current" /></a>}
                       </div>
                       <div>
                           <div className="flex items-center gap-2">
@@ -700,11 +678,7 @@ export const Contacts: React.FC<ContactsProps> = ({
                   <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
                           <span className="text-sm font-medium text-slate-800">{contact.company}</span>
-                          {contact.companyUrl && (
-                              <a href={contact.companyUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-slate-400 hover:text-indigo-600 transition-colors">
-                                  <Globe className="w-3.5 h-3.5" />
-                              </a>
-                          )}
+                          {contact.companyUrl && <a href={contact.companyUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-slate-400 hover:text-indigo-600 transition-colors"><Globe className="w-3.5 h-3.5" /></a>}
                       </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -713,9 +687,7 @@ export const Contacts: React.FC<ContactsProps> = ({
                           if (!lastAct) return <span className="text-xs text-slate-300 italic">-</span>;
                           return (
                               <div className="flex flex-col">
-                                  <span className="text-xs font-semibold text-slate-600 flex items-center gap-1">
-                                      {lastAct.date === new Date().toISOString().split('T')[0] ? 'Heute' : lastAct.date.split('-').reverse().slice(0,2).join('.')} 
-                                  </span>
+                                  <span className="text-xs font-semibold text-slate-600 flex items-center gap-1">{lastAct.date === new Date().toISOString().split('T')[0] ? 'Heute' : lastAct.date.split('-').reverse().slice(0,2).join('.')}</span>
                                   <span className="text-[10px] text-slate-400 truncate max-w-[120px]">{lastAct.content}</span>
                               </div>
                           );
@@ -723,22 +695,9 @@ export const Contacts: React.FC<ContactsProps> = ({
                   </td>
                   <td className="px-6 py-4">
                     {editingNoteId === contact.id ? (
-                      <input 
-                        autoFocus 
-                        type="text" 
-                        value={tempNote} 
-                        onChange={(e) => setTempNote(e.target.value)} 
-                        onBlur={() => saveNote(contact)} 
-                        onKeyDown={(e) => handleNoteKeyDown(e, contact)} 
-                        onClick={(e) => e.stopPropagation()}
-                        className="w-full text-sm p-1.5 border border-indigo-400 rounded focus:ring-2 focus:ring-indigo-200 outline-none"
-                      />
+                      <input autoFocus type="text" value={tempNote} onChange={(e) => setTempNote(e.target.value)} onBlur={() => saveNote(contact)} onKeyDown={(e) => handleNoteKeyDown(e, contact)} onClick={(e) => e.stopPropagation()} className="w-full text-sm p-1.5 border border-indigo-400 rounded focus:ring-2 focus:ring-indigo-200 outline-none" />
                     ) : (
-                      <div 
-                        onClick={(e) => { e.stopPropagation(); startEditingNote(contact); }} 
-                        className="max-w-[200px] truncate text-sm text-slate-500 flex items-center gap-1 cursor-text hover:text-slate-700 hover:bg-slate-100/50 p-1.5 -ml-1.5 rounded transition-colors" 
-                        title="Klicken zum Bearbeiten"
-                      >
+                      <div onClick={(e) => { e.stopPropagation(); startEditingNote(contact); }} className="max-w-[200px] truncate text-sm text-slate-500 flex items-center gap-1 cursor-text hover:text-slate-700 hover:bg-slate-100/50 p-1.5 -ml-1.5 rounded transition-colors" title="Klicken zum Bearbeiten">
                         {contact.notes ? <><FileText className="w-3 h-3 text-slate-400 shrink-0" />{contact.notes}</> : <span className="text-slate-300 italic text-xs flex items-center gap-1"><Pencil className="w-3 h-3" />Notiz hinzufügen...</span>}
                       </div>
                     )}
@@ -780,7 +739,7 @@ export const Contacts: React.FC<ContactsProps> = ({
                 <div className={`flex-1 overflow-hidden ${editingContactId ? 'grid grid-cols-5' : ''}`}>
                     
                     {/* LEFT COLUMN: FORM */}
-                    <div className={`${editingContactId ? 'col-span-2 border-r border-slate-100' : 'w-full'} overflow-y-auto p-6`}>
+                    <div className={`${editingContactId ? 'col-span-2 border-r border-slate-100' : 'w-full'} overflow-y-auto p-6 custom-scrollbar`}>
                          <form id="contactForm" onSubmit={handleSubmit} className="space-y-6">
                             
                             {/* Stammdaten Section */}
@@ -792,6 +751,7 @@ export const Contacts: React.FC<ContactsProps> = ({
                                     <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1"><Globe className="w-3 h-3"/> Firmen-Link</label><input name="companyUrl" value={formData.companyUrl} onChange={handleInputChange} type="url" className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="https://firma.de"/></div>
                                     <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase">Rolle</label><input name="role" value={formData.role} onChange={handleInputChange} type="text" className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="z.B. CEO"/></div>
                                     <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase">E-Mail</label><input required name="email" value={formData.email} onChange={handleInputChange} type="email" className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="max@firma.de"/></div>
+                                    
                                     <div className="space-y-1">
                                         <label className="text-xs font-semibold text-slate-500 uppercase">Kontakt-Typ</label>
                                         <select name="type" value={formData.type || 'lead'} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
@@ -803,7 +763,7 @@ export const Contacts: React.FC<ContactsProps> = ({
                                         </select>
                                     </div>
                                     
-                                    {/* VERTRIEBZUWEISUNG (Nur wenn Typ nicht 'sales' ist) */}
+                                    {/* VERTRIEBZUWEISUNG */}
                                     {formData.type !== 'sales' && (
                                         <div className="space-y-1">
                                             <label className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1">
@@ -828,6 +788,49 @@ export const Contacts: React.FC<ContactsProps> = ({
                                     <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase">Allgemeine Notiz</label><textarea name="notes" value={formData.notes} onChange={handleInputChange} rows={3} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none resize-none" placeholder="Statische Infos..."/></div>
                                 </div>
                             </div>
+
+                            {/* ADRESS & STEUERDATEN (NUR WENN VERTRIEB ODER KUNDE) */}
+                            {(formData.type === 'sales' || formData.type === 'customer') && (
+                                <div className="pt-4 border-t border-slate-100">
+                                    <h3 className="text-xs font-bold text-slate-400 uppercase mb-4 tracking-wider flex items-center gap-2">
+                                        <MapPin className="w-4 h-4" /> Adresse & Rechnungsdaten
+                                    </h3>
+                                    <div className="grid grid-cols-1 gap-4 animate-in fade-in slide-in-from-top-2">
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-semibold text-slate-500 uppercase">Straße & Hausnummer</label>
+                                            <input name="street" value={formData.street || ''} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Musterstraße 123" />
+                                        </div>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-semibold text-slate-500 uppercase">PLZ</label>
+                                                <input name="zip" value={formData.zip || ''} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="12345" />
+                                            </div>
+                                            <div className="space-y-1 col-span-2">
+                                                <label className="text-xs font-semibold text-slate-500 uppercase">Ort</label>
+                                                <input name="city" value={formData.city || ''} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Musterstadt" />
+                                            </div>
+                                        </div>
+                                        
+                                        {/* Spezielle Felder für Vertriebler */}
+                                        {formData.type === 'sales' && (
+                                            <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100 mt-2 space-y-4">
+                                                <h4 className="text-xs font-bold text-indigo-700 uppercase flex items-center gap-1"><Receipt className="w-3.5 h-3.5"/> Abrechnungsdaten (Gutschrift)</h4>
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-semibold text-slate-500 uppercase">Steuernummer / USt-IdNr.</label>
+                                                    <input name="taxId" value={formData.taxId || ''} onChange={handleInputChange} className="w-full px-3 py-2 border border-indigo-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white" placeholder="DE..." />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-semibold text-slate-500 uppercase">Steuerstatus</label>
+                                                    <select name="taxStatus" value={formData.taxStatus || 'standard'} onChange={handleInputChange} className="w-full px-3 py-2 border border-indigo-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white text-sm">
+                                                        <option value="standard">Regelbesteuert (19% MwSt)</option>
+                                                        <option value="small_business">Kleinunternehmer (§19 UStG)</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Retainer / Vertrag Section */}
                             <div className="pt-4 border-t border-slate-100">
@@ -877,7 +880,7 @@ export const Contacts: React.FC<ContactsProps> = ({
                     {/* RIGHT COLUMN: TIMELINE (Only when editing) */}
                     {editingContactId && (
                         <div className="col-span-3 bg-slate-50/50 flex flex-col h-full overflow-hidden">
-                            {/* NEW WIDGET: PROFITABILITY */}
+                            {/* ... (Profitability and Timeline code remains same) ... */}
                             <div className="bg-white border-b border-slate-100 p-4 shrink-0">
                                 <h3 className="text-xs font-bold text-slate-400 uppercase mb-3 tracking-wider flex items-center gap-2">
                                     <TrendingUp className="w-4 h-4"/> Rentabilität & Marge
@@ -910,7 +913,6 @@ export const Contacts: React.FC<ContactsProps> = ({
                                                 </div>
                                             </div>
                                             
-                                            {/* Progress Bar */}
                                             <div className="relative pt-1">
                                                 <div className="flex mb-1 items-center justify-between">
                                                     <span className={`text-xs font-semibold inline-block py-0.5 px-2 rounded uppercase ${revenue > 0 ? (marginPercent >= 80 ? 'text-green-600 bg-green-100' : marginPercent >= 50 ? 'text-yellow-600 bg-yellow-100' : 'text-red-600 bg-red-100') : 'text-slate-500 bg-slate-100'}`}>
@@ -951,7 +953,6 @@ export const Contacts: React.FC<ContactsProps> = ({
                                             <Zap className="w-4 h-4" />
                                         </button>
                                         
-                                        {/* Quick Select Dropdown */}
                                         {isActivityQuickSelectOpen && (
                                             <div className="absolute top-full right-0 mt-1 w-72 bg-white rounded-lg shadow-xl border border-slate-100 z-50 animate-in fade-in zoom-in duration-100 max-h-64 overflow-y-auto">
                                                 <div className="p-1">
@@ -1003,7 +1004,7 @@ export const Contacts: React.FC<ContactsProps> = ({
                                 </div>
                             </div>
                             
-                            <div className="flex-1 overflow-y-auto p-4 space-y-6">
+                            <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
                                 {getContactActivities().length > 0 ? (
                                     getContactActivities().map((activity) => (
                                         <div key={activity.id} className="flex gap-4 group relative">
@@ -1054,7 +1055,7 @@ export const Contacts: React.FC<ContactsProps> = ({
         </div>
       )}
 
-      {/* Send Email Modal */}
+      {/* Send Email Modal ... */}
       {isEmailModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">

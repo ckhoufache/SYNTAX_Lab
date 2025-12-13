@@ -1,5 +1,4 @@
 
-
 export type ViewState = 'dashboard' | 'contacts' | 'pipeline' | 'settings' | 'tasks' | 'finances' | 'email';
 export type Theme = 'light' | 'dark';
 
@@ -64,7 +63,9 @@ export interface ProductPreset {
   id: string;
   title: string;
   value: number;
-  isSubscription?: boolean; 
+  isSubscription?: boolean; // Veraltet, wir nutzen jetzt spezifischere Felder
+  isRetainer?: boolean;     // NEU: Kennzeichnet ob es ein Abo ist
+  retainerInterval?: 'monthly' | 'quarterly' | 'yearly'; // NEU: Intervall
 }
 
 export interface UserProfile {
@@ -88,6 +89,13 @@ export interface Contact {
   notes?: string;
   tags?: string[];
   type?: ContactType; 
+  
+  // Address & Tax Data (New for Credit Notes)
+  street?: string;
+  zip?: string;
+  city?: string;
+  taxId?: string; // Steuernummer des Vertrieblers
+  taxStatus?: 'standard' | 'small_business'; // Regelbesteuerung oder Kleinunternehmer
   
   salesRepId?: string; 
 
@@ -154,6 +162,7 @@ export interface Invoice {
   salesRepId?: string;     
   salesRepName?: string;   
   commissionAmount?: number; 
+  commissionProcessed?: boolean; // Wenn true, wurde dieser Umsatz bereits verprovisioniert
 }
 
 export interface Expense {
