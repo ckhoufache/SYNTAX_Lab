@@ -55,7 +55,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({ currentView, onChan
       {/* Header with Logo Toggle */}
       <div 
         className={`flex items-center shrink-0 border-b border-slate-100 cursor-pointer hover:bg-slate-50 transition-colors ${
-            isCollapsed ? 'h-16 justify-center' : 'h-auto py-8 px-6 justify-start'
+            isCollapsed ? 'h-16 justify-center' : 'h-auto py-4 px-6 justify-start'
         }`}
         onClick={onToggle}
         title={isCollapsed ? "Menü ausklappen" : "Menü einklappen"}

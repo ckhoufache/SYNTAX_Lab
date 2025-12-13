@@ -1,6 +1,6 @@
 
-import React, { useState, useMemo } from 'react';
-import { Plus, X, Trash2, CheckCircle2, TrendingUp, TrendingDown, PiggyBank, Printer, Pencil, RefreshCw, Ban, Loader2, Repeat, Users, Percent, FileOutput } from 'lucide-react';
+import React, { useState, useMemo, useRef } from 'react';
+import { Plus, X, Trash2, CheckCircle2, TrendingUp, TrendingDown, PiggyBank, Printer, Pencil, RefreshCw, Ban, Loader2, Repeat, Users, Percent, FileOutput, Upload, Paperclip, FileText } from 'lucide-react';
 import { Invoice, Contact, Expense, InvoiceConfig, Activity } from '../types';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { DataServiceFactory, compileInvoiceTemplate } from '../services/dataService';
@@ -49,6 +49,8 @@ export const Finances: React.FC<FinancesProps> = ({
     // Printing State
     const [isPrinting, setIsPrinting] = useState<string | null>(null);
 
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
     // Form States
     const [invoiceForm, setInvoiceForm] = useState<Partial<Invoice>>({
         invoiceNumber: '',
@@ -66,7 +68,9 @@ export const Finances: React.FC<FinancesProps> = ({
         date: new Date().toISOString().split('T')[0],
         category: 'office',
         contactId: '',
-        interval: 'one_time'
+        interval: 'one_time',
+        attachment: '',
+        attachmentName: ''
     });
 
     // Stats
@@ -154,6 +158,42 @@ export const Finances: React.FC<FinancesProps> = ({
         setIsExpenseModalOpen(false);
     };
 
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        // Simple size check (e.g. 5MB limit for local storage performance)
+        if (file.size > 5 * 1024 * 1024) {
+            alert("Die Datei ist zu groß (Max. 5MB).");
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            setExpenseForm(prev => ({
+                ...prev,
+                attachment: reader.result as string,
+                attachmentName: file.name
+            }));
+        };
+        reader.readAsDataURL(file);
+    };
+
+    const removeAttachment = () => {
+        setExpenseForm(prev => ({ ...prev, attachment: undefined, attachmentName: undefined }));
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
+    const handleDownloadAttachment = (expense: Expense) => {
+        if (!expense.attachment) return;
+        const link = document.createElement("a");
+        link.href = expense.attachment;
+        link.download = expense.attachmentName || `Beleg-${expense.id}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     const openInvoiceModal = (invoice?: Invoice) => {
         if (invoice) {
             setEditingInvoiceId(invoice.id);
@@ -185,7 +225,9 @@ export const Finances: React.FC<FinancesProps> = ({
                 date: new Date().toISOString().split('T')[0],
                 category: 'office',
                 contactId: '',
-                interval: 'one_time'
+                interval: 'one_time',
+                attachment: '',
+                attachmentName: ''
             });
         }
         setIsExpenseModalOpen(true);
@@ -376,7 +418,10 @@ export const Finances: React.FC<FinancesProps> = ({
                                         <tr key={expense.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
                                             <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{expense.date}</td>
                                             <td className="px-6 py-4 font-medium dark:text-slate-200">
-                                                {expense.title} 
+                                                <div className="flex items-center gap-2">
+                                                    {expense.title} 
+                                                    {expense.attachment && <Paperclip className="w-3 h-3 text-slate-400" />}
+                                                </div>
                                                 {expense.contactName && <span className="text-xs text-slate-400 block">{expense.contactName}</span>}
                                             </td>
                                             <td className="px-6 py-4"><span className="capitalize bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded text-xs text-slate-600 dark:text-slate-300">{expense.category}</span></td>
@@ -390,6 +435,11 @@ export const Finances: React.FC<FinancesProps> = ({
                                                 )}
                                             </td>
                                             <td className="px-6 py-4 text-right flex justify-end gap-2">
+                                                {expense.attachment && (
+                                                    <button onClick={() => handleDownloadAttachment(expense)} className="p-1.5 text-slate-400 hover:text-indigo-600 rounded hover:bg-slate-100 dark:hover:bg-slate-700" title="Beleg öffnen/herunterladen">
+                                                        <Paperclip className="w-4 h-4"/>
+                                                    </button>
+                                                )}
                                                 <button onClick={() => openExpenseModal(expense)} className="p-1.5 text-slate-400 hover:text-blue-600 rounded hover:bg-slate-100 dark:hover:bg-slate-700" title="Bearbeiten"><Pencil className="w-4 h-4"/></button>
                                                 <button onClick={() => onDeleteExpense(expense.id)} className="p-1.5 text-slate-400 hover:text-red-600 rounded hover:bg-slate-100 dark:hover:bg-slate-700" title="Löschen"><Trash2 className="w-4 h-4"/></button>
                                             </td>
@@ -563,6 +613,38 @@ export const Finances: React.FC<FinancesProps> = ({
                                     <option value="">-- Kein --</option>
                                     {contacts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                                 </select>
+                            </div>
+
+                            {/* Beleg Upload Section */}
+                            <div>
+                                <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Beleg / Rechnung (PDF/Bild)</label>
+                                <div className="mt-1 border-2 border-dashed border-slate-200 dark:border-slate-600 rounded-lg p-4 text-center hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+                                    <input 
+                                        type="file" 
+                                        ref={fileInputRef} 
+                                        className="hidden" 
+                                        accept="image/*,application/pdf" 
+                                        onChange={handleFileChange}
+                                    />
+                                    {expenseForm.attachment ? (
+                                        <div className="flex items-center justify-center gap-2 text-sm text-indigo-600 dark:text-indigo-400">
+                                            <FileText className="w-4 h-4" />
+                                            <span className="truncate max-w-[200px] font-medium">{expenseForm.attachmentName}</span>
+                                            <button 
+                                                type="button" 
+                                                onClick={(e) => { e.stopPropagation(); removeAttachment(); }}
+                                                className="p-1 hover:bg-indigo-100 rounded-full"
+                                            >
+                                                <X className="w-3 h-3" />
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col items-center gap-1 text-slate-400">
+                                            <Upload className="w-6 h-6 mb-1 opacity-50" />
+                                            <span className="text-xs">Klicken zum Upload</span>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
 
                             <div className="pt-4 flex justify-end gap-2">
