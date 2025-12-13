@@ -18,6 +18,7 @@ interface DashboardProps {
   onNavigateToPipeline: (stages: DealStage[], focusId?: string) => void;
   onNavigateToTasks: (focusId?: string) => void;
   onNavigateToFinances: () => void;
+  onNavigateToEmail: () => void; // NEU: Navigation zum Postfach
   invoices?: Invoice[]; 
   expenses: Expense[]; 
   activities: Activity[]; 
@@ -34,6 +35,7 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
   onNavigateToPipeline,
   onNavigateToTasks,
   onNavigateToFinances,
+  onNavigateToEmail,
   invoices = [], 
   expenses,
   activities
@@ -397,6 +399,10 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
                 </div>
             )}
           </div>
+
+          <button onClick={onNavigateToEmail} className="relative p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" title="Postfach">
+            <Mail className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+          </button>
 
           <div className="relative" ref={notificationRef}>
               <button onClick={() => setShowNotifications(!showNotifications)} className={`relative p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ${showNotifications ? 'bg-slate-100 dark:bg-slate-800' : ''}`}>

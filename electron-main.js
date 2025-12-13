@@ -1,10 +1,10 @@
-
 import { app, BrowserWindow, shell, ipcMain, session } from 'electron';
 import path from 'path';
 import express from 'express';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { autoUpdater } from 'electron-updater';
+import electronUpdater from 'electron-updater'; // Fix: Default import
+const { autoUpdater } = electronUpdater;        // Fix: Destructuring aus dem Default Export
 
 // E-Mail Libraries (Dynamisch importieren)
 let imaps, simpleParser, nodemailer;

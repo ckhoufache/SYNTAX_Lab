@@ -28,21 +28,23 @@ jobs:
           cache: 'npm'
           
       - name: Install dependencies
-        run: npm ci
+        # WICHTIG: npm install statt npm ci nutzen, da wir die package.json geändert haben 
+        # und die lock-file im Repo evtl. veraltet ist.
+        run: npm install
         
       - name: Build Web Interface
         run: npm run build
         
-      # NEU: Kopiere die Windows-Installer Dateien in den öffentlichen Ordner
+      # Kopiere die Windows-Installer Dateien in den öffentlichen Ordner
       - name: Copy Release Files to Public
         run: |
           # Prüfen ob release Dateien existieren und kopieren
-          # || true verhindert Fehler, falls noch keine exe da ist
+          # || true verhindert Fehler, falls noch keine exe da ist (z.B. beim ersten Run)
           cp release/*.exe dist/ || true
           cp release/*.yml dist/ || true
           cp release/*.blockmap dist/ || true
           
-          # Debugging: Zeige Inhalt von dist an
+          # Debugging: Zeige Inhalt von dist an um zu prüfen ob die .exe da ist
           ls -la dist/
         
       - name: Upload artifact

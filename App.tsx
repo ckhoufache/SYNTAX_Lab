@@ -21,6 +21,9 @@ export const App = () => {
   // Theme state removed, defaulted to Light
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Sidebar State
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   // ... (State variables same as before) ...
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -158,6 +161,8 @@ export const App = () => {
             onChangeView={setView} 
             userProfile={userProfile}
             onLogout={handleLogout}
+            isCollapsed={isSidebarCollapsed}
+            onToggle={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
         />
         
         {view === 'dashboard' && (
@@ -165,6 +170,7 @@ export const App = () => {
                 tasks={tasks} deals={deals} contacts={contacts} invoices={invoices} expenses={expenses} activities={activities}
                 onAddTask={handleAddTask} onUpdateTask={handleUpdateTask} onDeleteTask={handleDeleteTask}
                 onNavigateToContacts={navigateToContacts} onNavigateToPipeline={navigateToPipeline} onNavigateToTasks={navigateToTasks} onNavigateToFinances={navigateToFinances}
+                onNavigateToEmail={() => setView('email')} // Pass the navigation function
             />
         )}
         
