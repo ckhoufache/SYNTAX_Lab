@@ -54,7 +54,9 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({ currentView, onChan
     >
       {/* Header with Logo Toggle */}
       <div 
-        className={`h-16 flex items-center ${isCollapsed ? 'justify-center' : 'px-6'} border-b border-slate-100 cursor-pointer hover:bg-slate-50 transition-colors`}
+        className={`flex items-center shrink-0 border-b border-slate-100 cursor-pointer hover:bg-slate-50 transition-colors ${
+            isCollapsed ? 'h-16 justify-center' : 'h-auto py-8 px-6 justify-start'
+        }`}
         onClick={onToggle}
         title={isCollapsed ? "Menü ausklappen" : "Menü einklappen"}
       >
@@ -67,14 +69,14 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({ currentView, onChan
                 <img 
                     src={logoSrc} 
                     alt="Syntax Lab" 
-                    className="h-8 w-auto object-contain max-w-[180px]"
+                    className="h-24 w-auto object-contain transition-all duration-300" // Vergrößert auf h-24 (96px)
                     onError={() => setImgError(true)} 
                 />
             ) : (
-                // Fallback Text
+                // Fallback Text (auch etwas größer)
                 <div className="flex items-center">
-                    <Hexagon className="w-8 h-8 text-indigo-600 fill-indigo-100 mr-2" />
-                    <span className="text-xl font-bold tracking-tight text-slate-800">SyntaxLab</span>
+                    <Hexagon className="w-10 h-10 text-indigo-600 fill-indigo-100 mr-2" />
+                    <span className="text-2xl font-bold tracking-tight text-slate-800">SyntaxLab</span>
                 </div>
             )
         )}

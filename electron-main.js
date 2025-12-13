@@ -126,15 +126,22 @@ ipcMain.handle('check-for-update', () => {
         return { updateAvailable: false, message: "Dev Modus: Keine Updates." };
     }
     
-    // Setze URL dynamisch falls nötig, oder nutze die aus package.json
-    // autoUpdater.setFeedURL({ provider: 'generic', url: '...' });
-    
     // Mit autoDownload = true startet der Download hier sofort, wenn ein Update gefunden wird.
     return autoUpdater.checkForUpdates()
         .then(result => {
+            // FIX: Version Check
+            // Wir vergleichen die Version vom Server mit der aktuellen App-Version.
+            // Nur wenn sie UNTERSCHIEDLICH sind (und normalerweise höher), melden wir ein Update.
+            const localVersion = app.getVersion();
+            const remoteVersion = result.updateInfo.version;
+
+            if (localVersion === remoteVersion) {
+                return { updateAvailable: false, message: "Bereits aktuell." };
+            }
+
             return { 
                 updateAvailable: true, 
-                version: result.updateInfo.version,
+                version: remoteVersion,
                 files: result.updateInfo.files 
             };
         })
@@ -162,6 +169,7 @@ ipcMain.handle('quit-and-install', () => {
 
 // Updater Events an Frontend senden
 autoUpdater.on('update-available', (info) => {
+    // Hier können wir auch nochmal filtern, aber checkForUpdates Return Value ist wichtiger für den Button
     if(mainWindow) mainWindow.webContents.send('update-status', { status: 'available', info });
 });
 autoUpdater.on('update-not-available', () => {

@@ -1,10 +1,4 @@
 
-// Deklarationen für Datei-Importe
-declare module '*.png';
-declare module '*.jpg';
-declare module '*.jpeg';
-declare module '*.svg';
-declare module '*.gif';
 
 export type ViewState = 'dashboard' | 'contacts' | 'pipeline' | 'settings' | 'tasks' | 'finances' | 'email';
 export type Theme = 'light' | 'dark';
