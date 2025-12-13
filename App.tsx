@@ -8,6 +8,7 @@ import { Tasks } from './components/Tasks';
 import { Finances } from './components/Finances';
 import { Settings } from './components/Settings';
 import { LoginScreen } from './components/LoginScreen';
+import { EmailClient } from './components/EmailClient';
 import { DataServiceFactory, IDataService } from './services/dataService';
 import { 
   Contact, Deal, Task, Invoice, Expense, Activity, 
@@ -193,6 +194,14 @@ export const App = () => {
                 tasks={tasks}
                 onAddTask={handleAddTask} onUpdateTask={handleUpdateTask} onDeleteTask={handleDeleteTask}
                 focusedTaskId={focusedTaskId} onClearFocus={() => setFocusedTaskId(null)}
+            />
+        )}
+
+        {/* NEUE VIEW: EMAIL CLIENT */}
+        {view === 'email' && (
+            <EmailClient 
+                dataService={dataService} 
+                config={backendConfig}
             />
         )}
 

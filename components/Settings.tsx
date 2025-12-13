@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle, Key, RefreshCw, Copy, FileText, Image as ImageIcon, Briefcase, Settings as SettingsIcon, HardDrive, Users, DownloadCloud, RefreshCcw, Sparkles, Sliders, Link, Paperclip, Star, PaperclipIcon, FileCode, Printer, Info, AlertOctagon, Repeat, Cloud, CloudLightning, ShieldAlert, Wifi, UserPlus } from 'lucide-react';
 import { UserProfile, Theme, ProductPreset, Contact, Deal, Task, BackupData, BackendConfig, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate, EmailAttachment, EmailAutomationConfig, FirebaseConfig } from '../types';
@@ -136,6 +135,11 @@ export const Settings: React.FC<SettingsProps> = ({
       onUpdateBackendConfig(newConfig);
       alert("Konfiguration gespeichert. Die App wird neu geladen.");
       window.location.reload();
+  };
+  
+  const handleSaveEmailConfig = () => {
+      onUpdateBackendConfig(backendForm);
+      alert("E-Mail Server Konfiguration gespeichert.");
   };
   
   const handleSwitchToLocal = () => {
@@ -307,8 +311,6 @@ export const Settings: React.FC<SettingsProps> = ({
                     <div className="flex justify-end mb-4"><button onClick={() => { onUpdateProfile(formData); setShowSaved(true); setTimeout(() => setShowSaved(false), 2000); }} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-2">{showSaved ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />} Speichern</button></div>
                 </SubSection>
                 
-                {/* Theme Selection Removed */}
-
                 <SubSection 
                     title="Team & Zugriffsrechte" 
                     isDark={isDark}
@@ -378,7 +380,6 @@ export const Settings: React.FC<SettingsProps> = ({
              <div className="px-6">
                  <SubSection title="Rechnungskonfiguration" isDark={isDark} isOpen={activeSubSection === 'config_invoice'} onToggle={() => toggleSubSection('config_invoice')}>
                      <div className="py-2 grid grid-cols-2 gap-4">
-                         {/* RESTORED FIELDS */}
                          <div className="col-span-2"><label className="text-xs font-bold uppercase text-slate-500">Firmenname</label><input name="companyName" value={invConfigForm.companyName} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white" placeholder="Muster GmbH" /></div>
                          
                          <div><label className="text-xs font-bold uppercase text-slate-500">Straße & Nr.</label><input name="addressLine1" value={invConfigForm.addressLine1} onChange={handleInvConfigChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white" placeholder="Musterstraße 123" /></div>
@@ -453,9 +454,6 @@ export const Settings: React.FC<SettingsProps> = ({
                         </div>
                     </div>
                  </SubSection>
-                 <SubSection title="E-Mail Versand & Automation" isDark={isDark} isOpen={activeSubSection === 'config_email_automation'} onToggle={() => toggleSubSection('config_email_automation')}>
-                     <div className="py-2"><p className="text-sm text-slate-500">Konfigurieren Sie E-Mail Vorlagen.</p></div>
-                 </SubSection>
              </div>
          </SettingsSection>
 
@@ -463,11 +461,51 @@ export const Settings: React.FC<SettingsProps> = ({
             title="Integrationen & API" 
             icon={Globe} 
             isDark={isDark} 
-            description="Google Dienste, Datenbank & KI"
+            description="Google Dienste, E-Mail Postfach & Datenbank"
             isOpen={activeSection === 'integrations'}
             onToggle={() => toggleSection('integrations')}
          >
              <div className="px-6 pb-6 pt-2 space-y-4">
+                 
+                 {/* POSTFACH INTEGRATION (NEU) */}
+                 <SubSection title="E-Mail Postfach (IMAP / SMTP)" isDark={isDark} isOpen={activeSubSection === 'config_email_server'} onToggle={() => toggleSubSection('config_email_server')}>
+                     <div className="py-2 space-y-4">
+                         <div className="p-4 bg-yellow-50 text-yellow-700 text-xs rounded-lg border border-yellow-200 mb-4">
+                             <p><strong>Hinweis:</strong> Diese Einstellungen ermöglichen das Senden und Empfangen von E-Mails direkt in der Desktop-App. Ihre Zugangsdaten werden nur lokal gespeichert.</p>
+                         </div>
+                         
+                         <div className="grid grid-cols-2 gap-6">
+                             {/* IMAP Config */}
+                             <div className="space-y-3">
+                                 <h4 className="font-bold text-sm text-slate-700 border-b pb-2">Posteingang (IMAP)</h4>
+                                 <div><label className="text-xs font-bold uppercase text-slate-500">Host</label><input value={backendForm.imapHost || ''} onChange={e=>setBackendForm({...backendForm, imapHost: e.target.value})} className="w-full border p-2 rounded text-sm mt-1" placeholder="imap.gmail.com" /></div>
+                                 <div className="grid grid-cols-2 gap-2">
+                                     <div><label className="text-xs font-bold uppercase text-slate-500">Port</label><input type="number" value={backendForm.imapPort || 993} onChange={e=>setBackendForm({...backendForm, imapPort: parseInt(e.target.value)})} className="w-full border p-2 rounded text-sm mt-1" /></div>
+                                     <div className="flex items-center pt-6"><input type="checkbox" checked={backendForm.imapTls !== false} onChange={e=>setBackendForm({...backendForm, imapTls: e.target.checked})} className="mr-2" /><span className="text-sm">SSL/TLS</span></div>
+                                 </div>
+                                 <div><label className="text-xs font-bold uppercase text-slate-500">Benutzer</label><input value={backendForm.imapUser || ''} onChange={e=>setBackendForm({...backendForm, imapUser: e.target.value})} className="w-full border p-2 rounded text-sm mt-1" /></div>
+                                 <div><label className="text-xs font-bold uppercase text-slate-500">Passwort</label><input type="password" value={backendForm.imapPassword || ''} onChange={e=>setBackendForm({...backendForm, imapPassword: e.target.value})} className="w-full border p-2 rounded text-sm mt-1" /></div>
+                             </div>
+
+                             {/* SMTP Config */}
+                             <div className="space-y-3">
+                                 <h4 className="font-bold text-sm text-slate-700 border-b pb-2">Postausgang (SMTP)</h4>
+                                 <div><label className="text-xs font-bold uppercase text-slate-500">Host</label><input value={backendForm.smtpHost || ''} onChange={e=>setBackendForm({...backendForm, smtpHost: e.target.value})} className="w-full border p-2 rounded text-sm mt-1" placeholder="smtp.gmail.com" /></div>
+                                 <div className="grid grid-cols-2 gap-2">
+                                     <div><label className="text-xs font-bold uppercase text-slate-500">Port</label><input type="number" value={backendForm.smtpPort || 465} onChange={e=>setBackendForm({...backendForm, smtpPort: parseInt(e.target.value)})} className="w-full border p-2 rounded text-sm mt-1" /></div>
+                                     <div className="flex items-center pt-6"><input type="checkbox" checked={backendForm.smtpTls !== false} onChange={e=>setBackendForm({...backendForm, smtpTls: e.target.checked})} className="mr-2" /><span className="text-sm">SSL/TLS</span></div>
+                                 </div>
+                                 <div><label className="text-xs font-bold uppercase text-slate-500">Benutzer</label><input value={backendForm.smtpUser || ''} onChange={e=>setBackendForm({...backendForm, smtpUser: e.target.value})} className="w-full border p-2 rounded text-sm mt-1" /></div>
+                                 <div><label className="text-xs font-bold uppercase text-slate-500">Passwort</label><input type="password" value={backendForm.smtpPassword || ''} onChange={e=>setBackendForm({...backendForm, smtpPassword: e.target.value})} className="w-full border p-2 rounded text-sm mt-1" /></div>
+                             </div>
+                         </div>
+                         
+                         <div className="flex justify-end pt-4">
+                             <button onClick={handleSaveEmailConfig} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">Serverdaten Speichern</button>
+                         </div>
+                     </div>
+                 </SubSection>
+
                  <SubSection title="Datenbank Verbindung" isDark={isDark} isOpen={activeSubSection === 'database_conn'} onToggle={() => toggleSubSection('database_conn')}>
                      
                      <div className="mb-4">
@@ -503,15 +541,6 @@ export const Settings: React.FC<SettingsProps> = ({
                      </div>
                  </SubSection>
                  
-                 <div className="flex items-center justify-between p-4 border rounded-lg bg-white">
-                     <div className="flex items-center gap-4"><div className="p-2 bg-blue-100 rounded-full"><Calendar className="w-5 h-5 text-blue-600" /></div><div><h3 className="font-semibold text-sm">Google Calendar</h3></div></div>
-                     <button onClick={handleToggleCalendar} disabled={!!isConnecting} className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${isCalendarConnected ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-slate-100 text-slate-600 hover:bg-indigo-50 hover:text-indigo-600'}`}>{isConnecting === 'calendar' ? 'Lade...' : isCalendarConnected ? 'Verbunden' : 'Verbinden'}</button>
-                 </div>
-                 <div className="flex items-center justify-between p-4 border rounded-lg bg-white">
-                     <div className="flex items-center gap-4"><div className="p-2 bg-red-100 rounded-full"><Mail className="w-5 h-5 text-red-600" /></div><div><h3 className="font-semibold text-sm">Google Mail</h3></div></div>
-                     <button onClick={handleToggleMail} disabled={!!isConnecting} className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${isMailConnected ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-slate-100 text-slate-600 hover:bg-indigo-50 hover:text-indigo-600'}`}>{isConnecting === 'mail' ? 'Lade...' : isMailConnected ? 'Verbunden' : 'Verbinden'}</button>
-                 </div>
-                 
                  <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
                     <label className="text-xs font-bold uppercase text-slate-500 flex items-center gap-2 mb-2"><Sparkles className="w-3.5 h-3.5 text-indigo-500"/> Google Gemini API Key</label>
                     <div className="flex gap-2"><input type="password" value={geminiKey} onChange={(e) => setGeminiKey(e.target.value)} className="flex-1 px-3 py-2 border rounded-lg text-sm bg-white" placeholder="AIzaSy..." /><button onClick={() => { localStorage.setItem('gemini_api_key', geminiKey); alert('API Key gespeichert.'); }} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">Speichern</button></div>
@@ -519,6 +548,7 @@ export const Settings: React.FC<SettingsProps> = ({
              </div>
          </SettingsSection>
 
+         {/* Rest of the settings sections... */}
          <SettingsSection 
             title="Datenverwaltung" 
             icon={Database} 

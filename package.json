@@ -2,13 +2,13 @@
 {
   "name": "syntaxlab-crm",
   "private": true,
-  "version": "1.2.20",
+  "version": "1.3.0",
   "main": "electron-main.js",
   "type": "module",
   "scripts": {
     "dev": "vite --force",
     "prebuild": "node -e \"const fs=require('fs'); if(fs.existsSync('./dist')) fs.rmSync('./dist', {recursive:true, force:true});\"",
-    "build": "npm run prebuild && vite build && node -e \"const fs=require('fs'); const pkg=require('./package.json'); fs.writeFileSync('./dist/version.json', JSON.stringify({version: pkg.version}));\" && node update-builder.js",
+    "build": "npm run prebuild && vite build && node -e \"const fs=require('fs'); const pkg=require('./package.json'); fs.writeFileSync('./dist/version.json', JSON.stringify({version: pkg.version}));\"",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "start": "node server.js",
@@ -19,8 +19,12 @@
   },
   "dependencies": {
     "@google/genai": "*",
+    "electron-updater": "^6.1.8",
     "express": "^4.18.2",
+    "imap-simple": "^5.1.0",
     "lucide-react": "^0.344.0",
+    "mailparser": "^3.6.9",
+    "nodemailer": "^6.9.12",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "recharts": "^2.12.2"
@@ -40,6 +44,12 @@
   "build": {
     "appId": "com.syntaxlab.crm",
     "productName": "SyntaxLabCRM",
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://ckhoufache.github.io/SYNTAX_Lab/"
+      }
+    ],
     "directories": {
       "output": "release"
     },

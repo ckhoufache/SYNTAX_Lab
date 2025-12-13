@@ -1,5 +1,5 @@
 
-export type ViewState = 'dashboard' | 'contacts' | 'pipeline' | 'settings' | 'tasks' | 'finances';
+export type ViewState = 'dashboard' | 'contacts' | 'pipeline' | 'settings' | 'tasks' | 'finances' | 'email';
 export type Theme = 'light' | 'dark';
 
 export enum DealStage {
@@ -32,6 +32,31 @@ export interface BackendConfig {
   googleClientId?: string;
   apiKey?: string; 
   firebaseConfig?: FirebaseConfig; 
+  
+  // Custom IMAP/SMTP Config
+  imapHost?: string;
+  imapPort?: number;
+  imapUser?: string;
+  imapPassword?: string;
+  imapTls?: boolean;
+  
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpUser?: string;
+  smtpPassword?: string;
+  smtpTls?: boolean;
+}
+
+export interface EmailMessage {
+    id: string; // Message-ID or Sequence Number
+    uid: number;
+    from: string;
+    to: string;
+    subject: string;
+    date: string;
+    bodyText: string;
+    bodyHtml?: string;
+    isRead: boolean;
 }
 
 export interface ProductPreset {
@@ -63,10 +88,8 @@ export interface Contact {
   tags?: string[];
   type?: ContactType; 
   
-  // Vertrieb & Provision
   salesRepId?: string; 
 
-  // Retainer Details
   retainerActive?: boolean;
   retainerAmount?: number; 
   retainerStartDate?: string;
@@ -114,21 +137,19 @@ export interface Task {
 
 export interface Invoice {
   id: string;
-  type: 'customer' | 'commission'; // NEU: Unterscheidung
+  type: 'customer' | 'commission'; 
   invoiceNumber: string;
   description: string;
   date: string;
-  contactId: string; // Bei type='commission' ist dies der Vertriebler
+  contactId: string; 
   contactName: string;
   amount: number;
   sentDate?: string;
   paidDate?: string;
   isPaid: boolean;
-  // GoBD Fields
   isCancelled?: boolean;
-  relatedInvoiceId?: string; // ID der Stornorechnung oder Verknüpfung Commission <-> Customer Inv
+  relatedInvoiceId?: string; 
   
-  // Provision Tracking (Optional für Customer Invoice zur Referenz)
   salesRepId?: string;     
   salesRepName?: string;   
   commissionAmount?: number; 

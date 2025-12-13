@@ -11,7 +11,12 @@ node_modules
 dist
 dist-ssr
 *.local
-release
+
+# WICHTIG: Den release Ordner ignorieren, ABER die wichtigen Installer-Dateien zulassen
+release/*
+!release/*.exe
+!release/*.yml
+!release/*.blockmap
 
 # Editor directories and files
 .vscode/*

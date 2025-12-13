@@ -1,5 +1,5 @@
 
-import { Contact, Deal, Task, Invoice, Expense, Activity, UserProfile, ProductPreset, Theme, BackendConfig, BackendMode, BackupData, InvoiceConfig, EmailTemplate, EmailAttachment, DealStage } from '../types';
+import { Contact, Deal, Task, Invoice, Expense, Activity, UserProfile, ProductPreset, Theme, BackendConfig, BackendMode, BackupData, InvoiceConfig, EmailTemplate, EmailAttachment, DealStage, EmailMessage } from '../types';
 import { FirebaseDataService } from './firebaseService';
 
 declare global {
@@ -187,6 +187,10 @@ export interface IDataService {
     getAppVersion(): Promise<string>;
     generatePdf(htmlContent: string): Promise<string>;
     wipeAllData(): Promise<void>;
+    
+    // IMAP / SMTP Bridge
+    fetchEmails(config: any, limit?: number, onlyUnread?: boolean): Promise<EmailMessage[]>;
+    sendSmtpMail(config: any, to: string, subject: string, body: string): Promise<boolean>;
 }
 
 class LocalDataService implements IDataService {
@@ -374,114 +378,59 @@ class LocalDataService implements IDataService {
     }
 
     async checkAndInstallUpdate(url: string, statusCallback?: (status: string) => void, force: boolean = false): Promise<boolean> {
-        if (force) console.log(`[FORCE] checkAndInstallUpdate gestartet. URL: ${url}`);
-        
-        if (!url) {
-            const msg = "Fehler: Keine Update-URL in den Einstellungen.";
-            if(force) window.alert(msg);
-            throw new Error(msg);
-        }
-        const baseUrl = url.replace(/\/$/, "");
-        
-        const isElectron = !!(window as any).require;
-        
-        if (!isElectron) {
-            const msg = "Updates sind nur in der Desktop-App möglich.";
-            if (force) window.alert(msg);
+        if (!(window as any).require) {
+            statusCallback?.("Updates nur in Desktop-App möglich.");
             return false;
         }
 
-        let ipcRenderer;
-        try {
-            ipcRenderer = (window as any).require('electron').ipcRenderer;
-        } catch (e: any) {
-            if (force) window.alert("IPC Load Error: " + e.message);
-            return false;
-        }
+        const ipc = (window as any).require('electron').ipcRenderer;
 
         try {
-            statusCallback?.("Verbinde mit Server...");
-            // EXTRA CACHE BUSTING
-            const versionUrl = `${baseUrl}/version.json?t=${Date.now()}&r=${Math.random()}`;
-            
-            // EXPLICIT NO-CACHE HEADERS
-            const response = await fetch(versionUrl, {
-                headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' }
-            });
-            
-            if (!response.ok) {
-                const err = `Server antwortet nicht (Status ${response.status}). URL: ${versionUrl}`;
-                if (force) window.alert(err);
-                throw new Error(err);
-            }
-            
-            const remoteData = await response.json();
-            const currentVersion = await this.getAppVersion();
-            const cleanCurrentVersion = currentVersion.split(' ')[0].replace('(Hot)', '').trim();
+            statusCallback?.("Suche nach Updates...");
+            const result = await ipc.invoke('check-for-update');
 
-            const debugMsg = `Server: ${remoteData.version}\nLokal: ${cleanCurrentVersion}`;
-            
-            // ALERT FOR DEBUGGING
-            window.alert(`UPDATE CHECK:\n${debugMsg}`);
-            console.log(debugMsg);
-
-            const isNewer = (v1: string, v2: string) => {
-                const p1 = v1.split('.').map(Number);
-                const p2 = v2.split('.').map(Number);
-                for (let i = 0; i < 3; i++) {
-                    const n1 = p1[i] || 0;
-                    const n2 = p2[i] || 0;
-                    if (n1 > n2) return true;
-                    if (n1 < n2) return false;
+            if (result.error) {
+                // Ignore dev mode error silently unless forced
+                if(result.error.includes('Dev Modus') && !force) {
+                    statusCallback?.("Dev Modus (Keine Updates)");
+                    return false;
                 }
-                return false;
-            };
+                throw new Error(result.error);
+            }
 
-            // Force update if force is true OR if versions differ and remote is newer
-            if (!force && !isNewer(remoteData.version, cleanCurrentVersion)) {
+            if (!result.updateAvailable) {
+                statusCallback?.("App ist aktuell.");
                 return false;
             }
 
-            statusCallback?.(`Starte Download für v${remoteData.version}...`);
+            if (confirm(`Neue Version ${result.version} gefunden! Jetzt herunterladen?`)) {
+                statusCallback?.("Lade Update herunter...");
+                
+                // Listener für Progress
+                ipc.on('update-status', (event: any, data: any) => {
+                    if (data.status === 'downloading') {
+                        const percent = Math.round(data.progress || 0);
+                        statusCallback?.(`Lade herunter: ${percent}%`);
+                    } else if (data.status === 'downloaded') {
+                        statusCallback?.("Download fertig.");
+                        if (confirm("Update bereit. Jetzt neu starten und installieren?")) {
+                            ipc.invoke('quit-and-install');
+                        }
+                    } else if (data.status === 'error') {
+                        statusCallback?.("Update Fehler: " + data.error);
+                    }
+                });
 
-            const manifestUrl = `${baseUrl}/manifest.json?t=${Date.now()}`;
-            const manifestResponse = await fetch(manifestUrl, { headers: { 'Cache-Control': 'no-cache' } });
-            if (!manifestResponse.ok) throw new Error(`Manifest nicht gefunden (Status ${manifestResponse.status})`);
-            
-            const files: string[] = await manifestResponse.json();
-            
-            const downloadManifest = files.map(file => ({
-                url: `${baseUrl}/${file}`, 
-                relativePath: file
-            }));
-            
-            downloadManifest.push({
-                url: `${baseUrl}/version.json`,
-                relativePath: 'version.json'
-            });
-
-            statusCallback?.(`Lade ${downloadManifest.length} Dateien herunter...`);
-            
-            const result = await ipcRenderer.invoke('install-update', { 
-                manifest: downloadManifest, 
-                version: remoteData.version 
-            });
-
-            if (result.success) {
-                statusCallback?.("Download abgeschlossen!");
+                await ipc.invoke('download-update');
                 return true;
-            } else {
-                const errMsg = result.error || "Download fehlgeschlagen (Unbekannt)";
-                console.error("Update Failed:", errMsg);
-                window.alert(`Update Fehler im Hintergrundprozess:\n${errMsg}\n\nEin Log wurde in AppData/update_log.txt geschrieben.`);
-                throw new Error(errMsg);
             }
+            
+            return false;
 
         } catch (e: any) {
-            console.error("Update Error:", e);
-            statusCallback?.(`Fehler: ${e.message}`);
-            if (force) window.alert(`Update Exception UI:\n${e.message}`);
-            throw e;
+            console.error("AutoUpdate Error", e);
+            statusCallback?.("Update Fehler: " + e.message);
+            return false;
         }
     }
 
@@ -489,7 +438,7 @@ class LocalDataService implements IDataService {
         if ((window as any).require) {
             try { 
                 const v = await (window as any).require('electron').ipcRenderer.invoke('get-app-version'); 
-                return v || '0.0.0'; // Fallback to 0.0.0 so we force update if IPC fails
+                return v || '0.0.0'; 
             } catch(e) {
                 console.error("Version Check IPC Failed:", e);
             }
@@ -606,6 +555,24 @@ class LocalDataService implements IDataService {
         return '';
     }
     async wipeAllData(): Promise<void> { localStorage.clear(); window.location.reload(); }
+
+    // --- IMAP / SMTP IMPLEMENTATION ---
+    async fetchEmails(config: any, limit = 20, onlyUnread = false): Promise<EmailMessage[]> {
+        if ((window as any).require) {
+            return await (window as any).require('electron').ipcRenderer.invoke('email-imap-fetch', config, limit, onlyUnread);
+        }
+        console.warn("E-Mail Fetching only works in Desktop App (Electron)");
+        return [];
+    }
+
+    async sendSmtpMail(config: any, to: string, subject: string, body: string): Promise<boolean> {
+        if ((window as any).require) {
+            const result = await (window as any).require('electron').ipcRenderer.invoke('email-smtp-send', config, { to, subject, body });
+            return result.success;
+        }
+        console.warn("SMTP sending only works in Desktop App (Electron)");
+        return false;
+    }
 }
 
 let instance: IDataService | null = null;

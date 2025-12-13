@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { LayoutDashboard, Users, KanbanSquare, Settings, Hexagon, ClipboardList, Banknote, User, LogOut } from 'lucide-react';
+import { LayoutDashboard, Users, KanbanSquare, Settings, Hexagon, ClipboardList, Banknote, User, LogOut, Mail } from 'lucide-react';
 import { ViewState, UserProfile } from '../types';
 
 interface SidebarProps {
@@ -34,6 +34,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({ currentView, onChan
         <div onClick={() => onChangeView('contacts')} className={navItemClass('contacts')}><Users className="w-5 h-5" /><span className="font-medium">Kontakte</span></div>
         <div onClick={() => onChangeView('pipeline')} className={navItemClass('pipeline')}><KanbanSquare className="w-5 h-5" /><span className="font-medium">Pipeline</span></div>
         <div onClick={() => onChangeView('tasks')} className={navItemClass('tasks')}><ClipboardList className="w-5 h-5" /><span className="font-medium">Aufgaben</span></div>
+        <div onClick={() => onChangeView('email')} className={navItemClass('email')}><Mail className="w-5 h-5" /><span className="font-medium">Postfach</span></div>
         <div onClick={() => onChangeView('finances')} className={navItemClass('finances')}><Banknote className="w-5 h-5" /><span className="font-medium">Finanzen</span></div>
         <div onClick={() => onChangeView('settings')} className={navItemClass('settings')}><Settings className="w-5 h-5" /><span className="font-medium">Einstellungen</span></div>
       </nav>
