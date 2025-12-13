@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { LayoutDashboard, Users, KanbanSquare, Settings, Hexagon, ClipboardList, Banknote, User, LogOut, Activity } from 'lucide-react';
 import { ViewState, UserProfile } from '../types';
 
@@ -14,6 +14,22 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = React.memo(({ currentView, onChangeView, userProfile, onLogout, isCollapsed, onToggle }) => {
   const isDark = false; // Forced Light Mode
+  const [logoSrc, setLogoSrc] = useState<string>('');
+  const [imgError, setImgError] = useState(false);
+
+  // Dynamischer Import des Logos, um Build-Fehler zu vermeiden
+  useEffect(() => {
+    // Versuche sowohl den relativen Pfad als auch den Alias, falls einer fehlschlägt
+    import('../logo.png')
+      .then((mod) => {
+        setLogoSrc(mod.default);
+        setImgError(false);
+      })
+      .catch((err) => {
+        console.warn("Logo konnte nicht geladen werden (Standard-Fallback wird genutzt):", err);
+        setImgError(true);
+      });
+  }, []);
   
   const navItemClass = (view: ViewState) => 
     `flex items-center ${isCollapsed ? 'justify-center px-2' : 'gap-3 px-4'} py-3 mx-2 rounded-lg cursor-pointer transition-all duration-200 group relative ${
@@ -43,29 +59,24 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({ currentView, onChan
         title={isCollapsed ? "Menü ausklappen" : "Menü einklappen"}
       >
         {isCollapsed ? (
-            // Collapsed State: Display Icon only (Hexagon colored like the brand)
+            // Collapsed State: Display Icon only
             <Hexagon className="w-8 h-8 text-indigo-600 fill-indigo-100" /> 
         ) : (
-            // Expanded State: Display the full Logo Image
-            // IMPORTANT: User must place logo.png in public folder
-            <img 
-                src="/logo.png" 
-                alt="Syntax Lab" 
-                className="h-10 object-contain max-w-full"
-                onError={(e) => {
-                    // Fallback if image not found
-                    e.currentTarget.style.display = 'none';
-                    e.currentTarget.parentElement?.classList.add('fallback-active');
-                }} 
-            />
-        )}
-        
-        {/* Fallback Text if Image fails (hidden by default unless error occurs) */}
-        {!isCollapsed && (
-            <div className="hidden fallback-active:flex items-center">
-                <Hexagon className="w-8 h-8 text-indigo-600 fill-indigo-100 mr-2" />
-                <span className="text-xl font-bold tracking-tight text-slate-800">SyntaxLab</span>
-            </div>
+            // Expanded State: Display Logo Image if available
+            (logoSrc && !imgError) ? (
+                <img 
+                    src={logoSrc} 
+                    alt="Syntax Lab" 
+                    className="h-8 w-auto object-contain max-w-[180px]"
+                    onError={() => setImgError(true)} 
+                />
+            ) : (
+                // Fallback Text
+                <div className="flex items-center">
+                    <Hexagon className="w-8 h-8 text-indigo-600 fill-indigo-100 mr-2" />
+                    <span className="text-xl font-bold tracking-tight text-slate-800">SyntaxLab</span>
+                </div>
+            )
         )}
       </div>
 

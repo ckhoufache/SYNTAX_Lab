@@ -210,7 +210,7 @@ export const Settings: React.FC<SettingsProps> = ({
   const handleCheckUpdate = async (force = false) => {
       // DEBUG: Force alert to prove UI is responding
       if (force) {
-          alert("UI: Update Button geklickt. Starte Prozess...");
+          // alert("UI: Update Button geklickt. Starte Prozess...");
       }
 
       setIsUpdating(true);
@@ -220,7 +220,9 @@ export const Settings: React.FC<SettingsProps> = ({
           if (hasUpdate) {
               if (confirm("Update installiert. Jetzt neu starten?")) {
                   if ((window as any).require) {
-                      (window as any).require('electron').ipcRenderer.invoke('restart-app');
+                      // FIX: Rufe 'quit-and-install' auf statt 'restart-app'.
+                      // restart-app startet nur die aktuelle EXE neu, installiert aber nichts.
+                      (window as any).require('electron').ipcRenderer.invoke('quit-and-install');
                   } else {
                       window.location.reload();
                   }

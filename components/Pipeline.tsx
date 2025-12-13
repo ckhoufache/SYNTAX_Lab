@@ -1,7 +1,7 @@
 
 import React, { useState, DragEvent, useMemo } from 'react';
 import { Deal, DealStage, Contact, ProductPreset, Task, Invoice, Activity, InvoiceConfig, EmailTemplate } from '../types';
-import { Plus, X, Calendar, Trash2, Filter, Eye, EyeOff, Package, Pencil, Search } from 'lucide-react';
+import { Plus, X, Calendar, Trash2, Filter, Eye, EyeOff, Package, Pencil, Search, SlidersHorizontal, ArrowDownAZ, Users } from 'lucide-react';
 import { DataServiceFactory, compileInvoiceTemplate } from '../services/dataService';
 
 interface PipelineProps {
@@ -56,6 +56,16 @@ export const Pipeline: React.FC<PipelineProps> = ({
 
   const [formData, setFormData] = useState({ title: '', value: '', stage: DealStage.LEAD, contactId: '', dueDate: '' });
 
+  // --- FILTER STATE ---
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterMinVal, setFilterMinVal] = useState<string>('');
+  const [filterMaxVal, setFilterMaxVal] = useState<string>('');
+  const [filterSalesRepId, setFilterSalesRepId] = useState<string>(''); // NEU: Vertriebler Filter
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+
+  // Get available Sales Reps for Dropdown
+  const salesReps = useMemo(() => contacts.filter(c => c.type === 'sales'), [contacts]);
+
   const columns = [
     { id: DealStage.LEAD, title: 'Lead', color: 'bg-slate-500', borderColor: 'border-slate-200' },
     { id: DealStage.CONTACTED, title: 'Kontaktiert', color: 'bg-blue-500', borderColor: 'border-blue-200' },
@@ -95,6 +105,48 @@ export const Pipeline: React.FC<PipelineProps> = ({
       }, 0);
       return `PROV-2025-${String(maxNum + 1).padStart(3, '0')}`;
   };
+
+  // --- FILTER LOGIC ---
+  const processedDeals = useMemo(() => {
+    return deals.filter(deal => {
+        // 1. Focus ID Check (Priority)
+        if (focusedDealId && deal.id !== focusedDealId) return false;
+
+        const contact = contacts.find(c => c.id === deal.contactId);
+        
+        // 2. Search Query
+        const searchLower = searchQuery.toLowerCase();
+        const matchesSearch = 
+            !searchQuery || 
+            deal.title.toLowerCase().includes(searchLower) ||
+            (contact?.name || '').toLowerCase().includes(searchLower) ||
+            (contact?.company || '').toLowerCase().includes(searchLower);
+
+        if (!matchesSearch) return false;
+
+        // 3. Value Range
+        if (filterMinVal && deal.value < parseFloat(filterMinVal)) return false;
+        if (filterMaxVal && deal.value > parseFloat(filterMaxVal)) return false;
+
+        // 4. Sales Rep Filter
+        if (filterSalesRepId) {
+            // Deal hängt am Kontakt, Kontakt hat salesRepId
+            if (contact?.salesRepId !== filterSalesRepId) return false;
+        }
+
+        return true;
+    });
+  }, [deals, contacts, focusedDealId, searchQuery, filterMinVal, filterMaxVal, filterSalesRepId]);
+
+  const dealsByStage = useMemo(() => {
+    const acc: Record<string, Deal[]> = {};
+    Object.values(DealStage).forEach(s => acc[s] = []);
+    processedDeals.forEach(d => {
+        if (acc[d.stage]) acc[d.stage].push(d);
+    });
+    return acc;
+  }, [processedDeals]);
+
 
   const handleDragStart = (e: DragEvent<HTMLDivElement>, id: string) => {
     setDraggedDealId(id);
@@ -316,37 +368,120 @@ export const Pipeline: React.FC<PipelineProps> = ({
     setIsModalOpen(false);
   };
 
-  const dealsByStage = useMemo(() => {
-    const acc: Record<string, Deal[]> = {};
-    Object.values(DealStage).forEach(s => acc[s] = []);
-    deals.forEach(d => {
-        if (acc[d.stage]) acc[d.stage].push(d);
-    });
-    return acc;
-  }, [deals]);
+  const clearFilters = () => {
+      setSearchQuery('');
+      setFilterMinVal('');
+      setFilterMaxVal('');
+      setFilterSalesRepId('');
+      setShowAdvancedFilters(false);
+      onClearFocus();
+  };
 
   const getDealsForStage = (stage: DealStage) => {
-      if (focusedDealId) {
-          return (dealsByStage[stage] || []).filter(d => d.id === focusedDealId);
-      }
       return dealsByStage[stage] || [];
   };
 
   return (
     <div className="flex-1 bg-slate-50 h-screen flex flex-col overflow-hidden relative">
       <header className="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center shrink-0">
-        <div><h1 className="text-xl font-bold text-slate-800">Pipeline</h1><p className="text-xs text-slate-500 mt-0.5">Ziehen Sie Karten, um den Status zu ändern. Klicken Sie auf eine Karte, um den Kontakt zu öffnen.</p></div>
-        <button onClick={openCreateModal} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-2 shadow-sm"><Plus className="w-4 h-4" /> Deal hinzufügen</button>
+        <div>
+            <h1 className="text-xl font-bold text-slate-800">Pipeline</h1>
+            <p className="text-xs text-slate-500 mt-0.5">Ziehen Sie Karten, um den Status zu ändern. Klicken Sie auf eine Karte, um den Kontakt zu öffnen.</p>
+        </div>
+        
+        {/* ACTION BAR */}
+        <div className="flex items-center gap-3">
+             {/* SEARCH & FILTER */}
+             <div className="flex items-center gap-2 bg-slate-100 rounded-lg p-1 border border-slate-200">
+                <div className="relative">
+                    <Search className="absolute left-2.5 top-1.5 w-4 h-4 text-slate-400" />
+                    <input 
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Deal, Name, Firma..." 
+                        className="pl-9 pr-8 py-1.5 bg-white border border-slate-200 rounded-md text-sm w-48 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                    {searchQuery && (
+                        <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1.5 text-slate-400 hover:text-slate-600">
+                            <X className="w-4 h-4" />
+                        </button>
+                    )}
+                </div>
+                
+                <button 
+                    onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                    className={`p-1.5 rounded-md transition-all ${showAdvancedFilters || filterMinVal || filterMaxVal || filterSalesRepId ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:bg-white hover:text-slate-700'}`}
+                    title="Erweiterte Filter"
+                >
+                    <SlidersHorizontal className="w-4 h-4" />
+                </button>
+             </div>
+
+             <button onClick={openCreateModal} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 shadow-sm transition-colors">
+                 <Plus className="w-4 h-4" /> Deal
+             </button>
+        </div>
       </header>
 
+      {/* FILTER BAR (CONDITIONAL) */}
+      {(showAdvancedFilters || filterMinVal || filterMaxVal || filterSalesRepId) && (
+          <div className="bg-slate-50 border-b border-slate-200 px-6 py-3 flex items-center gap-6 animate-in slide-in-from-top-2">
+              <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1"><ArrowDownAZ className="w-3.5 h-3.5"/> Wert (€):</span>
+                  <input 
+                    type="number" 
+                    placeholder="Min" 
+                    value={filterMinVal} 
+                    onChange={(e) => setFilterMinVal(e.target.value)}
+                    className="w-20 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 outline-none"
+                  />
+                  <span className="text-slate-400">-</span>
+                  <input 
+                    type="number" 
+                    placeholder="Max" 
+                    value={filterMaxVal} 
+                    onChange={(e) => setFilterMaxVal(e.target.value)}
+                    className="w-20 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 outline-none"
+                  />
+              </div>
+
+              <div className="flex items-center gap-2 border-l border-slate-200 pl-6">
+                  <span className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1"><Users className="w-3.5 h-3.5"/> Vertrieb:</span>
+                  <select 
+                    value={filterSalesRepId} 
+                    onChange={(e) => setFilterSalesRepId(e.target.value)}
+                    className="px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 outline-none bg-white min-w-[150px]"
+                  >
+                      <option value="">Alle anzeigen</option>
+                      {salesReps.map(rep => (
+                          <option key={rep.id} value={rep.id}>{rep.name}</option>
+                      ))}
+                  </select>
+              </div>
+              
+              {(filterMinVal || filterMaxVal || searchQuery || focusedDealId || filterSalesRepId) && (
+                  <button onClick={clearFilters} className="ml-auto text-xs text-red-500 hover:underline flex items-center gap-1">
+                      <X className="w-3 h-3" /> Filter zurücksetzen
+                  </button>
+              )}
+          </div>
+      )}
+
+      {/* VIEW TOGGLES & SEARCH RESULT COUNT */}
       <div className="bg-white border-b border-slate-100 px-6 py-2 flex items-center gap-3 overflow-x-auto shrink-0 shadow-sm z-10">
+        <div className="mr-4 pr-4 border-r border-slate-100 flex items-center gap-2">
+            <span className="text-xs font-semibold text-slate-400">Angezeigt:</span>
+            <span className="text-xs font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full">{processedDeals.length} Deals</span>
+        </div>
+
         {focusedDealId ? (
             <div className="flex items-center gap-2 bg-indigo-50 text-indigo-700 px-4 py-1.5 rounded-full text-xs font-medium border border-indigo-200 mr-4">
                 <Search className="w-3.5 h-3.5" /> Suchergebnis <button onClick={onClearFocus} className="hover:bg-indigo-100 rounded-full p-0.5 ml-2"><X className="w-3.5 h-3.5" /></button>
             </div>
         ) : (
-            <button onClick={() => setVisibleStages(visibleStages.length === columns.length ? [] : Object.values(DealStage))} className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 mr-2 border-r border-slate-200 pr-4 hover:text-indigo-600"><Filter className="w-3.5 h-3.5" /> Ansicht</button>
+            <button onClick={() => setVisibleStages(visibleStages.length === columns.length ? [] : Object.values(DealStage))} className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 mr-2 border-r border-slate-200 pr-4 hover:text-indigo-600"><Filter className="w-3.5 h-3.5" /> Spalten</button>
         )}
+        
         {columns.map(col => {
             const isVisible = visibleStages.includes(col.id as DealStage);
             return <button key={col.id} onClick={() => setVisibleStages(isVisible ? visibleStages.filter(s => s !== col.id) : [...visibleStages, col.id as DealStage])} className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border ${isVisible ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200'}`}><span className={`w-2 h-2 rounded-full ${col.color}`}></span>{col.title}{isVisible ? <Eye className="w-3 h-3 ml-1 opacity-70" /> : <EyeOff className="w-3 h-3 ml-1 opacity-50" />}</button>;
@@ -366,15 +501,24 @@ export const Pipeline: React.FC<PipelineProps> = ({
                  });
              }
              
+             // Calculate Total Value for Column
+             const columnTotal = stageDeals.reduce((sum, d) => sum + d.value, 0);
+
              return (
               <div key={col.id} className="w-80 flex flex-col h-full animate-in fade-in slide-in-from-bottom-2 duration-300" onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, col.id as DealStage)}>
-                <div className={`flex items-center justify-between mb-4 px-3 py-2 rounded-lg bg-white border-b-2 ${col.borderColor} shadow-sm`}>
-                  <div className="flex items-center gap-2"><span className={`w-3 h-3 rounded-full ${col.color}`} /><h3 className="font-semibold text-slate-700 text-sm">{col.title}</h3><span className="bg-slate-100 text-slate-500 text-xs px-2 py-0.5 rounded-full font-medium">{stageDeals.length}</span></div>
+                <div className={`flex flex-col mb-4 px-3 py-3 rounded-lg bg-white border-b-2 ${col.borderColor} shadow-sm`}>
+                  <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2"><span className={`w-3 h-3 rounded-full ${col.color}`} /><h3 className="font-semibold text-slate-700 text-sm">{col.title}</h3></div>
+                      <span className="bg-slate-100 text-slate-500 text-xs px-2 py-0.5 rounded-full font-medium">{stageDeals.length}</span>
+                  </div>
+                  <div className="text-right text-xs font-bold text-slate-400">
+                      Summe: {columnTotal.toLocaleString('de-DE')} €
+                  </div>
                 </div>
                 
                 <div className={`flex-1 bg-slate-100/50 rounded-xl p-2 border border-slate-200/60 overflow-y-auto custom-scrollbar transition-colors ${draggedDealId ? 'bg-slate-100/80 border-dashed border-slate-300' : ''}`}>
                   <div className="grid grid-cols-2 gap-2 content-start min-h-[50px]">
-                    {stageDeals.map(deal => {
+                    {stageDeals.length > 0 ? stageDeals.map(deal => {
                        const contact = contacts.find(c => c.id === deal.contactId);
                        const daysInStage = getDaysInStage(deal.stageEnteredDate);
 
@@ -384,7 +528,7 @@ export const Pipeline: React.FC<PipelineProps> = ({
                             draggable 
                             onDragStart={(e) => handleDragStart(e, deal.id)} 
                             onClick={() => onNavigateToContacts('all', deal.contactId)}
-                            className="bg-white p-2.5 rounded-lg shadow-sm border border-slate-200 hover:shadow-md hover:border-indigo-300 transition-all cursor-pointer active:cursor-grabbing group relative flex flex-col justify-between h-20"
+                            className="bg-white p-2.5 rounded-lg shadow-sm border border-slate-200 hover:shadow-md hover:border-indigo-300 transition-all cursor-pointer active:cursor-grabbing group relative flex flex-col justify-between h-24"
                             title={`${deal.title} - ${contact?.name}`}
                         >
                             <div className="absolute top-1 right-1 flex gap-0.5 opacity-0 group-hover:opacity-100 bg-white/90 rounded shadow-sm z-10">
@@ -393,18 +537,24 @@ export const Pipeline: React.FC<PipelineProps> = ({
                             </div>
                             
                             <div>
-                                <h4 className="text-xs font-bold text-slate-800 leading-tight truncate">{contact?.name || 'Unbekannt'}</h4>
-                                <p className="text-[9px] text-slate-400 truncate mt-0.5">{contact?.company}</p>
+                                <h4 className="text-xs font-bold text-slate-800 leading-tight truncate mb-1" title={deal.title}>{deal.title}</h4>
+                                <p className="text-[10px] text-slate-500 truncate">{contact?.name || 'Unbekannt'}</p>
+                                <p className="text-[9px] text-slate-400 truncate">{contact?.company}</p>
                             </div>
                             
-                            <div className="flex items-center justify-between mt-auto pt-2">
-                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm ${daysInStage > 7 ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-600'}`}>
+                            <div className="flex items-center justify-between mt-auto pt-2 border-t border-slate-50">
+                                <span className="text-xs font-bold text-indigo-600">{deal.value.toLocaleString('de-DE')} €</span>
+                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-sm ${daysInStage > 7 ? 'bg-red-50 text-red-600' : 'bg-slate-50 text-slate-400'}`}>
                                     {daysInStage} Tg.
                                 </span>
                             </div>
                         </div>
                       );
-                    })}
+                    }) : (
+                        <div className="col-span-2 text-center text-xs text-slate-400 py-10 italic">
+                            Keine Deals
+                        </div>
+                    )}
                   </div>
                 </div>
               </div>

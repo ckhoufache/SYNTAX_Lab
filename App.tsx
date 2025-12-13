@@ -15,6 +15,7 @@ import {
   UserProfile, BackendConfig, ViewState, 
   ProductPreset, InvoiceConfig, EmailTemplate, BackupData, DealStage 
 } from './types';
+import { DownloadCloud, RefreshCw } from 'lucide-react';
 
 export const App = () => {
   const [view, setView] = useState<ViewState>('dashboard');
@@ -24,6 +25,10 @@ export const App = () => {
   
   // Sidebar State
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  // Update State
+  const [updateReady, setUpdateReady] = useState(false);
+  const [updateVersion, setUpdateVersion] = useState('');
 
   // ... (State variables same as before) ...
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -49,14 +54,36 @@ export const App = () => {
 
   const dataService: IDataService = useMemo(() => DataServiceFactory.create(backendConfig), [backendConfig]);
 
-  // INITIAL LOAD
+  // INITIAL LOAD & AUTO UPDATE CHECK
   useEffect(() => {
       const init = async () => {
           await dataService.init(); 
           // Do NOT load data yet. Load data only after auth.
+
+          // Auto Update Check (Silent)
+          if ((window as any).require) {
+              const ipc = (window as any).require('electron').ipcRenderer;
+              
+              // 1. Trigger Check silently
+              ipc.invoke('check-for-update').catch((e: any) => console.log("Update check failed", e));
+
+              // 2. Listen for 'Downloaded' event
+              ipc.on('update-status', (event: any, data: any) => {
+                  if (data.status === 'downloaded') {
+                      setUpdateReady(true);
+                      if (data.info && data.info.version) setUpdateVersion(data.info.version);
+                  }
+              });
+          }
       };
       init();
   }, [dataService]);
+
+  const handleInstallUpdate = () => {
+      if ((window as any).require) {
+          (window as any).require('electron').ipcRenderer.invoke('quit-and-install');
+      }
+  };
 
   const loadData = async () => {
       setIsLoading(true);
@@ -155,7 +182,7 @@ export const App = () => {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden font-sans bg-slate-50">
+    <div className="flex h-screen overflow-hidden font-sans bg-slate-50 relative">
         <Sidebar 
             currentView={view} 
             onChangeView={setView} 
@@ -174,6 +201,7 @@ export const App = () => {
             />
         )}
         
+        {/* ... (Other views) ... */}
         {view === 'contacts' && invoiceConfig && (
             <Contacts 
                 contacts={contacts} activities={activities} invoices={invoices} expenses={expenses} invoiceConfig={invoiceConfig}
@@ -229,6 +257,31 @@ export const App = () => {
                 dataService={dataService} invoiceConfig={invoiceConfig} onUpdateInvoiceConfig={handleUpdateInvoiceConfig}
                 emailTemplates={emailTemplates} onAddTemplate={handleAddTemplate} onUpdateTemplate={handleUpdateTemplate} onDeleteTemplate={handleDeleteTemplate}
             />
+        )}
+
+        {/* UPDATE BANNER (Global) */}
+        {updateReady && (
+            <div className="absolute bottom-4 right-4 z-50 bg-indigo-900 text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-4">
+                <div className="p-2 bg-white/10 rounded-full">
+                    <DownloadCloud className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                    <h4 className="font-bold">Update verfügbar {updateVersion && `(v${updateVersion})`}</h4>
+                    <p className="text-xs text-indigo-200">Neustart erforderlich zur Installation.</p>
+                </div>
+                <button 
+                    onClick={handleInstallUpdate} 
+                    className="bg-white text-indigo-900 px-4 py-2 rounded-lg text-sm font-bold hover:bg-indigo-50 transition-colors ml-2"
+                >
+                    Jetzt Neustarten
+                </button>
+                <button 
+                    onClick={() => setUpdateReady(false)}
+                    className="text-indigo-300 hover:text-white"
+                >
+                    Später
+                </button>
+            </div>
         )}
     </div>
   );

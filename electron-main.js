@@ -1,3 +1,4 @@
+
 import { app, BrowserWindow, shell, ipcMain, session } from 'electron';
 import path from 'path';
 import express from 'express';
@@ -38,7 +39,8 @@ Object.defineProperty(app, 'isPackaged', {
 
 // Logs für Updater
 autoUpdater.logger = console;
-autoUpdater.autoDownload = false; // Wir wollen den Download manuell steuern (User Button)
+// NEU: Automatisch herunterladen, sobald verfügbar!
+autoUpdater.autoDownload = true; 
 autoUpdater.autoInstallOnAppQuit = true;
 
 // WICHTIG für unsignierte Apps (Windows)
@@ -127,6 +129,7 @@ ipcMain.handle('check-for-update', () => {
     // Setze URL dynamisch falls nötig, oder nutze die aus package.json
     // autoUpdater.setFeedURL({ provider: 'generic', url: '...' });
     
+    // Mit autoDownload = true startet der Download hier sofort, wenn ein Update gefunden wird.
     return autoUpdater.checkForUpdates()
         .then(result => {
             return { 
@@ -142,12 +145,19 @@ ipcMain.handle('check-for-update', () => {
 });
 
 ipcMain.handle('download-update', () => {
+    // Falls autoDownload false wäre, würden wir das hier manuell triggern.
+    // Da es true ist, dient dies nur als Fallback.
     autoUpdater.downloadUpdate();
     return true;
 });
 
 ipcMain.handle('quit-and-install', () => {
-    autoUpdater.quitAndInstall(false, true); // silent=false, forceRunAfter=true
+    // WICHTIG: Wir schließen explizit alle Fenster, um File Locks freizugeben,
+    // bevor der Installer startet. Das verhindert "File in Use" Fehler.
+    BrowserWindow.getAllWindows().forEach(w => w.close());
+    
+    // Starte den Installer (silent=false, forceRunAfter=true)
+    autoUpdater.quitAndInstall(false, true); 
 });
 
 // Updater Events an Frontend senden
