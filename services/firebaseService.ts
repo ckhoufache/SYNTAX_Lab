@@ -579,12 +579,42 @@ export class FirebaseDataService implements IDataService {
     async wipeAllData(): Promise<void> { alert("Nicht verfügbar in Cloud"); }
 
     // --- IMAP / SMTP IMPLEMENTATION ---
-    async fetchEmails(config: any, limit = 20, onlyUnread = false): Promise<EmailMessage[]> {
+    async fetchEmails(config: any, limit = 20, onlyUnread = false, boxName = 'INBOX'): Promise<EmailMessage[]> {
         if ((window as any).require) {
-            return await (window as any).require('electron').ipcRenderer.invoke('email-imap-fetch', config, limit, onlyUnread);
+            return await (window as any).require('electron').ipcRenderer.invoke('email-imap-fetch', config, limit, onlyUnread, boxName);
         }
         console.warn("E-Mail Fetching only works in Desktop App (Electron)");
         return [];
+    }
+
+    async getEmailFolders(config: any): Promise<{name: string, path: string}[]> {
+        if ((window as any).require) {
+            return await (window as any).require('electron').ipcRenderer.invoke('email-imap-get-boxes', config);
+        }
+        console.warn("E-Mail Folder Fetching only works in Desktop App (Electron)");
+        return [];
+    }
+
+    async createEmailFolder(config: any, folderName: string): Promise<boolean> {
+        if ((window as any).require) {
+            return await (window as any).require('electron').ipcRenderer.invoke('email-imap-create-folder', config, folderName);
+        }
+        return false;
+    }
+
+    async deleteEmailFolder(config: any, folderPath: string): Promise<boolean> {
+        if ((window as any).require) {
+            return await (window as any).require('electron').ipcRenderer.invoke('email-imap-delete-folder', config, folderPath);
+        }
+        return false;
+    }
+
+    async markEmailRead(config: any, uid: number, boxName: string): Promise<boolean> {
+        if ((window as any).require) {
+            return await (window as any).require('electron').ipcRenderer.invoke('email-mark-read', config, uid, boxName);
+        }
+        console.warn("E-Mail Marking only works in Desktop App (Electron)");
+        return false;
     }
 
     async sendSmtpMail(config: any, to: string, subject: string, body: string): Promise<boolean> {

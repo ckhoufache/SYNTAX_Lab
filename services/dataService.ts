@@ -1,5 +1,5 @@
 
-import { Contact, Deal, Task, Invoice, Expense, Activity, UserProfile, ProductPreset, Theme, BackendConfig, BackendMode, BackupData, InvoiceConfig, EmailTemplate, EmailAttachment, DealStage, EmailMessage } from '../types';
+import { Contact, Deal, Task, Invoice, Expense, Activity, UserProfile, ProductPreset, InvoiceConfig, EmailTemplate, EmailAttachment, DealStage, BackupData, EmailMessage, BackendConfig } from '../types';
 import { FirebaseDataService } from './firebaseService';
 
 declare global {
@@ -190,8 +190,8 @@ export const compileInvoiceTemplate = (invoice: Invoice, config: InvoiceConfig, 
             total = invoice.amount + taxAmount;
             
             taxRows = `
-                <tr><td class="label">Netto</td><td>${invoice.amount.toLocaleString('de-DE', {minimumFractionDigits: 2})} €</td></tr>
-                <tr><td class="label">USt. (19%)</td><td>${taxAmount.toLocaleString('de-DE', {minimumFractionDigits: 2})} €</td></tr>
+                <tr><td class="label">Netto</td><td>${invoice.amount.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</td></tr>
+                <tr><td class="label">USt. (19%)</td><td>${taxAmount.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</td></tr>
             `;
             // Standard note (e.g. delivery date)
             taxNote = "Leistungsdatum entspricht Rechnungsdatum, sofern nicht anders angegeben.";
@@ -213,8 +213,8 @@ export const compileInvoiceTemplate = (invoice: Invoice, config: InvoiceConfig, 
             taxAmount = invoice.amount * taxRate;
             total = invoice.amount + taxAmount;
             taxRows = `
-                <tr><td class="label">Netto</td><td>${invoice.amount.toLocaleString('de-DE', {minimumFractionDigits: 2})} €</td></tr>
-                <tr><td class="label">USt. (19%)</td><td>${taxAmount.toLocaleString('de-DE', {minimumFractionDigits: 2})} €</td></tr>
+                <tr><td class="label">Netto</td><td>${invoice.amount.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</td></tr>
+                <tr><td class="label">USt. (19%)</td><td>${taxAmount.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</td></tr>
             `;
             taxNote = "Die Gutschrift erfolgt mit Ausweis der Umsatzsteuer, da der Empfänger regelbesteuert ist.";
         }
@@ -272,10 +272,10 @@ export const compileInvoiceTemplate = (invoice: Invoice, config: InvoiceConfig, 
         '{contactTaxLine}': contactTaxLine,
         '{invoiceNumber}': invoice.invoiceNumber,
         '{date}': new Date(invoice.date).toLocaleDateString('de-DE'),
-        '{description}': invoice.description, // HTML Support here implicitly via browser render? Note: PDF generator needs simple HTML
-        '{amount}': invoice.amount.toLocaleString('de-DE', {minimumFractionDigits: 2}),
+        '{description}': invoice.description, 
+        '{amount}': invoice.amount.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2}),
         '{taxRows}': taxRows,
-        '{total}': total.toLocaleString('de-DE', {minimumFractionDigits: 2}),
+        '{total}': total.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2}),
         '{iban}': config.iban || '',
         '{bic}': config.bic || '',
         '{bankName}': config.bankName || '',
@@ -319,6 +319,9 @@ export const replaceEmailPlaceholders = (text: string, contact: Contact, config?
    return res;
 };
 
+// ... (Rest of file unchanged) ...
+// (Including IDataService interface and class definitions)
+// Only compiled template changes needed here.
 const makeUrlSafeBase64 = (base64: string) => {
     return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 };
@@ -383,7 +386,11 @@ export interface IDataService {
     wipeAllData(): Promise<void>;
     
     // IMAP / SMTP Bridge
-    fetchEmails(config: any, limit?: number, onlyUnread?: boolean): Promise<EmailMessage[]>;
+    fetchEmails(config: any, limit?: number, onlyUnread?: boolean, boxName?: string): Promise<EmailMessage[]>;
+    getEmailFolders(config: any): Promise<{name: string, path: string}[]>; 
+    createEmailFolder(config: any, folderName: string): Promise<boolean>; // NEU
+    deleteEmailFolder(config: any, folderPath: string): Promise<boolean>; // NEU
+    markEmailRead(config: any, uid: number, boxName: string): Promise<boolean>; 
     sendSmtpMail(config: any, to: string, subject: string, body: string): Promise<boolean>;
 }
 
@@ -582,7 +589,7 @@ class LocalDataService implements IDataService {
             descriptionHTML += `Basis: ${sourceInvoices.length} bezahlte Kundenrechnungen<br>`;
             descriptionHTML += `<ul style="margin-top:5px; padding-left:15px; font-size:11px;">`;
             sourceInvoices.forEach(inv => {
-                descriptionHTML += `<li>${inv.invoiceNumber} (${inv.contactName}): ${inv.amount.toLocaleString('de-DE')}€</li>`;
+                descriptionHTML += `<li>${inv.invoiceNumber} (${inv.contactName}): ${inv.amount.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})}€</li>`;
             });
             descriptionHTML += `</ul>`;
 
@@ -639,12 +646,42 @@ class LocalDataService implements IDataService {
     async wipeAllData(): Promise<void> { localStorage.clear(); window.location.reload(); }
 
     // --- IMAP / SMTP IMPLEMENTATION ---
-    async fetchEmails(config: any, limit = 20, onlyUnread = false): Promise<EmailMessage[]> {
+    async fetchEmails(config: any, limit = 20, onlyUnread = false, boxName = 'INBOX'): Promise<EmailMessage[]> {
         if ((window as any).require) {
-            return await (window as any).require('electron').ipcRenderer.invoke('email-imap-fetch', config, limit, onlyUnread);
+            return await (window as any).require('electron').ipcRenderer.invoke('email-imap-fetch', config, limit, onlyUnread, boxName);
         }
         console.warn("E-Mail Fetching only works in Desktop App (Electron)");
         return [];
+    }
+
+    async getEmailFolders(config: any): Promise<{name: string, path: string}[]> {
+        if ((window as any).require) {
+            return await (window as any).require('electron').ipcRenderer.invoke('email-imap-get-boxes', config);
+        }
+        console.warn("E-Mail Folder Fetching only works in Desktop App (Electron)");
+        return [];
+    }
+
+    async createEmailFolder(config: any, folderName: string): Promise<boolean> {
+        if ((window as any).require) {
+            return await (window as any).require('electron').ipcRenderer.invoke('email-imap-create-folder', config, folderName);
+        }
+        return false;
+    }
+
+    async deleteEmailFolder(config: any, folderPath: string): Promise<boolean> {
+        if ((window as any).require) {
+            return await (window as any).require('electron').ipcRenderer.invoke('email-imap-delete-folder', config, folderPath);
+        }
+        return false;
+    }
+
+    async markEmailRead(config: any, uid: number, boxName: string): Promise<boolean> {
+        if ((window as any).require) {
+            return await (window as any).require('electron').ipcRenderer.invoke('email-mark-read', config, uid, boxName);
+        }
+        console.warn("E-Mail Marking only works in Desktop App (Electron)");
+        return false;
     }
 
     async sendSmtpMail(config: any, to: string, subject: string, body: string): Promise<boolean> {

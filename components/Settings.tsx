@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle, Key, RefreshCw, Copy, FileText, Image as ImageIcon, Briefcase, Settings as SettingsIcon, HardDrive, Users, DownloadCloud, RefreshCcw, Sparkles, Sliders, Link, Paperclip, Star, PaperclipIcon, FileCode, Printer, Info, AlertOctagon, Repeat, Cloud, CloudLightning, ShieldAlert, Wifi, UserPlus } from 'lucide-react';
+import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle, Key, RefreshCw, Copy, FileText, Image as ImageIcon, Briefcase, Settings as SettingsIcon, HardDrive, Users, DownloadCloud, RefreshCcw, Sparkles, Sliders, Link, Paperclip, Star, PaperclipIcon, FileCode, Printer, Info, AlertOctagon, Repeat, Cloud, CloudLightning, ShieldAlert, Wifi, UserPlus, Zap, Cpu, Plug } from 'lucide-react';
 import { UserProfile, Theme, ProductPreset, Contact, Deal, Task, BackupData, BackendConfig, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate, EmailAttachment, EmailAutomationConfig, FirebaseConfig } from '../types';
 import { IDataService } from '../services/dataService';
 
@@ -107,6 +107,7 @@ export const Settings: React.FC<SettingsProps> = ({
   const [isInviting, setIsInviting] = useState(false);
   
   const [newProduct, setNewProduct] = useState<Partial<ProductPreset>>({ title: '', value: 0, isRetainer: false, retainerInterval: 'monthly' });
+  const [templateForm, setTemplateForm] = useState<{id?: string, title: string, subject: string, body: string}>({ title: '', subject: '', body: '' });
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null); // REF für Logo Upload
@@ -130,8 +131,11 @@ export const Settings: React.FC<SettingsProps> = ({
   const handleInvConfigChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
       setInvConfigForm({ ...invConfigForm, [e.target.name]: e.target.value });
   };
+  
+  const handleBackendChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      setBackendForm({ ...backendForm, [e.target.name]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
+  };
 
-  // ... (Logo handlers same as before) ...
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
@@ -141,9 +145,37 @@ export const Settings: React.FC<SettingsProps> = ({
       reader.readAsDataURL(file);
   };
   const handleRemoveLogo = () => { setInvConfigForm(prev => ({ ...prev, logoBase64: undefined })); if (logoInputRef.current) logoInputRef.current.value = ''; };
-  const handleSaveFirebaseConfig = () => { const newConfig = { ...backendForm, firebaseConfig: fbConfig, mode: 'firebase' as const }; onUpdateBackendConfig(newConfig); alert("Konfiguration gespeichert. Die App wird neu geladen."); window.location.reload(); };
-  const handleSaveEmailConfig = () => { onUpdateBackendConfig(backendForm); alert("E-Mail Server Konfiguration gespeichert."); };
-  const handleSwitchToLocal = () => { if(confirm("Wechsel zu lokalem Modus?")) { onUpdateBackendConfig({ ...backendForm, mode: 'local' }); window.location.reload(); } };
+  
+  const handleSaveFirebaseConfig = () => { 
+      const newConfig = { ...backendForm, firebaseConfig: fbConfig }; 
+      // Ensure mode is set based on section context or toggle
+      onUpdateBackendConfig(newConfig); 
+      alert("Datenbank-Konfiguration gespeichert. Die App wird neu geladen."); 
+      window.location.reload(); 
+  };
+  
+  const handleSaveEmailConfig = () => { 
+      onUpdateBackendConfig(backendForm); 
+      alert("E-Mail Server Konfiguration gespeichert."); 
+  };
+
+  const handleSaveGemini = () => {
+      localStorage.setItem('gemini_api_key', geminiKey);
+      alert("API Key gespeichert.");
+  };
+  
+  const loadStratoDefaults = () => {
+      setBackendForm(prev => ({
+          ...prev,
+          imapHost: 'imap.strato.de',
+          imapPort: 993,
+          imapTls: true,
+          smtpHost: 'smtp.strato.de',
+          smtpPort: 465,
+          smtpTls: true
+      }));
+  };
+
   const handleToggleCalendar = async () => { setIsConnecting('calendar'); if (isCalendarConnected) { await dataService.disconnectGoogle('calendar'); setIsCalendarConnected(false); } else { const success = await dataService.connectGoogle('calendar', backendConfig.googleClientId); setIsCalendarConnected(success); } setIsConnecting(null); };
   const handleToggleMail = async () => { setIsConnecting('mail'); if (isMailConnected) { await dataService.disconnectGoogle('mail'); setIsMailConnected(false); } else { const success = await dataService.connectGoogle('mail', backendConfig.googleClientId); setIsMailConnected(success); } setIsConnecting(null); };
   const handleExport = () => { const data: BackupData = { contacts, deals, tasks, invoices, expenses, activities, userProfile: formData, productPresets, invoiceConfig: invConfigForm, emailTemplates, theme: 'light', timestamp: new Date().toISOString(), version: appVersion }; const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `crm_backup_${new Date().toISOString().split('T')[0]}.json`; a.click(); };
@@ -169,6 +201,16 @@ export const Settings: React.FC<SettingsProps> = ({
   const handleDeleteProduct = async (id: string) => {
        await dataService.deleteProductPreset(id);
        onUpdatePresets(productPresets.filter(p => p.id !== id));
+  };
+
+  const handleTemplateSubmit = () => {
+      if (!templateForm.title || !templateForm.subject) return;
+      if (templateForm.id) {
+          onUpdateTemplate({ id: templateForm.id, ...templateForm });
+      } else {
+          onAddTemplate({ id: crypto.randomUUID(), ...templateForm });
+      }
+      setTemplateForm({ title: '', subject: '', body: '' });
   };
 
   return (
@@ -220,7 +262,7 @@ export const Settings: React.FC<SettingsProps> = ({
              </div>
          </SettingsSection>
          
-         <SettingsSection title="Systemkonfiguration" icon={Sliders} isDark={isDark} description="Rechnungen, Produkte & E-Mail Vorlagen" isOpen={activeSection === 'configuration'} onToggle={() => toggleSection('configuration')}>
+         <SettingsSection title="Geschäftsprozesse" icon={Briefcase} isDark={isDark} description="Rechnungen, Produkte & Vorlagen" isOpen={activeSection === 'business'} onToggle={() => toggleSection('business')}>
              <div className="px-6">
                  <SubSection title="Rechnungskonfiguration" isDark={isDark} isOpen={activeSubSection === 'config_invoice'} onToggle={() => toggleSubSection('config_invoice')}>
                      {/* ... (Invoice Config UI same as before) ... */}
@@ -264,6 +306,7 @@ export const Settings: React.FC<SettingsProps> = ({
                          <div className="col-span-2 flex justify-end pt-2"><button onClick={() => { onUpdateInvoiceConfig(invConfigForm); alert('Gespeichert'); }} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">Speichern</button></div>
                      </div>
                  </SubSection>
+
                  <SubSection title="Produkt Presets" isDark={isDark} isOpen={activeSubSection === 'config_products'} onToggle={() => toggleSubSection('config_products')}>
                      <div className="space-y-4">
                         {/* List existing */}
@@ -279,7 +322,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                         )}
                                     </div>
                                     <div className="flex items-center gap-3">
-                                        <span className="text-sm font-bold text-indigo-600">{p.value.toLocaleString('de-DE')} €</span>
+                                        <span className="text-sm font-bold text-indigo-600">{p.value.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
                                         <button onClick={() => handleDeleteProduct(p.id)} className="text-slate-400 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
                                     </div>
                                 </div>
@@ -344,37 +387,253 @@ export const Settings: React.FC<SettingsProps> = ({
                         </div>
                     </div>
                  </SubSection>
+
+                 <SubSection title="E-Mail Vorlagen" isDark={isDark} isOpen={activeSubSection === 'config_templates'} onToggle={() => toggleSubSection('config_templates')}>
+                    <div className="space-y-6">
+                        <div className="grid gap-3">
+                            {emailTemplates.map(t => (
+                                <div key={t.id} className="bg-white border border-slate-200 rounded-lg p-3 flex justify-between items-center group">
+                                    <div>
+                                        <h4 className="font-bold text-slate-700 text-sm">{t.title}</h4>
+                                        <p className="text-xs text-slate-500 truncate max-w-md">{t.subject}</p>
+                                    </div>
+                                    <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button onClick={() => setTemplateForm(t)} className="p-1.5 text-slate-400 hover:text-indigo-600"><Pencil className="w-4 h-4"/></button>
+                                        <button onClick={() => onDeleteTemplate(t.id)} className="p-1.5 text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4"/></button>
+                                    </div>
+                                </div>
+                            ))}
+                            {emailTemplates.length === 0 && <p className="text-sm text-slate-400 italic">Keine eigenen Vorlagen.</p>}
+                        </div>
+
+                        <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                            <h4 className="text-xs font-bold uppercase text-slate-500 mb-3">{templateForm.id ? 'Vorlage bearbeiten' : 'Neue Vorlage'}</h4>
+                            <div className="space-y-3">
+                                <input 
+                                    placeholder="Titel (Intern)" 
+                                    value={templateForm.title} 
+                                    onChange={e => setTemplateForm({...templateForm, title: e.target.value})}
+                                    className="w-full px-3 py-2 border rounded-lg text-sm bg-white"
+                                />
+                                <input 
+                                    placeholder="Betreff" 
+                                    value={templateForm.subject} 
+                                    onChange={e => setTemplateForm({...templateForm, subject: e.target.value})}
+                                    className="w-full px-3 py-2 border rounded-lg text-sm bg-white"
+                                />
+                                <textarea 
+                                    placeholder="Nachrichtentext... Nutzen Sie {name}, {firstName} als Platzhalter." 
+                                    rows={5}
+                                    value={templateForm.body} 
+                                    onChange={e => setTemplateForm({...templateForm, body: e.target.value})}
+                                    className="w-full px-3 py-2 border rounded-lg text-sm bg-white resize-y"
+                                />
+                                <div className="flex justify-end gap-2">
+                                    {templateForm.id && <button onClick={() => setTemplateForm({title: '', subject: '', body: ''})} className="text-xs text-slate-500 hover:text-slate-700">Abbrechen</button>}
+                                    <button onClick={handleTemplateSubmit} disabled={!templateForm.title || !templateForm.subject} className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-indigo-700 disabled:opacity-50">
+                                        {templateForm.id ? 'Update' : 'Erstellen'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                 </SubSection>
              </div>
          </SettingsSection>
 
-         {/* ... (Rest of Settings remains same) ... */}
-         <SettingsSection title="Datenverwaltung" icon={Database} isDark={isDark} description="Backup, Updates & Reset" isOpen={activeSection === 'data'} onToggle={() => toggleSection('data')}>
-             <div className="px-6 pb-6 pt-2">
-                 <SubSection title="Backup & Wiederherstellung" isDark={isDark} isOpen={activeSubSection === 'data_backup'} onToggle={() => toggleSubSection('data_backup')}>
-                    <div className="grid grid-cols-2 gap-4">
-                        <button onClick={handleExport} className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-300 rounded-xl hover:bg-slate-50 transition-all group"><DownloadCloud className="w-8 h-8 text-slate-400 group-hover:text-indigo-600 mb-2" /><span className="font-semibold text-slate-700">Backup erstellen</span></button>
-                        <button onClick={handleImportClick} className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-300 rounded-xl hover:bg-slate-50 transition-all group"><Upload className="w-8 h-8 text-slate-400 group-hover:text-indigo-600 mb-2" /><span className="font-semibold text-slate-700">Backup wiederherstellen</span></button>
-                        <input ref={fileInputRef} type="file" onChange={handleFileChange} className="hidden" accept=".json" />
-                    </div>
-                 </SubSection>
-                 <SubSection title="Software & Updates" isDark={isDark} isOpen={activeSubSection === 'data_updates'} onToggle={() => toggleSubSection('data_updates')}>
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                         <div className="flex items-center justify-between mb-4">
-                             <div><h4 className="font-bold text-slate-800 flex items-center gap-2"><RefreshCw className="w-4 h-4"/> System Update</h4><p className="text-xs text-slate-500">Installierte Version: <span className="font-mono bg-white px-1 rounded border">{appVersion}</span></p></div>
-                             <div className="flex flex-col items-end gap-1"><span className="text-xs text-slate-400 font-mono select-all bg-white px-2 py-1 rounded border">{CONST_UPDATE_URL}</span></div>
-                         </div>
-                         <div className="flex gap-4">
-                             <button onClick={() => handleCheckUpdate(false)} disabled={isUpdating} className="flex-1 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50">{isUpdating && updateStatus.includes('Prüfe') ? <Loader2 className="w-4 h-4 animate-spin"/> : <RefreshCcw className="w-4 h-4"/>} Nach Updates suchen</button>
-                             <button onClick={() => { if(confirm("Dies lädt ALLE Systemdateien neu vom Server. Fortfahren?")) { handleCheckUpdate(true); } }} disabled={isUpdating} className="flex-1 bg-red-50 border border-red-200 hover:bg-red-100 text-red-700 px-4 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50"><ShieldAlert className="w-4 h-4"/> Neuinstallation erzwingen</button>
-                         </div>
-                         {updateStatus && (<div className="mt-3 p-2 bg-slate-100 rounded text-[10px] font-mono text-slate-600 border border-slate-200 flex items-center gap-2"><Info className="w-3 h-3"/> {updateStatus}</div>)}
-                    </div>
-                 </SubSection>
-                 <SubSection title="Gefahrenzone" isDark={isDark} isOpen={activeSubSection === 'data_danger'} onToggle={() => toggleSubSection('data_danger')}>
-                     <div className="p-4 bg-red-50 border border-red-100 rounded-xl">
-                         <div className="flex items-start gap-4"><div className="p-2 bg-red-100 text-red-600 rounded-full mt-1"><Trash2 className="w-5 h-5" /></div><div className="flex-1"><h3 className="font-bold text-red-700">Alles Löschen (Factory Reset)</h3><p className="text-xs text-red-600/80 mt-1 mb-3">Diese Aktion löscht alle Kontakte, Rechnungen, Einstellungen und Aktivitäten unwiderruflich.</p><button onClick={handleWipeData} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md shadow-red-200 flex items-center gap-2"><AlertOctagon className="w-4 h-4" /> Alle Daten unwiderruflich löschen</button></div></div>
+         {/* --- NEUER BEREICH: Integrationen & System --- */}
+         <SettingsSection title="Integrationen & System" icon={Plug} isDark={isDark} description="Datenbank, E-Mail Server, Google & KI" isOpen={activeSection === 'integrations'} onToggle={() => toggleSection('integrations')}>
+             <div className="px-6">
+                 
+                 {/* 1. DATABASE CONFIG */}
+                 <SubSection title="Datenbank Verbindung" isDark={isDark} isOpen={activeSubSection === 'int_database'} onToggle={() => toggleSubSection('int_database')}>
+                     <div className="space-y-4">
+                        <div className="flex bg-slate-100 p-1 rounded-lg">
+                            <button type="button" onClick={() => setBackendForm({...backendForm, mode: 'local'})} className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-2 ${backendForm.mode === 'local' ? 'bg-white shadow text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}>
+                                <HardDrive className="w-4 h-4" /> Lokal (Offline)
+                            </button>
+                            <button type="button" onClick={() => setBackendForm({...backendForm, mode: 'firebase'})} className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-2 ${backendForm.mode === 'firebase' ? 'bg-indigo-600 shadow text-white' : 'text-slate-500 hover:text-slate-700'}`}>
+                                <Cloud className="w-4 h-4" /> Google Cloud
+                            </button>
+                        </div>
+
+                        {backendForm.mode === 'firebase' && (
+                            <div className="space-y-3 animate-in fade-in slide-in-from-top-2 border border-slate-200 p-4 rounded-lg bg-slate-50">
+                                <div className="flex items-center gap-2 text-indigo-600 border-b border-slate-200 pb-2 mb-2">
+                                    <Database className="w-4 h-4" />
+                                    <span className="text-sm font-bold">Firebase Konfiguration</span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div><label className="text-[10px] font-bold uppercase text-slate-400">API Key</label><input required value={fbConfig.apiKey} onChange={e=>setFbConfig({...fbConfig, apiKey: e.target.value})} className="w-full border p-2 rounded text-xs bg-white" /></div>
+                                    <div><label className="text-[10px] font-bold uppercase text-slate-400">Project ID</label><input required value={fbConfig.projectId} onChange={e=>setFbConfig({...fbConfig, projectId: e.target.value})} className="w-full border p-2 rounded text-xs bg-white" /></div>
+                                    <div><label className="text-[10px] font-bold uppercase text-slate-400">Auth Domain</label><input required value={fbConfig.authDomain} onChange={e=>setFbConfig({...fbConfig, authDomain: e.target.value})} className="w-full border p-2 rounded text-xs bg-white" /></div>
+                                    <div><label className="text-[10px] font-bold uppercase text-slate-400">Storage Bucket</label><input required value={fbConfig.storageBucket} onChange={e=>setFbConfig({...fbConfig, storageBucket: e.target.value})} className="w-full border p-2 rounded text-xs bg-white" /></div>
+                                    <div><label className="text-[10px] font-bold uppercase text-slate-400">Sender ID</label><input required value={fbConfig.messagingSenderId} onChange={e=>setFbConfig({...fbConfig, messagingSenderId: e.target.value})} className="w-full border p-2 rounded text-xs bg-white" /></div>
+                                    <div><label className="text-[10px] font-bold uppercase text-slate-400">App ID</label><input required value={fbConfig.appId} onChange={e=>setFbConfig({...fbConfig, appId: e.target.value})} className="w-full border p-2 rounded text-xs bg-white" /></div>
+                                </div>
+                                <div className="pt-2">
+                                    <label className="text-[10px] font-bold uppercase text-slate-400">Google Client ID (OAuth)</label>
+                                    <input value={backendForm.googleClientId || ''} onChange={e=>setBackendForm({...backendForm, googleClientId: e.target.value})} className="w-full border p-2 rounded text-xs bg-white" placeholder="...apps.googleusercontent.com" />
+                                </div>
+                            </div>
+                        )}
+                        
+                        <div className="flex justify-end">
+                             <button onClick={handleSaveFirebaseConfig} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-2">
+                                 <Save className="w-4 h-4" /> Verbindung speichern & neu laden
+                             </button>
+                        </div>
                      </div>
                  </SubSection>
+
+                 {/* 2. EMAIL SERVER (Moved here) */}
+                 <SubSection title="E-Mail Server (IMAP/SMTP)" isDark={isDark} isOpen={activeSubSection === 'int_email'} onToggle={() => toggleSubSection('int_email')}>
+                    <div className="space-y-4">
+                        <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100 flex justify-between items-center">
+                            <div>
+                                <h4 className="font-bold text-indigo-800 text-sm">Strato Voreinstellung</h4>
+                                <p className="text-xs text-indigo-600">Nutzen Sie Strato? Laden Sie die Standardwerte mit einem Klick.</p>
+                            </div>
+                            <button onClick={loadStratoDefaults} className="bg-white border border-indigo-200 text-indigo-700 px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm hover:bg-indigo-50">
+                                Strato Standardwerte laden
+                            </button>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-6">
+                            {/* IMAP Column */}
+                            <div className="space-y-3">
+                                <h4 className="font-bold text-slate-700 text-xs uppercase border-b border-slate-100 pb-2 flex items-center gap-2">
+                                    <DownloadCloud className="w-4 h-4" /> Posteingang (IMAP)
+                                </h4>
+                                <div><label className="text-xs font-bold uppercase text-slate-500">IMAP Server</label><input name="imapHost" value={backendForm.imapHost || ''} onChange={handleBackendChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white" placeholder="imap.strato.de" /></div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div><label className="text-xs font-bold uppercase text-slate-500">Port</label><input type="number" name="imapPort" value={backendForm.imapPort || ''} onChange={handleBackendChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white" placeholder="993" /></div>
+                                    <div className="flex items-end pb-2">
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input type="checkbox" name="imapTls" checked={backendForm.imapTls || false} onChange={handleBackendChange} className="rounded border-slate-300 text-indigo-600 w-4 h-4"/>
+                                            <span className="text-sm text-slate-600">SSL/TLS</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div><label className="text-xs font-bold uppercase text-slate-500">Benutzer (E-Mail)</label><input name="imapUser" value={backendForm.imapUser || ''} onChange={handleBackendChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white" placeholder="mail@wunschname.de" /></div>
+                                <div><label className="text-xs font-bold uppercase text-slate-500">Passwort</label><input type="password" name="imapPassword" value={backendForm.imapPassword || ''} onChange={handleBackendChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white" placeholder="********" /></div>
+                            </div>
+
+                            {/* SMTP Column */}
+                            <div className="space-y-3">
+                                <h4 className="font-bold text-slate-700 text-xs uppercase border-b border-slate-100 pb-2 flex items-center gap-2">
+                                    <Upload className="w-4 h-4" /> Postausgang (SMTP)
+                                </h4>
+                                <div><label className="text-xs font-bold uppercase text-slate-500">SMTP Server</label><input name="smtpHost" value={backendForm.smtpHost || ''} onChange={handleBackendChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white" placeholder="smtp.strato.de" /></div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div><label className="text-xs font-bold uppercase text-slate-500">Port</label><input type="number" name="smtpPort" value={backendForm.smtpPort || ''} onChange={handleBackendChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white" placeholder="465" /></div>
+                                    <div className="flex items-end pb-2">
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input type="checkbox" name="smtpTls" checked={backendForm.smtpTls || false} onChange={handleBackendChange} className="rounded border-slate-300 text-indigo-600 w-4 h-4"/>
+                                            <span className="text-sm text-slate-600">SSL/TLS</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div><label className="text-xs font-bold uppercase text-slate-500">Benutzer (E-Mail)</label><input name="smtpUser" value={backendForm.smtpUser || ''} onChange={handleBackendChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white" placeholder="Optional (sonst IMAP User)" /></div>
+                                <div><label className="text-xs font-bold uppercase text-slate-500">Passwort</label><input type="password" name="smtpPassword" value={backendForm.smtpPassword || ''} onChange={handleBackendChange} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white" placeholder="Optional (sonst IMAP PW)" /></div>
+                            </div>
+                        </div>
+
+                        <div className="pt-4 border-t border-slate-100 flex justify-end">
+                             <button onClick={handleSaveEmailConfig} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-2">
+                                 <Save className="w-4 h-4" /> Serverdaten speichern
+                             </button>
+                        </div>
+                    </div>
+                 </SubSection>
+
+                 {/* 3. GOOGLE SERVICES */}
+                 <SubSection title="Google Dienste (Kalender & API)" isDark={isDark} isOpen={activeSubSection === 'int_google'} onToggle={() => toggleSubSection('int_google')}>
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between p-4 bg-white border border-slate-200 rounded-lg">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-blue-50 text-blue-600 rounded-lg"><Calendar className="w-5 h-5" /></div>
+                                <div><h4 className="font-bold text-slate-800 text-sm">Google Kalender</h4><p className="text-xs text-slate-500">Termine synchronisieren</p></div>
+                            </div>
+                            <button onClick={handleToggleCalendar} disabled={isConnecting === 'calendar'} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${isCalendarConnected ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{isConnecting === 'calendar' ? '...' : isCalendarConnected ? 'Verbunden' : 'Verbinden'}</button>
+                        </div>
+                        <div className="flex items-center justify-between p-4 bg-white border border-slate-200 rounded-lg">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-red-50 text-red-600 rounded-lg"><Mail className="w-5 h-5" /></div>
+                                <div><h4 className="font-bold text-slate-800 text-sm">Gmail API</h4><p className="text-xs text-slate-500">Alternativer Versand (OAuth)</p></div>
+                            </div>
+                            <button onClick={handleToggleMail} disabled={isConnecting === 'mail'} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${isMailConnected ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{isConnecting === 'mail' ? '...' : isMailConnected ? 'Verbunden' : 'Verbinden'}</button>
+                        </div>
+                    </div>
+                 </SubSection>
+
+                 {/* 4. AI / GEMINI */}
+                 <SubSection title="Künstliche Intelligenz (AI)" isDark={isDark} isOpen={activeSubSection === 'int_ai'} onToggle={() => toggleSubSection('int_ai')}>
+                     <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                         <div className="flex items-start gap-4">
+                             <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg"><Cpu className="w-6 h-6" /></div>
+                             <div className="flex-1 space-y-3">
+                                 <div>
+                                     <h4 className="font-bold text-slate-800 text-sm">Google Gemini API</h4>
+                                     <p className="text-xs text-slate-500">Erforderlich für Smart Insights im Dashboard und automatisierte Textvorschläge.</p>
+                                 </div>
+                                 <div>
+                                     <label className="text-xs font-bold uppercase text-slate-500">API Key</label>
+                                     <div className="flex gap-2 mt-1">
+                                         <input 
+                                            type="password" 
+                                            value={geminiKey} 
+                                            onChange={(e) => setGeminiKey(e.target.value)} 
+                                            placeholder="sk-..." 
+                                            className="flex-1 px-3 py-2 border rounded-lg text-sm bg-white"
+                                         />
+                                         <button onClick={handleSaveGemini} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700">Speichern</button>
+                                     </div>
+                                     <p className="text-[10px] text-slate-400 mt-1">Key wird lokal im Browser gespeichert.</p>
+                                 </div>
+                             </div>
+                         </div>
+                     </div>
+                 </SubSection>
+             </div>
+         </SettingsSection>
+
+         {/* MAINTENANCE */}
+         <SettingsSection title="Wartung & Daten" icon={Database} isDark={isDark} description="Backup, Import & Updates" isOpen={activeSection === 'maintenance'} onToggle={() => toggleSection('maintenance')}>
+             <div className="px-6 py-4 space-y-6">
+                 <div className="grid grid-cols-2 gap-4">
+                     <button onClick={handleExport} className="flex flex-col items-center justify-center p-6 bg-slate-50 border border-slate-200 rounded-xl hover:bg-indigo-50 hover:border-indigo-200 transition-colors group">
+                         <Download className="w-8 h-8 text-slate-400 group-hover:text-indigo-600 mb-2" />
+                         <span className="font-bold text-slate-700 group-hover:text-indigo-800">Backup exportieren</span>
+                         <span className="text-xs text-slate-400">JSON Datei herunterladen</span>
+                     </button>
+                     <button onClick={handleImportClick} className="flex flex-col items-center justify-center p-6 bg-slate-50 border border-slate-200 rounded-xl hover:bg-indigo-50 hover:border-indigo-200 transition-colors group">
+                         <Upload className="w-8 h-8 text-slate-400 group-hover:text-indigo-600 mb-2" />
+                         <span className="font-bold text-slate-700 group-hover:text-indigo-800">Backup importieren</span>
+                         <span className="text-xs text-slate-400">JSON Datei wiederherstellen</span>
+                     </button>
+                     <input type="file" ref={fileInputRef} className="hidden" accept=".json" onChange={handleFileChange} />
+                 </div>
+
+                 <div className="border-t border-slate-100 pt-4">
+                     <h4 className="font-bold text-slate-800 text-sm mb-3">System Updates</h4>
+                     <div className="bg-slate-50 p-4 rounded-lg flex justify-between items-center">
+                         <div>
+                             <p className="text-sm font-medium text-slate-700">Installierte Version: v{appVersion}</p>
+                             <p className="text-xs text-slate-500">{updateStatus}</p>
+                         </div>
+                         <button onClick={() => handleCheckUpdate(true)} disabled={isUpdating} className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium hover:bg-slate-100 flex items-center gap-2">
+                             {isUpdating ? <Loader2 className="w-4 h-4 animate-spin"/> : <RefreshCw className="w-4 h-4"/>} Prüfen
+                         </button>
+                     </div>
+                 </div>
+
+                 <div className="border-t border-slate-100 pt-4">
+                     <h4 className="font-bold text-slate-800 text-sm mb-3 text-red-600 flex items-center gap-2"><AlertTriangle className="w-4 h-4"/> Danger Zone</h4>
+                     <button onClick={handleWipeData} className="w-full py-3 border border-red-200 bg-red-50 text-red-700 rounded-lg text-sm font-bold hover:bg-red-100 transition-colors">
+                         Alle lokalen Daten löschen (Factory Reset)
+                     </button>
+                 </div>
              </div>
          </SettingsSection>
 

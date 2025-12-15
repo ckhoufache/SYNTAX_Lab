@@ -168,7 +168,7 @@ export interface Invoice {
 export interface Expense {
   id: string;
   title: string;
-  amount: number;
+  amount: number; // Dies ist immer der NETTO Betrag für die Gewinnrechnung
   date: string;
   category: 'office' | 'software' | 'travel' | 'marketing' | 'personnel' | 'other';
   notes?: string;
@@ -177,6 +177,11 @@ export interface Expense {
   contactId?: string; 
   contactName?: string; 
   interval?: 'one_time' | 'monthly' | 'quarterly' | 'half_yearly' | 'yearly';
+  
+  // Tax Logic
+  taxRate?: number; // 0, 7, 19
+  taxMethod?: 'gross' | 'net'; // Was hat der User eingegeben?
+  originalInputAmount?: number; // Der Wert, den der User ins Feld getippt hat
 }
 
 export interface EmailAttachment {

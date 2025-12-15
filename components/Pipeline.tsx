@@ -290,7 +290,7 @@ export const Pipeline: React.FC<PipelineProps> = ({
                         '{lastName}': contact.name.split(' ').slice(1).join(' ') || '',
                         '{company}': contact.company || '',
                         '{invoiceNumber}': newInvoice.invoiceNumber,
-                        '{amount}': newInvoice.amount.toLocaleString('de-DE') + ' €',
+                        '{amount}': newInvoice.amount.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' €',
                         '{date}': new Date().toLocaleDateString('de-DE'),
                         '{myCompany}': invoiceConfig.companyName || ''
                      };
@@ -564,7 +564,7 @@ export const Pipeline: React.FC<PipelineProps> = ({
                       <span className="bg-slate-100 text-slate-500 text-xs px-2 py-0.5 rounded-full font-medium">{stageDeals.length}</span>
                   </div>
                   <div className="text-right text-xs font-bold text-slate-400">
-                      Summe: {columnTotal.toLocaleString('de-DE')} €
+                      Summe: {columnTotal.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
                   </div>
                 </div>
                 
@@ -595,7 +595,7 @@ export const Pipeline: React.FC<PipelineProps> = ({
                             </div>
                             
                             <div className="flex items-center justify-between mt-auto pt-2 border-t border-slate-50">
-                                <span className="text-xs font-bold text-indigo-600">{deal.value.toLocaleString('de-DE')} €</span>
+                                <span className="text-xs font-bold text-indigo-600">{deal.value.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
                                 <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-sm ${daysInStage > 7 ? 'bg-red-50 text-red-600' : 'bg-slate-50 text-slate-400'}`}>
                                     {daysInStage} Tg.
                                 </span>
@@ -619,7 +619,7 @@ export const Pipeline: React.FC<PipelineProps> = ({
            <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
                <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col max-h-[80vh]">
                     <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 shrink-0"><h2 className="text-lg font-bold text-slate-800">Produkt wählen</h2></div>
-                    <div className="p-6 grid gap-3 overflow-y-auto">{productPresets.map(product => (<button key={product.id} onClick={() => handleProductSelectForGhostDeal(product)} className="flex items-center justify-between p-4 border border-slate-200 rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition-all group text-left"><div><h3 className="font-bold text-slate-800 group-hover:text-indigo-700">{product.title}</h3></div><span className="text-sm font-bold text-indigo-600 bg-white px-2 py-1 rounded border border-indigo-100">{product.value} €</span></button>))}</div>
+                    <div className="p-6 grid gap-3 overflow-y-auto">{productPresets.map(product => (<button key={product.id} onClick={() => handleProductSelectForGhostDeal(product)} className="flex items-center justify-between p-4 border border-slate-200 rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition-all group text-left"><div><h3 className="font-bold text-slate-800 group-hover:text-indigo-700">{product.title}</h3></div><span className="text-sm font-bold text-indigo-600 bg-white px-2 py-1 rounded border border-indigo-100">{product.value.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span></button>))}</div>
                     <div className="bg-slate-50 px-6 py-3 border-t border-slate-100 flex justify-end shrink-0"><button onClick={() => setProductSelectionDeal(null)} className="text-sm text-slate-500 hover:text-slate-800 font-medium">Abbrechen</button></div>
                </div>
            </div>
@@ -631,7 +631,7 @@ export const Pipeline: React.FC<PipelineProps> = ({
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden">
                 <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 bg-slate-50"><h2 className="text-lg font-bold text-slate-800">{editingDealId ? 'Deal bearbeiten' : 'Neuen Deal anlegen'}</h2><button onClick={() => setIsModalOpen(false)}><X className="w-5 h-5" /></button></div>
                 <form onSubmit={handleSubmit} className="p-6 space-y-5">
-                    <div className="space-y-2 mb-4"><label className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1"><Package className="w-3 h-3" /> Schnellauswahl</label><div className="grid grid-cols-2 gap-3">{productPresets.map(product => (<button key={product.id} type="button" onClick={() => setFormData(prev => ({ ...prev, title: product.title, value: product.value.toString() }))} className="px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50 hover:border-indigo-300 hover:text-indigo-600 transition-all text-left flex justify-between items-center"><span>{product.title}</span><span className="text-xs font-bold">{product.value} €</span></button>))}</div></div>
+                    <div className="space-y-2 mb-4"><label className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1"><Package className="w-3 h-3" /> Schnellauswahl</label><div className="grid grid-cols-2 gap-3">{productPresets.map(product => (<button key={product.id} type="button" onClick={() => setFormData(prev => ({ ...prev, title: product.title, value: product.value.toString() }))} className="px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50 hover:border-indigo-300 hover:text-indigo-600 transition-all text-left flex justify-between items-center"><span>{product.title}</span><span className="text-xs font-bold">{product.value.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span></button>))}</div></div>
                     <div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase">Bezeichnung</label><input required name="title" value={formData.title} onChange={(e) => setFormData(prev => ({...prev, title: e.target.value}))} type="text" className="w-full px-3 py-2 border rounded-lg" /></div>
                     <div className="grid grid-cols-2 gap-4"><div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase">Wert (€)</label><input required name="value" value={formData.value} onChange={(e) => setFormData(prev => ({...prev, value: e.target.value}))} type="number" className="w-full px-3 py-2 border rounded-lg" /></div><div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase">Fälligkeit</label><input required name="dueDate" value={formData.dueDate} onChange={(e) => setFormData(prev => ({...prev, dueDate: e.target.value}))} type="date" className="w-full px-3 py-2 border rounded-lg" /></div></div>
                     <div className="grid grid-cols-2 gap-4"><div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase">Kontakt</label><select required name="contactId" value={formData.contactId} onChange={(e) => setFormData(prev => ({...prev, contactId: e.target.value}))} className="w-full px-3 py-2 border rounded-lg bg-white"><option value="">Wählen...</option>{contacts.map(c => (<option key={c.id} value={c.id}>{c.name} ({c.company})</option>))}</select></div><div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase">Status</label><select required name="stage" value={formData.stage} onChange={(e) => setFormData(prev => ({...prev, stage: e.target.value as DealStage}))} className="w-full px-3 py-2 border rounded-lg bg-white">{Object.values(DealStage).map((stage) => (<option key={stage} value={stage}>{stage}</option>))}</select></div></div>

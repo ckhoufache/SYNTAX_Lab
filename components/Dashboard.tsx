@@ -3,7 +3,7 @@ import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, ReferenceLine
 } from 'recharts';
-import { Bell, Search, Sparkles, CheckCircle2, Phone, Mail, Calendar, ArrowUpRight, Plus, X, Trash2, Circle, User, KanbanSquare, ClipboardList, AlertCircle, Clock, Check, BarChart3, TrendingUp, DollarSign } from 'lucide-react';
+import { Bell, Search, Sparkles, CheckCircle2, Phone, Mail, Calendar, ArrowUpRight, Plus, X, Trash2, Circle, User, KanbanSquare, ClipboardList, AlertCircle, Clock, Check, BarChart3, TrendingUp, DollarSign, HelpCircle } from 'lucide-react';
 import { Task, Deal, Contact, DealStage, Invoice, Activity, Expense } from '../types'; // Import Invoice & Activity
 import { generateDailyBriefing } from '../services/gemini';
 
@@ -187,21 +187,35 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
     const data = [];
     const monthNames = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
 
+    // Store initial balance for loop
+    let loopBalance = currentBalance;
+
     for (let i = 0; i <= 6; i++) {
         const d = new Date();
         d.setMonth(d.getMonth() + i);
         
         data.push({
             name: i === 0 ? 'Heute' : monthNames[d.getMonth()],
-            balance: currentBalance,
+            balance: loopBalance,
             burnRate: totalBurnRate,
             mrr: mrr
         });
 
-        currentBalance = currentBalance + mrr - totalBurnRate;
+        loopBalance = loopBalance + mrr - totalBurnRate;
     }
 
-    return { data, mrr, burnRate: totalBurnRate, currentBalance };
+    // Return breakdown for tooltip
+    return { 
+        data, 
+        mrr, 
+        burnRate: totalBurnRate, 
+        currentBalance,
+        breakdown: {
+            revenue: totalPaidRevenue,
+            expenses: totalExpenses,
+            commissions: totalPaidCommissions
+        }
+    };
   }, [invoices, expenses, contacts, customerInvoices]);
 
   // ... (Rest of component methods same as before) ...
@@ -266,7 +280,7 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
       unpaidCommissions.forEach(inv => {
           list.push({
               id: `unpaid-comm-${inv.id}`,
-              title: `Provision auszahlen: ${inv.contactName} (${inv.amount.toLocaleString('de-DE')} €)`,
+              title: `Provision auszahlen: ${inv.contactName} (${inv.amount.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €)`,
               type: 'alert', // High Priority
               time: 'Wartet auf Zahlung',
               onClick: () => onNavigateToFinances()
@@ -469,8 +483,8 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <StatCard title="Gesamtumsatz" value={`${totalRevenue.toLocaleString('de-DE')} €`} sub="Kundenrechnungen (Netto)" icon={CheckCircle2} color="bg-emerald-500" onClick={onNavigateToFinances}/>
-          <StatCard title="Aktive Pipeline" value={`${activeVolume.toLocaleString('de-DE')} €`} sub="Verhandlung & Angebot" icon={Calendar} color="bg-blue-500" onClick={() => onNavigateToPipeline([DealStage.PROPOSAL, DealStage.NEGOTIATION])}/>
+          <StatCard title="Gesamtumsatz" value={`${totalRevenue.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`} sub="Kundenrechnungen (Netto)" icon={CheckCircle2} color="bg-emerald-500" onClick={onNavigateToFinances}/>
+          <StatCard title="Aktive Pipeline" value={`${activeVolume.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`} sub="Verhandlung & Angebot" icon={Calendar} color="bg-blue-500" onClick={() => onNavigateToPipeline([DealStage.PROPOSAL, DealStage.NEGOTIATION])}/>
           <StatCard title="Neue Kontakte" value={`+${contacts.length}`} sub="Gesamt" icon={Phone} color="bg-orange-500" onClick={() => onNavigateToContacts('recent')}/>
           <StatCard title="Offene Aufgaben" value={dueTasksCount} sub="Dringend" icon={Mail} color="bg-pink-500" onClick={() => onNavigateToTasks()}/>
         </div>
@@ -487,15 +501,27 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
                 <div className="flex gap-4 text-sm">
                      <div className="text-right">
                          <p className="text-slate-400 text-xs uppercase font-bold">MRR (Retainer)</p>
-                         <p className="font-bold text-green-600">+{runwayData.mrr.toLocaleString('de-DE', {maximumFractionDigits:0})} €</p>
+                         <p className="font-bold text-green-600">+{runwayData.mrr.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</p>
                      </div>
                      <div className="text-right">
                          <p className="text-slate-400 text-xs uppercase font-bold">Burn Rate (Fix + Var)</p>
-                         <p className="font-bold text-red-600">-{runwayData.burnRate.toLocaleString('de-DE', {maximumFractionDigits:0})} €</p>
+                         <p className="font-bold text-red-600">-{runwayData.burnRate.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</p>
                      </div>
-                     <div className="text-right border-l pl-4 dark:border-slate-700">
-                         <p className="text-slate-400 text-xs uppercase font-bold">Aktuell (Cash)</p>
-                         <p className={`font-bold ${runwayData.currentBalance < 0 ? 'text-red-600' : 'text-slate-800 dark:text-white'}`}>{runwayData.currentBalance.toLocaleString('de-DE', {maximumFractionDigits:0})} €</p>
+                     
+                     {/* TOOLTIP FIX: Use a custom Tailwind tooltip instead of native 'title' attribute */}
+                     <div className="text-right border-l pl-4 dark:border-slate-700 cursor-help group relative">
+                         <p className="text-slate-400 text-xs uppercase font-bold flex items-center justify-end gap-1">Aktuell (Cash) <HelpCircle className="w-3 h-3"/></p>
+                         <p className={`font-bold ${runwayData.currentBalance < 0 ? 'text-red-600' : 'text-slate-800 dark:text-white'}`}>{runwayData.currentBalance.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</p>
+                         
+                         {/* CUSTOM TOOLTIP */}
+                         <div className="hidden group-hover:block absolute right-0 top-full mt-2 w-64 bg-slate-800 text-white text-xs rounded-lg p-3 shadow-xl z-50 border border-slate-700 animate-in fade-in slide-in-from-top-2">
+                             <div className="font-bold mb-2 pb-1 border-b border-slate-600">Cashflow Berechnung</div>
+                             <div className="space-y-1">
+                                 <div className="flex justify-between"><span>Einnahmen (bezahlt):</span><span className="text-green-400">{runwayData.breakdown.revenue.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span></div>
+                                 <div className="flex justify-between"><span>Ausgaben (bezahlt):</span><span className="text-red-400">-{runwayData.breakdown.expenses.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span></div>
+                                 <div className="flex justify-between"><span>Provisionen (bezahlt):</span><span className="text-red-400">-{runwayData.breakdown.commissions.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span></div>
+                             </div>
+                         </div>
                      </div>
                 </div>
             </div>
@@ -514,7 +540,7 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
                     <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
                     <Tooltip 
                         contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                        formatter={(value: any) => [`${value.toLocaleString('de-DE')} €`, 'Kontostand']}
+                        formatter={(value: any) => [`${Number(value).toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €`, 'Kontostand']}
                     />
                     <ReferenceLine y={0} stroke="red" strokeDasharray="3 3" strokeOpacity={0.5} />
                     <Area 
@@ -561,7 +587,10 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" strokeOpacity={0.5} />
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} dy={10} />
                     <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
-                    <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}/>
+                    <Tooltip 
+                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                        formatter={(value: any) => [`${Number(value).toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €`, 'Umsatz']}
+                    />
                     <Area type="monotone" dataKey="value" stroke="#4f46e5" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
                     </AreaChart>
                 ) : (
@@ -569,7 +598,11 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" strokeOpacity={0.5} />
                         <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} dy={10} />
                         <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
-                        <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} cursor={{fill: '#f1f5f9'}}/>
+                        <Tooltip 
+                            contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} 
+                            cursor={{fill: '#f1f5f9'}}
+                            formatter={(value: any) => [`${Number(value).toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €`, 'Umsatz']}
+                        />
                         <Bar dataKey="value" fill="#4f46e5" radius={[4, 4, 0, 0]} barSize={32} />
                     </BarChart>
                 )}

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
@@ -85,9 +84,12 @@ export const App = () => {
       }
   };
 
-  const loadData = async () => {
-      setIsLoading(true);
+  // FETCH DATA FUNCTION
+  // Updated to support silent background updates without triggering full loading screen
+  const loadData = useCallback(async (isBackground = false) => {
+      if (!isBackground) setIsLoading(true);
       try {
+          // Parallel fetch for performance
           const [c, d, t, i, e, a, up, pp, ic, et] = await Promise.all([
               dataService.getContacts(),
               dataService.getDeals(),
@@ -107,20 +109,45 @@ export const App = () => {
           
       } catch (err: any) {
           console.error("Load failed", err);
-          if (err.code === 'permission-denied') {
-              alert("Fehler beim Laden der Daten: Zugriff verweigert. Bitte prüfen Sie Ihre Rechte.");
-          } else {
-              alert("Daten konnten nicht geladen werden. Bitte prüfen Sie Ihre Verbindung.");
+          if (!isBackground) {
+              if (err.code === 'permission-denied') {
+                  alert("Fehler beim Laden der Daten: Zugriff verweigert. Bitte prüfen Sie Ihre Rechte.");
+              } else {
+                  alert("Daten konnten nicht geladen werden. Bitte prüfen Sie Ihre Verbindung.");
+              }
           }
       } finally {
-          setIsLoading(false);
+          if (!isBackground) setIsLoading(false);
       }
-  };
+  }, [dataService]);
+
+  // --- AUTOMATIC SYNC LOGIC ---
+
+  // 1. Sync on View Change (Tab Switch)
+  useEffect(() => {
+      if (isAuthenticated) {
+          // Silent refresh when switching tabs to ensure freshness
+          loadData(true);
+      }
+  }, [view, isAuthenticated, loadData]);
+
+  // 2. Periodic Polling (every ~75 seconds)
+  useEffect(() => {
+      if (!isAuthenticated) return;
+
+      const intervalId = setInterval(() => {
+          console.debug("Auto-syncing data from DB...");
+          loadData(true);
+      }, 75000); // 75 seconds
+
+      return () => clearInterval(intervalId);
+  }, [isAuthenticated, loadData]);
+
 
   const handleLogin = async (profile: UserProfile) => {
       setUserProfile(profile);
       await dataService.saveUserProfile(profile); // Sync to DB
-      await loadData();
+      await loadData(false); // Initial load with spinner
       setIsAuthenticated(true);
   };
   
@@ -216,6 +243,7 @@ export const App = () => {
             <Pipeline 
                 deals={deals} contacts={contacts} tasks={tasks} invoices={invoices} invoiceConfig={invoiceConfig} emailTemplates={emailTemplates}
                 onAddDeal={handleAddDeal} onUpdateDeal={handleUpdateDeal} onDeleteDeal={handleDeleteDeal}
+                onUpdateContact={handleUpdateContact}
                 visibleStages={visibleStages} setVisibleStages={setVisibleStages} productPresets={productPresets}
                 onAddTask={handleAddTask} onAutoDeleteTask={handleDeleteTask}
                 focusedDealId={focusedDealId} onClearFocus={() => setFocusedDealId(null)}
@@ -236,6 +264,7 @@ export const App = () => {
             <EmailClient 
                 dataService={dataService} 
                 config={backendConfig}
+                userProfile={userProfile}
             />
         )}
 
