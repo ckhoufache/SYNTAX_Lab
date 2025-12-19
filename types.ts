@@ -85,10 +85,12 @@ export interface Contact {
   email: string;
   avatar: string;
   lastContact: string;
+  createdAt?: string; // NEU
   linkedin?: string;
   notes?: string;
   tags?: string[];
   type?: ContactType; 
+  nps?: number; // NEU: 0-10
   
   // Address & Tax Data (New for Credit Notes)
   street?: string;
@@ -133,8 +135,10 @@ export interface Deal {
 export interface Task {
   id: string;
   title: string;
-  type: 'call' | 'email' | 'meeting' | 'todo';
+  type: 'call' | 'email' | 'meeting' | 'todo' | 'post'; // NEU: post
   dueDate: string;
+  createdAt?: string; // NEU
+  completedAt?: string; // NEU
   isCompleted: boolean;
   relatedEntityId?: string;
   priority: 'low' | 'medium' | 'high';
@@ -142,6 +146,8 @@ export interface Task {
   startTime?: string;
   endTime?: string;
   googleEventId?: string;
+  recurrence?: 'none' | 'weekly' | 'monthly' | 'yearly';
+  assignedToEmail?: string; 
 }
 
 export interface Invoice {

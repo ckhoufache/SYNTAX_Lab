@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
@@ -18,18 +19,14 @@ import { DownloadCloud, RefreshCw } from 'lucide-react';
 
 export const App = () => {
   const [view, setView] = useState<ViewState>('dashboard');
-  // Theme state removed, defaulted to Light
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   
-  // Sidebar State
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
-  // Update State
   const [updateReady, setUpdateReady] = useState(false);
   const [updateVersion, setUpdateVersion] = useState('');
 
-  // ... (State variables same as before) ...
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -37,6 +34,7 @@ export const App = () => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [teamMembers, setTeamMembers] = useState<UserProfile[]>([]); // NEU: Teammitglieder state
   const [productPresets, setProductPresets] = useState<ProductPreset[]>([]);
   const [invoiceConfig, setInvoiceConfig] = useState<InvoiceConfig | null>(null);
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([]);
@@ -53,20 +51,12 @@ export const App = () => {
 
   const dataService: IDataService = useMemo(() => DataServiceFactory.create(backendConfig), [backendConfig]);
 
-  // INITIAL LOAD & AUTO UPDATE CHECK
   useEffect(() => {
       const init = async () => {
           await dataService.init(); 
-          // Do NOT load data yet. Load data only after auth.
-
-          // Auto Update Check (Silent)
           if ((window as any).require) {
               const ipc = (window as any).require('electron').ipcRenderer;
-              
-              // 1. Trigger Check silently
               ipc.invoke('check-for-update').catch((e: any) => console.log("Update check failed", e));
-
-              // 2. Listen for 'Downloaded' event
               ipc.on('update-status', (event: any, data: any) => {
                   if (data.status === 'downloaded') {
                       setUpdateReady(true);
@@ -84,13 +74,10 @@ export const App = () => {
       }
   };
 
-  // FETCH DATA FUNCTION
-  // Updated to support silent background updates without triggering full loading screen
   const loadData = useCallback(async (isBackground = false) => {
       if (!isBackground) setIsLoading(true);
       try {
-          // Parallel fetch for performance
-          const [c, d, t, i, e, a, up, pp, ic, et] = await Promise.all([
+          const [c, d, t, i, e, a, up, pp, ic, et, users] = await Promise.all([
               dataService.getContacts(),
               dataService.getDeals(),
               dataService.getTasks(),
@@ -100,54 +87,43 @@ export const App = () => {
               dataService.getUserProfile(),
               dataService.getProductPresets(),
               dataService.getInvoiceConfig(),
-              dataService.getEmailTemplates()
+              dataService.getEmailTemplates(),
+              dataService.getAllUsers() // NEU: Alle Nutzer laden
           ]);
           setContacts(c); setDeals(d); setTasks(t); setInvoices(i); setExpenses(e); setActivities(a);
-          setProductPresets(pp); setInvoiceConfig(ic); setEmailTemplates(et);
+          setProductPresets(pp); setInvoiceConfig(ic); setEmailTemplates(et); setTeamMembers(users);
           
           if(up) setUserProfile(up);
           
       } catch (err: any) {
           console.error("Load failed", err);
           if (!isBackground) {
-              if (err.code === 'permission-denied') {
-                  alert("Fehler beim Laden der Daten: Zugriff verweigert. Bitte prüfen Sie Ihre Rechte.");
-              } else {
-                  alert("Daten konnten nicht geladen werden. Bitte prüfen Sie Ihre Verbindung.");
-              }
+              alert("Daten konnten nicht geladen werden. Bitte prüfen Sie Ihre Verbindung.");
           }
       } finally {
           if (!isBackground) setIsLoading(false);
       }
   }, [dataService]);
 
-  // --- AUTOMATIC SYNC LOGIC ---
-
-  // 1. Sync on View Change (Tab Switch)
   useEffect(() => {
       if (isAuthenticated) {
-          // Silent refresh when switching tabs to ensure freshness
           loadData(true);
       }
   }, [view, isAuthenticated, loadData]);
 
-  // 2. Periodic Polling (every ~75 seconds)
   useEffect(() => {
       if (!isAuthenticated) return;
-
       const intervalId = setInterval(() => {
-          console.debug("Auto-syncing data from DB...");
           loadData(true);
-      }, 75000); // 75 seconds
-
+      }, 75000); 
       return () => clearInterval(intervalId);
   }, [isAuthenticated, loadData]);
 
 
   const handleLogin = async (profile: UserProfile) => {
       setUserProfile(profile);
-      await dataService.saveUserProfile(profile); // Sync to DB
-      await loadData(false); // Initial load with spinner
+      await dataService.saveUserProfile(profile); 
+      await loadData(false); 
       setIsAuthenticated(true);
   };
   
@@ -163,12 +139,11 @@ export const App = () => {
       localStorage.setItem('backend_config', JSON.stringify(config));
   };
 
-  // ... (CRUD Handlers remain the same) ...
   const handleAddContact = async (c: Contact) => { await dataService.saveContact(c); setContacts(prev => [c, ...prev]); const act: Activity = { id: crypto.randomUUID(), contactId: c.id, type: 'system_deal', content: 'Kontakt erstellt', date: new Date().toISOString().split('T')[0], timestamp: new Date().toISOString() }; await handleAddActivity(act); };
   const handleUpdateContact = async (c: Contact) => { await dataService.updateContact(c); setContacts(prev => prev.map(x => x.id === c.id ? c : x)); };
   const handleDeleteContact = async (id: string) => { await dataService.deleteContact(id); setContacts(prev => prev.filter(x => x.id !== id)); setDeals(prev => prev.filter(d => d.contactId !== id)); setTasks(prev => prev.filter(t => t.relatedEntityId !== id)); setActivities(prev => prev.filter(a => a.contactId !== id)); };
   const handleBulkDeleteContacts = async (ids: string[]) => { for(const id of ids) { await dataService.deleteContact(id); } setContacts(prev => prev.filter(c => !ids.includes(c.id))); setDeals(prev => prev.filter(d => !ids.includes(d.contactId))); setTasks(prev => prev.filter(t => !t.relatedEntityId || !ids.includes(t.relatedEntityId))); setActivities(prev => prev.filter(a => !ids.includes(a.contactId))); };
-  const handleImportContactsCSV = useCallback(async (csvText: string) => { setIsLoading(true); try { const result = await dataService.importContactsFromCSV(csvText); const freshContacts = await dataService.getContacts(); const freshDeals = await dataService.getDeals(); const freshActivities = await dataService.getActivities(); setContacts(freshContacts); setDeals(freshDeals); setActivities(freshActivities); let msg = `${result.contacts.length} neue Kontakte importiert.`; if (result.skippedCount > 0) msg += `\n${result.skippedCount} Duplikate erkannt und übersprungen.`; alert(msg); } catch (e: any) { console.error(e); alert(`Fehler beim Importieren: ${e.message}`); } finally { setIsLoading(false); } }, [dataService]);
+  const handleImportContactsCSV = useCallback(async (csvText: string) => { setIsLoading(true); try { const result = await dataService.importContactsFromCSV(csvText); const freshContacts = await dataService.getContacts(); const freshDeals = await dataService.getDeals(); const freshActivities = await dataService.getActivities(); setContacts(freshContacts); setDeals(freshDeals); setActivities(freshActivities); alert(`${result.contacts.length} neue Kontakte importiert.`); } catch (e: any) { alert(`Fehler beim Importieren: ${e.message}`); } finally { setIsLoading(false); } }, [dataService]);
   const handleAddDeal = async (d: Deal) => { await dataService.saveDeal(d); setDeals(prev => [d, ...prev]); };
   const handleUpdateDeal = async (d: Deal) => { await dataService.updateDeal(d); setDeals(prev => prev.map(x => x.id === d.id ? d : x)); };
   const handleDeleteDeal = async (id: string) => { await dataService.deleteDeal(id); setDeals(prev => prev.filter(x => x.id !== id)); };
@@ -189,7 +164,7 @@ export const App = () => {
   const handleAddTemplate = async (t: EmailTemplate) => { await dataService.saveEmailTemplate(t); setEmailTemplates(prev => [t, ...prev]); };
   const handleUpdateTemplate = async (t: EmailTemplate) => { await dataService.updateEmailTemplate(t); setEmailTemplates(prev => prev.map(x => x.id === t.id ? t : x)); };
   const handleDeleteTemplate = async (id: string) => { await dataService.deleteEmailTemplate(id); setEmailTemplates(prev => prev.filter(x => x.id !== id)); };
-  const handleImportData = useCallback(async (data: BackupData) => { if(confirm("Dies überschreibt alle aktuellen Daten. Fortfahren?")) { setIsLoading(true); try { await dataService.restoreBackup(data); alert("Daten importiert. Seite wird neu geladen."); window.location.reload(); } catch (e: any) { console.error("Backup Restore Failed", e); alert("Fehler beim Wiederherstellen: " + e.message); setIsLoading(false); } } }, [dataService]);
+  const handleImportData = useCallback(async (data: BackupData) => { if(confirm("Dies überschreibt alle aktuellen Daten. Fortfahren?")) { setIsLoading(true); try { await dataService.restoreBackup(data); alert("Daten importiert. Seite wird neu geladen."); window.location.reload(); } catch (e: any) { alert("Fehler beim Wiederherstellen: " + e.message); setIsLoading(false); } } }, [dataService]);
   const handleRunRetainer = async () => { setIsLoading(true); const res = await dataService.processDueRetainers(); if(res.newInvoices.length > 0) { setInvoices(prev => [...res.newInvoices, ...prev]); setActivities(prev => [...res.newActivities, ...prev]); setContacts(prev => prev.map(c => res.updatedContacts.find(u => u.id === c.id) || c)); alert(`${res.newInvoices.length} Retainer-Rechnungen erstellt.`); } else { alert("Keine fälligen Retainer gefunden."); } setIsLoading(false); };
 
   const navigateToContacts = (filter: 'all' | 'recent', focusId?: string) => { setView('contacts'); setContactFilter(filter); setFocusedContactId(focusId || null); };
@@ -224,11 +199,11 @@ export const App = () => {
                 tasks={tasks} deals={deals} contacts={contacts} invoices={invoices} expenses={expenses} activities={activities}
                 onAddTask={handleAddTask} onUpdateTask={handleUpdateTask} onDeleteTask={handleDeleteTask}
                 onNavigateToContacts={navigateToContacts} onNavigateToPipeline={navigateToPipeline} onNavigateToTasks={navigateToTasks} onNavigateToFinances={navigateToFinances}
-                onNavigateToEmail={() => setView('email')} // Pass the navigation function
+                onNavigateToEmail={() => setView('email')}
+                teamMembers={teamMembers} // PASS TEAM
             />
         )}
         
-        {/* ... (Other views) ... */}
         {view === 'contacts' && invoiceConfig && (
             <Contacts 
                 contacts={contacts} activities={activities} invoices={invoices} expenses={expenses} invoiceConfig={invoiceConfig}
@@ -256,10 +231,10 @@ export const App = () => {
                 tasks={tasks}
                 onAddTask={handleAddTask} onUpdateTask={handleUpdateTask} onDeleteTask={handleDeleteTask}
                 focusedTaskId={focusedTaskId} onClearFocus={() => setFocusedTaskId(null)}
+                teamMembers={teamMembers} // PASS TEAM
             />
         )}
 
-        {/* NEUE VIEW: EMAIL CLIENT */}
         {view === 'email' && (
             <EmailClient 
                 dataService={dataService} 
@@ -288,7 +263,6 @@ export const App = () => {
             />
         )}
 
-        {/* UPDATE BANNER (Global) */}
         {updateReady && (
             <div className="absolute bottom-4 right-4 z-50 bg-indigo-900 text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-4">
                 <div className="p-2 bg-white/10 rounded-full">

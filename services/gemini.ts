@@ -1,15 +1,17 @@
 import { GoogleGenAI } from "@google/genai";
 import { Task, Deal } from '../types';
 
+/* Fix: Updated daily briefing generation to follow @google/genai guidelines */
 export const generateDailyBriefing = async (tasks: Task[], deals: Deal[]): Promise<string> => {
-  // Versuche Key aus LocalStorage zu laden (Benutzereingabe), sonst Fallback auf Environment Variable
-  const apiKey = localStorage.getItem('gemini_api_key') || process.env.API_KEY;
+  // Obtain API key exclusively from process.env.API_KEY as per guidelines
+  const apiKey = process.env.API_KEY;
   
   if (!apiKey) {
-    return "API Key fehlt. Bitte fügen Sie Ihren Google Gemini API Key in den Einstellungen hinzu.";
+    return "API Key fehlt. Bitte stellen Sie sicher, dass process.env.API_KEY konfiguriert ist.";
   }
 
-  const ai = new GoogleGenAI({ apiKey });
+  // Always use named parameter for apiKey during initialization
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   const taskSummary = tasks
     .filter(t => !t.isCompleted)
@@ -33,10 +35,12 @@ export const generateDailyBriefing = async (tasks: Task[], deals: Deal[]): Promi
   `;
 
   try {
+    // Select gemini-3-flash-preview for basic text tasks as per guidelines
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: prompt,
     });
+    // Directly access .text property (not a method)
     return response.text || "Konnte keine Zusammenfassung erstellen.";
   } catch (error: any) {
     console.error("Gemini Error:", error);
@@ -46,6 +50,6 @@ export const generateDailyBriefing = async (tasks: Task[], deals: Deal[]): Promi
         return "Das KI-Nutzungslimit ist vorübergehend erreicht (Quota Exceeded). Bitte versuchen Sie es später erneut.";
     }
 
-    return "Fehler bei der Verbindung zum KI-Dienst. Prüfen Sie Ihren API Key.";
+    return "Fehler bei der Verbindung zum KI-Dienst.";
   }
 };

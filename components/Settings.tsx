@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useRef } from 'react';
-import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle, Key, RefreshCw, Copy, FileText, Image as ImageIcon, Briefcase, Settings as SettingsIcon, HardDrive, Users, DownloadCloud, RefreshCcw, Sparkles, Sliders, Link, Paperclip, Star, PaperclipIcon, FileCode, Printer, Info, AlertOctagon, Repeat, Cloud, CloudLightning, ShieldAlert, Wifi, UserPlus, Zap, Cpu, Plug } from 'lucide-react';
+import { Save, Check, Plus, Trash2, Package, User, Share2, Palette, ChevronDown, ChevronUp, Pencil, X, Calendar, Database, Download, Upload, Mail, Server, Globe, Laptop, HelpCircle, Loader2, AlertTriangle, RefreshCw, Copy, FileText, Image as ImageIcon, Briefcase, Settings as SettingsIcon, HardDrive, Users, DownloadCloud, RefreshCcw, Sparkles, Sliders, Link, Paperclip, Star, PaperclipIcon, FileCode, Printer, Info, AlertOctagon, Repeat, Cloud, CloudLightning, ShieldAlert, Wifi, UserPlus, Zap, Cpu, Plug } from 'lucide-react';
 import { UserProfile, Theme, ProductPreset, Contact, Deal, Task, BackupData, BackendConfig, Invoice, Expense, InvoiceConfig, Activity, EmailTemplate, EmailAttachment, EmailAutomationConfig, FirebaseConfig } from '../types';
 import { IDataService } from '../services/dataService';
 
@@ -92,8 +91,6 @@ export const Settings: React.FC<SettingsProps> = ({
   const [backendForm, setBackendForm] = useState<BackendConfig>(backendConfig);
   const [fbConfig, setFbConfig] = useState<FirebaseConfig>(backendConfig.firebaseConfig || { apiKey: '', authDomain: '', projectId: '', storageBucket: '', messagingSenderId: '', appId: '' });
   
-  const [geminiKey, setGeminiKey] = useState(localStorage.getItem('gemini_api_key') || '');
-  
   const [isCalendarConnected, setIsCalendarConnected] = useState(false);
   const [isMailConnected, setIsMailConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState<'calendar' | 'mail' | null>(null);
@@ -159,11 +156,6 @@ export const Settings: React.FC<SettingsProps> = ({
       alert("E-Mail Server Konfiguration gespeichert."); 
   };
 
-  const handleSaveGemini = () => {
-      localStorage.setItem('gemini_api_key', geminiKey);
-      alert("API Key gespeichert.");
-  };
-  
   const loadStratoDefaults = () => {
       setBackendForm(prev => ({
           ...prev,
@@ -238,7 +230,6 @@ export const Settings: React.FC<SettingsProps> = ({
                     <div className="flex justify-end mb-4"><button onClick={() => { onUpdateProfile(formData); setShowSaved(true); setTimeout(() => setShowSaved(false), 2000); }} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-2">{showSaved ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />} Speichern</button></div>
                 </SubSection>
                 <SubSection title="Team & Zugriffsrechte" isDark={isDark} isOpen={activeSubSection === 'profile_team'} onToggle={() => toggleSubSection('profile_team')}>
-                    {/* ... (Team UI same as before) ... */}
                     <div className="py-2 space-y-4">
                         {backendConfig.mode === 'firebase' && (
                             <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100">
@@ -265,7 +256,6 @@ export const Settings: React.FC<SettingsProps> = ({
          <SettingsSection title="Geschäftsprozesse" icon={Briefcase} isDark={isDark} description="Rechnungen, Produkte & Vorlagen" isOpen={activeSection === 'business'} onToggle={() => toggleSection('business')}>
              <div className="px-6">
                  <SubSection title="Rechnungskonfiguration" isDark={isDark} isOpen={activeSubSection === 'config_invoice'} onToggle={() => toggleSubSection('config_invoice')}>
-                     {/* ... (Invoice Config UI same as before) ... */}
                      <div className="py-2 grid grid-cols-2 gap-4">
                          <div className="col-span-2 border border-dashed border-slate-300 rounded-lg p-4 bg-slate-50 flex items-center gap-4">
                              <div className="w-20 h-20 bg-white rounded border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
@@ -565,35 +555,6 @@ export const Settings: React.FC<SettingsProps> = ({
                             <button onClick={handleToggleMail} disabled={isConnecting === 'mail'} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${isMailConnected ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{isConnecting === 'mail' ? '...' : isMailConnected ? 'Verbunden' : 'Verbinden'}</button>
                         </div>
                     </div>
-                 </SubSection>
-
-                 {/* 4. AI / GEMINI */}
-                 <SubSection title="Künstliche Intelligenz (AI)" isDark={isDark} isOpen={activeSubSection === 'int_ai'} onToggle={() => toggleSubSection('int_ai')}>
-                     <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                         <div className="flex items-start gap-4">
-                             <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg"><Cpu className="w-6 h-6" /></div>
-                             <div className="flex-1 space-y-3">
-                                 <div>
-                                     <h4 className="font-bold text-slate-800 text-sm">Google Gemini API</h4>
-                                     <p className="text-xs text-slate-500">Erforderlich für Smart Insights im Dashboard und automatisierte Textvorschläge.</p>
-                                 </div>
-                                 <div>
-                                     <label className="text-xs font-bold uppercase text-slate-500">API Key</label>
-                                     <div className="flex gap-2 mt-1">
-                                         <input 
-                                            type="password" 
-                                            value={geminiKey} 
-                                            onChange={(e) => setGeminiKey(e.target.value)} 
-                                            placeholder="sk-..." 
-                                            className="flex-1 px-3 py-2 border rounded-lg text-sm bg-white"
-                                         />
-                                         <button onClick={handleSaveGemini} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700">Speichern</button>
-                                     </div>
-                                     <p className="text-[10px] text-slate-400 mt-1">Key wird lokal im Browser gespeichert.</p>
-                                 </div>
-                             </div>
-                         </div>
-                     </div>
                  </SubSection>
              </div>
          </SettingsSection>
