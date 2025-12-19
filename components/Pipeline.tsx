@@ -1,11 +1,12 @@
 
 import React, { useState, DragEvent, useMemo } from 'react';
 import { Deal, DealStage, Contact, ProductPreset, Task, Invoice, Activity, InvoiceConfig, EmailTemplate } from '../types';
-import { Plus, X, Calendar, Trash2, Pencil, Search, Linkedin } from 'lucide-react';
+import { Plus, X, Calendar, Trash2, Pencil, Search, Linkedin, History, MessageSquare, Send, Clock, Target, Info } from 'lucide-react';
 
 interface PipelineProps {
   deals: Deal[];
   contacts: Contact[];
+  activities: Activity[];
   onAddDeal: (deal: Deal) => void;
   onUpdateDeal: (deal: Deal) => void;
   onDeleteDeal: (id: string) => void;
@@ -21,6 +22,7 @@ interface PipelineProps {
   onAddInvoice: (invoice: Invoice) => void;
   invoices: Invoice[];
   onAddActivity: (activity: Activity) => void;
+  onDeleteActivity: (id: string) => void;
   onNavigateToContacts: (filter: 'all' | 'recent', focusId?: string) => void;
   invoiceConfig: InvoiceConfig | null;
   emailTemplates: EmailTemplate[];
@@ -29,9 +31,12 @@ interface PipelineProps {
 export const Pipeline: React.FC<PipelineProps> = ({ 
   deals, 
   contacts, 
+  activities,
   onAddDeal, 
   onUpdateDeal, 
   onDeleteDeal,
+  onAddActivity,
+  onDeleteActivity,
   visibleStages,
   focusedDealId,
   onNavigateToContacts,
@@ -41,9 +46,14 @@ export const Pipeline: React.FC<PipelineProps> = ({
   const [draggedDealId, setDraggedDealId] = useState<string | null>(null);
   const [formData, setFormData] = useState({ title: '', value: '', stage: DealStage.LEAD, contactId: '', dueDate: '' });
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // State for Activity Drawer
+  const [selectedDealId, setSelectedDealId] = useState<string | null>(null);
+  const [newNote, setNewNote] = useState('');
 
   const columns = [
     { id: DealStage.LEAD, title: 'Lead', color: 'bg-slate-500', borderColor: 'border-slate-200' },
+    { id: DealStage.CONNECTED, title: 'Vernetzt', color: 'bg-indigo-400', borderColor: 'border-indigo-100' },
     { id: DealStage.CONTACTED, title: 'Kontakt', color: 'bg-blue-500', borderColor: 'border-blue-200' },
     { id: DealStage.FOLLOW_UP, title: 'Follow-up', color: 'bg-cyan-500', borderColor: 'border-cyan-200' },
     { id: DealStage.PROPOSAL, title: 'Angebot', color: 'bg-amber-500', borderColor: 'border-amber-200' },
@@ -82,7 +92,27 @@ export const Pipeline: React.FC<PipelineProps> = ({
     return acc;
   }, [processedDeals]);
 
-  const handleDragStart = (e: React.DragEvent, id: string) => { setDraggedDealId(id); e.dataTransfer.effectAllowed = 'move'; };
+  // Activity Logic for Drawer
+  const selectedDeal = useMemo(() => deals.find(d => d.id === selectedDealId), [deals, selectedDealId]);
+  const selectedContact = useMemo(() => 
+    selectedDeal ? contacts.find(c => c.id === selectedDeal.contactId) : null, 
+    [contacts, selectedDeal]
+  );
+  
+  const dealActivities = useMemo(() => {
+    if (!selectedContact) return [];
+    return activities
+        .filter(a => a.contactId === selectedContact.id)
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, [activities, selectedContact]);
+
+  const handleDragStart = (e: React.DragEvent, id: string) => { 
+    setDraggedDealId(id); 
+    e.dataTransfer.effectAllowed = 'move'; 
+    // We don't want the drawer to open on drag start, but since drag starts immediately, 
+    // we let the browser handle it. The click event usually fires on mouseup if no drag occurred.
+  };
+
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); };
 
   const handleDrop = async (e: React.DragEvent, targetStage: DealStage) => {
@@ -91,8 +121,34 @@ export const Pipeline: React.FC<PipelineProps> = ({
     const deal = deals.find(d => d.id === draggedDealId);
     if (deal && deal.stage !== targetStage) {
         onUpdateDeal({ ...deal, stage: targetStage, stageEnteredDate: new Date().toISOString().split('T')[0] });
+        
+        // Add activity for stage change
+        onAddActivity({
+            id: crypto.randomUUID(),
+            contactId: deal.contactId,
+            type: 'system_deal',
+            content: `Phase gewechselt zu: ${targetStage}`,
+            date: new Date().toISOString().split('T')[0],
+            timestamp: new Date().toISOString()
+        });
     }
     setDraggedDealId(null);
+  };
+
+  const handleAddNote = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!newNote.trim() || !selectedContact) return;
+      
+      const activity: Activity = {
+          id: crypto.randomUUID(),
+          contactId: selectedContact.id,
+          type: 'note',
+          content: newNote.trim(),
+          date: new Date().toISOString().split('T')[0],
+          timestamp: new Date().toISOString()
+      };
+      onAddActivity(activity);
+      setNewNote('');
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -156,9 +212,11 @@ export const Pipeline: React.FC<PipelineProps> = ({
                             key={deal.id} 
                             draggable 
                             onDragStart={(e) => handleDragStart(e, deal.id)} 
-                            className="bg-white p-2.5 rounded-lg shadow-sm border border-slate-200 hover:border-indigo-300 transition-all cursor-pointer active:cursor-grabbing group relative"
+                            onClick={() => setSelectedDealId(deal.id)}
+                            className={`bg-white p-2.5 rounded-lg shadow-sm border transition-all cursor-pointer active:cursor-grabbing group relative ${selectedDealId === deal.id ? 'border-indigo-500 ring-1 ring-indigo-500' : 'border-slate-200 hover:border-indigo-300'}`}
                         >
                             <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 bg-white/90 rounded p-0.5 z-10 transition-opacity">
+                                <button onClick={(e) => { e.stopPropagation(); setSelectedDealId(deal.id); }} className="text-slate-400 hover:text-indigo-600 p-0.5" title="Historie"><History className="w-3 h-3"/></button>
                                 <button onClick={(e) => { e.stopPropagation(); setEditingDealId(deal.id); setFormData({ title: deal.title, value: deal.value.toString(), stage: deal.stage, contactId: deal.contactId, dueDate: deal.dueDate }); setIsModalOpen(true); }} className="text-slate-400 hover:text-indigo-600 p-0.5"><Pencil className="w-3 h-3" /></button>
                                 <button onClick={(e) => { e.stopPropagation(); onDeleteDeal(deal.id); }} className="text-slate-400 hover:text-red-500 p-0.5"><Trash2 className="w-3 h-3" /></button>
                             </div>
@@ -166,8 +224,7 @@ export const Pipeline: React.FC<PipelineProps> = ({
                             <div className="space-y-0.5">
                                 <div className="flex items-center gap-1.5 min-w-0">
                                     <h4 
-                                        onClick={() => onNavigateToContacts('all', deal.contactId)}
-                                        className="text-[11px] font-bold text-slate-900 leading-tight truncate cursor-pointer hover:text-indigo-600 transition-colors" 
+                                        className="text-[11px] font-bold text-slate-900 leading-tight truncate" 
                                         title={contact?.name}
                                     >
                                         {contact?.name || 'Unbekannter Kontakt'}
@@ -185,7 +242,7 @@ export const Pipeline: React.FC<PipelineProps> = ({
                                         </a>
                                     )}
                                 </div>
-                                <p className="text-[10px] text-slate-500 truncate" onClick={() => onNavigateToContacts('all', deal.contactId)}>{contact?.company || 'Privat'}</p>
+                                <p className="text-[10px] text-slate-500 truncate">{contact?.company || 'Privat'}</p>
                             </div>
                             
                             <div className="flex items-center justify-between pt-1.5 mt-1.5 border-t border-slate-50">
@@ -204,6 +261,92 @@ export const Pipeline: React.FC<PipelineProps> = ({
           })}
         </div>
       </div>
+
+      {/* ACTIVITY DRAWER / DETAIL PANEL */}
+      {selectedDeal && selectedContact && (
+          <div className="absolute inset-y-0 right-0 w-96 bg-white border-l border-slate-200 shadow-2xl z-40 animate-in slide-in-from-right duration-300 flex flex-col">
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                  <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold">
+                          {selectedContact.name.charAt(0)}
+                      </div>
+                      <div>
+                          <h2 className="font-bold text-slate-800 leading-tight">{selectedDeal.title}</h2>
+                          <p className="text-xs text-slate-500">{selectedContact.name} • {selectedContact.company}</p>
+                      </div>
+                  </div>
+                  <button onClick={() => setSelectedDealId(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-400">
+                      <X className="w-5 h-5"/>
+                  </button>
+              </div>
+              
+              <div className="p-6 border-b border-slate-100 shrink-0">
+                  <form onSubmit={handleAddNote} className="space-y-3">
+                      <label className="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-2">
+                          <MessageSquare className="w-3 h-3"/> Notiz zum Deal hinzufügen
+                      </label>
+                      <textarea 
+                        value={newNote}
+                        onChange={e => setNewNote(e.target.value)}
+                        placeholder="Ergebnis der Verhandlung, Notizen..."
+                        className="w-full p-3 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none resize-none min-h-[100px] bg-slate-50"
+                      />
+                      <div className="flex justify-end">
+                          <button 
+                            type="submit" 
+                            disabled={!newNote.trim()}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 disabled:opacity-50"
+                          >
+                              <Send className="w-3 h-3"/> Speichern
+                          </button>
+                      </div>
+                  </form>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-6">
+                  <h3 className="text-xs font-bold uppercase text-slate-400 tracking-widest flex items-center gap-2">
+                      <History className="w-3 h-3"/> Aktivitäten & Historie
+                  </h3>
+                  
+                  <div className="relative pl-4 border-l-2 border-slate-100 space-y-8">
+                      {dealActivities.map((activity) => (
+                          <div key={activity.id} className="relative">
+                              <div className={`absolute -left-[21px] top-0 p-1.5 rounded-full border-2 border-white shadow-sm ${
+                                  activity.type === 'note' ? 'bg-indigo-100 text-indigo-600' : 
+                                  activity.type === 'system_deal' ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-600'
+                              }`}>
+                                  {activity.type === 'note' ? <MessageSquare className="w-3 h-3"/> : 
+                                   activity.type === 'system_deal' ? <Target className="w-3 h-3"/> : <Clock className="w-3 h-3"/>}
+                              </div>
+                              
+                              <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 hover:border-slate-200 transition-colors">
+                                  <div className="flex justify-between items-start mb-2">
+                                      <span className="text-[10px] font-bold uppercase text-slate-400">
+                                          {activity.type === 'note' ? 'Interne Notiz' : 'Systemereignis'}
+                                      </span>
+                                      <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                                          <Calendar className="w-2.5 h-2.5"/> {new Date(activity.timestamp).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                      </span>
+                                  </div>
+                                  <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{activity.content}</p>
+                                  <div className="mt-3 flex justify-end">
+                                      <button onClick={() => onDeleteActivity(activity.id)} className="p-1 text-slate-300 hover:text-red-500 transition-colors">
+                                          <Trash2 className="w-3 h-3"/>
+                                      </button>
+                                  </div>
+                              </div>
+                          </div>
+                      ))}
+                      {dealActivities.length === 0 && (
+                          <div className="text-center py-10 text-slate-300">
+                              <Info className="w-8 h-8 mx-auto mb-2 opacity-20"/>
+                              <p className="text-xs italic">Noch keine Aktivitäten für diesen Kontakt erfasst.</p>
+                          </div>
+                      )}
+                  </div>
+              </div>
+          </div>
+      )}
 
        {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">

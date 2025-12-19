@@ -4,6 +4,7 @@ export type Theme = 'light' | 'dark';
 
 export enum DealStage {
   LEAD = 'Lead',
+  CONNECTED = 'Vernetzt',
   CONTACTED = 'Kontaktiert',
   FOLLOW_UP = 'Follow-up',
   PROPOSAL = 'Angebot',

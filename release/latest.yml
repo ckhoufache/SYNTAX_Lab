@@ -1,8 +1,8 @@
-version: 1.3.31
+version: 1.3.32
 files:
-  - url: SyntaxLabCRM Setup 1.3.31.exe
-    sha512: DjR8n25rWpZ+2F27oXoUlZR795ti+5ivN1mGUIy0+TkWR2Q1CFAUqbHnGim+feYBn7qCkvZ93ufKXHm7BORlkA==
-    size: 102631673
-path: SyntaxLabCRM Setup 1.3.31.exe
-sha512: DjR8n25rWpZ+2F27oXoUlZR795ti+5ivN1mGUIy0+TkWR2Q1CFAUqbHnGim+feYBn7qCkvZ93ufKXHm7BORlkA==
-releaseDate: '2025-12-19T12:41:00.405Z'
+  - url: SyntaxLabCRM Setup 1.3.32.exe
+    sha512: JBMtIH9FWFHToCGV64Ti9wTgYlXBfpzngMKOzVylSEQifLEjJ54shI+sTyENa0S8jx84sHbXckuW5TUDW4T3oQ==
+    size: 102627924
+path: SyntaxLabCRM Setup 1.3.32.exe
+sha512: JBMtIH9FWFHToCGV64Ti9wTgYlXBfpzngMKOzVylSEQifLEjJ54shI+sTyENa0S8jx84sHbXckuW5TUDW4T3oQ==
+releaseDate: '2025-12-19T13:40:01.098Z'
