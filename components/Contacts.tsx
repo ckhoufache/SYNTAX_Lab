@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Search, Plus, Linkedin, X, Pencil, Trash2, Star, Heart, Target, Filter } from 'lucide-react';
+import { Search, Plus, Linkedin, X, Pencil, Trash2, Star, Heart, Target, Filter, History, MessageSquare, Info, Clock, Calendar, Send, User } from 'lucide-react';
 import { Contact, Activity, EmailTemplate, Invoice, Expense, InvoiceConfig, TargetGroup } from '../types';
 
 interface ContactsProps {
@@ -48,14 +48,19 @@ const getTargetGroupBadge = (group?: TargetGroup) => {
 
 export const Contacts: React.FC<ContactsProps> = ({ 
   contacts,
+  activities,
   onAddContact, 
   onUpdateContact, 
   onDeleteContact,
+  onAddActivity,
+  onDeleteActivity
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'customer' | 'lead' | 'sales'>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingContactId, setEditingContactId] = useState<string | null>(null);
+  const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
+  const [newNote, setNewNote] = useState('');
   
   const [formData, setFormData] = useState<Partial<Contact>>({
     name: '', role: '', company: '', email: '', type: 'lead', nps: undefined, linkedin: '', targetGroup: undefined
@@ -78,6 +83,18 @@ export const Contacts: React.FC<ContactsProps> = ({
     });
   }, [contacts, searchTerm, activeTab]);
 
+  const selectedContact = useMemo(() => 
+    contacts.find(c => c.id === selectedContactId), 
+    [contacts, selectedContactId]
+  );
+
+  const contactActivities = useMemo(() => 
+    activities
+        .filter(a => a.contactId === selectedContactId)
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
+    [activities, selectedContactId]
+  );
+
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setEditingContactId(null);
@@ -90,9 +107,24 @@ export const Contacts: React.FC<ContactsProps> = ({
     setIsModalOpen(true);
   };
 
+  const handleAddNote = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!newNote.trim() || !selectedContactId) return;
+      
+      const activity: Activity = {
+          id: crypto.randomUUID(),
+          contactId: selectedContactId,
+          type: 'note',
+          content: newNote.trim(),
+          date: new Date().toISOString().split('T')[0],
+          timestamp: new Date().toISOString()
+      };
+      onAddActivity(activity);
+      setNewNote('');
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Normalize nps & targetGroup: Firestore doesn't like undefined
     const finalNps = formData.nps === undefined ? null : formData.nps;
     const finalGroup = formData.targetGroup === undefined ? null : formData.targetGroup;
     
@@ -168,7 +200,11 @@ export const Contacts: React.FC<ContactsProps> = ({
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredContacts.map(contact => (
-                <tr key={contact.id} className="hover:bg-slate-50/50 transition-colors group">
+                <tr 
+                    key={contact.id} 
+                    onClick={() => setSelectedContactId(contact.id)}
+                    className={`hover:bg-slate-50/50 transition-colors group cursor-pointer ${selectedContactId === contact.id ? 'bg-indigo-50/30' : ''}`}
+                >
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold shrink-0">
@@ -200,7 +236,8 @@ export const Contacts: React.FC<ContactsProps> = ({
                     ) : <span className="text-slate-300">-</span>}
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                      <button onClick={() => setSelectedContactId(contact.id)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Historie"><History className="w-4 h-4"/></button>
                       {contact.linkedin && (
                           <a href={contact.linkedin} target="_blank" rel="noopener noreferrer" className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all"><Linkedin className="w-4 h-4"/></a>
                       )}
@@ -217,6 +254,92 @@ export const Contacts: React.FC<ContactsProps> = ({
           </table>
         </div>
       </div>
+
+      {/* ACTIVITY DRAWER / DETAIL PANEL */}
+      {selectedContact && (
+          <div className="absolute inset-y-0 right-0 w-96 bg-white border-l border-slate-200 shadow-2xl z-40 animate-in slide-in-from-right duration-300 flex flex-col">
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                  <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold">
+                          {selectedContact.name.charAt(0)}
+                      </div>
+                      <div>
+                          <h2 className="font-bold text-slate-800 leading-tight">{selectedContact.name}</h2>
+                          <p className="text-xs text-slate-500">{selectedContact.company}</p>
+                      </div>
+                  </div>
+                  <button onClick={() => setSelectedContactId(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-400">
+                      <X className="w-5 h-5"/>
+                  </button>
+              </div>
+              
+              <div className="p-6 border-b border-slate-100 shrink-0">
+                  <form onSubmit={handleAddNote} className="space-y-3">
+                      <label className="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-2">
+                          <MessageSquare className="w-3 h-3"/> Neue Notiz hinzufügen
+                      </label>
+                      <textarea 
+                        value={newNote}
+                        onChange={e => setNewNote(e.target.value)}
+                        placeholder="Zusammenfassung des Telefonats, Notizen..."
+                        className="w-full p-3 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none resize-none min-h-[100px] bg-slate-50"
+                      />
+                      <div className="flex justify-end">
+                          <button 
+                            type="submit" 
+                            disabled={!newNote.trim()}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 disabled:opacity-50"
+                          >
+                              <Send className="w-3 h-3"/> Speichern
+                          </button>
+                      </div>
+                  </form>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-6">
+                  <h3 className="text-xs font-bold uppercase text-slate-400 tracking-widest flex items-center gap-2">
+                      <History className="w-3 h-3"/> Aktivitäten & Historie
+                  </h3>
+                  
+                  <div className="relative pl-4 border-l-2 border-slate-100 space-y-8">
+                      {contactActivities.map((activity, idx) => (
+                          <div key={activity.id} className="relative">
+                              <div className={`absolute -left-[21px] top-0 p-1.5 rounded-full border-2 border-white shadow-sm ${
+                                  activity.type === 'note' ? 'bg-indigo-100 text-indigo-600' : 
+                                  activity.type === 'system_deal' ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-600'
+                              }`}>
+                                  {activity.type === 'note' ? <MessageSquare className="w-3 h-3"/> : 
+                                   activity.type === 'system_deal' ? <Target className="w-3 h-3"/> : <Clock className="w-3 h-3"/>}
+                              </div>
+                              
+                              <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 hover:border-slate-200 transition-colors">
+                                  <div className="flex justify-between items-start mb-2">
+                                      <span className="text-[10px] font-bold uppercase text-slate-400">
+                                          {activity.type === 'note' ? 'Interne Notiz' : 'Systemereignis'}
+                                      </span>
+                                      <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                                          <Calendar className="w-2.5 h-2.5"/> {new Date(activity.timestamp).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                      </span>
+                                  </div>
+                                  <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{activity.content}</p>
+                                  <div className="mt-3 flex justify-end">
+                                      <button onClick={() => onDeleteActivity(activity.id)} className="p-1 text-slate-300 hover:text-red-500 transition-colors">
+                                          <Trash2 className="w-3 h-3"/>
+                                      </button>
+                                  </div>
+                              </div>
+                          </div>
+                      ))}
+                      {contactActivities.length === 0 && (
+                          <div className="text-center py-10 text-slate-300">
+                              <Info className="w-8 h-8 mx-auto mb-2 opacity-20"/>
+                              <p className="text-xs italic">Noch keine Aktivitäten für diesen Kontakt erfasst.</p>
+                          </div>
+                      )}
+                  </div>
+              </div>
+          </div>
+      )}
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">

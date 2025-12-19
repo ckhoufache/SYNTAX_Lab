@@ -15,7 +15,7 @@ import {
   UserProfile, BackendConfig, ViewState, 
   ProductPreset, InvoiceConfig, EmailTemplate, BackupData, DealStage 
 } from './types';
-import { DownloadCloud, RefreshCw } from 'lucide-react';
+import { DownloadCloud, RefreshCw, Sparkles, X, ArrowUpCircle } from 'lucide-react';
 
 export const App = () => {
   const [view, setView] = useState<ViewState>('dashboard');
@@ -57,7 +57,10 @@ export const App = () => {
           if ((window as any).require) {
               const ipc = (window as any).require('electron').ipcRenderer;
               ipc.invoke('check-for-update').catch((e: any) => console.log("Update check failed", e));
+              
+              // Listener für Update-Status-Events vom Main-Prozess
               ipc.on('update-status', (event: any, data: any) => {
+                  console.log("Update-Event empfangen:", data.status);
                   if (data.status === 'downloaded') {
                       setUpdateReady(true);
                       if (data.info && data.info.version) setUpdateVersion(data.info.version);
@@ -67,6 +70,13 @@ export const App = () => {
       };
       init();
   }, [dataService]);
+
+  const handleInstallUpdate = () => {
+      if ((window as any).require) {
+          const ipc = (window as any).require('electron').ipcRenderer;
+          ipc.invoke('quit-and-install');
+      }
+  };
 
   const loadData = useCallback(async (isBackground = false) => {
       if (!isBackground) setIsLoading(true);
@@ -120,75 +130,40 @@ export const App = () => {
   const handleAddContact = async (c: Contact) => { 
     await dataService.saveContact(c); 
     setContacts(prev => [c, ...prev]); 
-    
-    // AUTOMATION: Create Deal if type is Lead
     if (c.type === 'lead') {
-        const newDeal: Deal = {
-            id: crypto.randomUUID(),
-            title: `Deal: ${c.name}`,
-            value: 0,
-            stage: DealStage.LEAD,
-            contactId: c.id,
-            dueDate: new Date().toISOString().split('T')[0],
-            stageEnteredDate: new Date().toISOString().split('T')[0]
-        };
+        const newDeal: Deal = { id: crypto.randomUUID(), title: `Deal: ${c.name}`, value: 0, stage: DealStage.LEAD, contactId: c.id, dueDate: new Date().toISOString().split('T')[0], stageEnteredDate: new Date().toISOString().split('T')[0] };
         await handleAddDeal(newDeal);
     }
-
     const act: Activity = { id: crypto.randomUUID(), contactId: c.id, type: 'system_deal', content: 'Kontakt erstellt', date: new Date().toISOString().split('T')[0], timestamp: new Date().toISOString() }; 
     await handleAddActivity(act); 
   };
 
   const handleUpdateContact = async (c: Contact) => { await dataService.updateContact(c); setContacts(prev => prev.map(x => x.id === c.id ? c : x)); };
   const handleDeleteContact = async (id: string) => { await dataService.deleteContact(id); setContacts(prev => prev.filter(x => x.id !== id)); setDeals(prev => prev.filter(d => d.contactId !== id)); setTasks(prev => prev.filter(t => t.relatedEntityId !== id)); setActivities(prev => prev.filter(a => a.contactId !== id)); };
-  
   const handleAddDeal = async (d: Deal) => { await dataService.saveDeal(d); setDeals(prev => [d, ...prev]); };
-  
   const handleUpdateDeal = async (d: Deal) => { 
     const originalDeal = deals.find(x => x.id === d.id);
     await dataService.updateDeal(d); 
     setDeals(prev => prev.map(x => x.id === d.id ? d : x)); 
-
-    // AUTOMATION: If Deal is won, convert contact to Customer and create weekly Post task
     if (d.stage === DealStage.WON && originalDeal?.stage !== DealStage.WON) {
         const contact = contacts.find(c => c.id === d.contactId);
         if (contact) {
-            // Update Contact Type
-            if (contact.type !== 'customer') {
-                handleUpdateContact({ ...contact, type: 'customer' });
-            }
-
-            // Create Recurring Task
+            if (contact.type !== 'customer') { handleUpdateContact({ ...contact, type: 'customer' }); }
             const startDate = contact.retainerStartDate || new Date().toISOString().split('T')[0];
-            const newTask: Task = {
-                id: crypto.randomUUID(),
-                title: `Wöchentlicher Post: ${contact.name}`,
-                type: 'post',
-                priority: 'medium',
-                dueDate: startDate,
-                isCompleted: false,
-                createdAt: new Date().toISOString(),
-                recurrence: 'weekly',
-                relatedEntityId: contact.id
-            };
+            const newTask: Task = { id: crypto.randomUUID(), title: `Wöchentlicher Post: ${contact.name}`, type: 'post', priority: 'medium', dueDate: startDate, isCompleted: false, createdAt: new Date().toISOString(), recurrence: 'weekly', relatedEntityId: contact.id };
             await handleAddTask(newTask);
         }
     }
   };
-
-  // Fix: Added missing handleDeleteDeal handler to manage deal deletion through data service and state
   const handleDeleteDeal = async (id: string) => { await dataService.deleteDeal(id); setDeals(prev => prev.filter(x => x.id !== id)); };
-
   const handleAddTask = async (t: Task) => { await dataService.saveTask(t); setTasks(prev => [t, ...prev]); };
   const handleUpdateTask = async (t: Task) => { await dataService.updateTask(t); setTasks(prev => prev.map(x => x.id === t.id ? t : x)); };
   const handleDeleteTask = async (id: string) => { await dataService.deleteTask(id); setTasks(prev => prev.filter(x => x.id !== id)); };
-
-  // ... rest of boilerplate handlers
   const handleAddInvoice = async (i: Invoice) => { await dataService.saveInvoice(i); setInvoices(prev => [i, ...prev]); };
   const handleUpdateInvoice = async (i: Invoice) => { await dataService.updateInvoice(i); setInvoices(prev => prev.map(x => x.id === i.id ? i : x)); };
   const handleDeleteInvoice = async (id: string) => { await dataService.deleteInvoice(id); setInvoices(prev => prev.filter(x => x.id !== id)); };
   const handleAddExpense = async (e: Expense) => { await dataService.saveExpense(e); setExpenses(prev => [e, ...prev]); };
-  const handleUpdateExpense = async (e: Expense) => { await dataService.updateExpense(e); setExpenses(prev => [e, ...prev]); };
+  const handleUpdateExpense = async (e: Expense) => { await dataService.updateExpense(e); setExpenses(prev => prev.map(x => x.id === e.id ? e : x)); };
   const handleDeleteExpense = async (id: string) => { await dataService.deleteExpense(id); setExpenses(prev => prev.filter(x => x.id !== id)); };
   const handleAddActivity = async (a: Activity) => { await dataService.saveActivity(a); setActivities(prev => [a, ...prev]); };
   const handleDeleteActivity = async (id: string) => { await dataService.deleteActivity(id); setActivities(prev => prev.filter(x => x.id !== id)); };
@@ -210,13 +185,35 @@ export const App = () => {
   return (
     <div className="flex h-screen overflow-hidden font-sans bg-slate-50 relative">
         <Sidebar currentView={view} onChangeView={setView} userProfile={userProfile} onLogout={handleLogout} isCollapsed={isSidebarCollapsed} onToggle={() => setIsSidebarCollapsed(!isSidebarCollapsed)} />
-        {view === 'dashboard' && <Dashboard tasks={tasks} deals={deals} contacts={contacts} invoices={invoices} expenses={expenses} activities={activities} onAddTask={handleAddTask} onUpdateTask={handleUpdateTask} onDeleteTask={handleDeleteTask} onNavigateToContacts={navigateToContacts} onNavigateToPipeline={navigateToPipeline} onNavigateToTasks={navigateToTasks} onNavigateToFinances={() => setView('finances')} onNavigateToEmail={() => setView('email')} teamMembers={teamMembers} />}
-        {view === 'contacts' && invoiceConfig && <Contacts contacts={contacts} activities={activities} invoices={invoices} expenses={expenses} invoiceConfig={invoiceConfig} onAddContact={handleAddContact} onUpdateContact={handleUpdateContact} onDeleteContact={handleDeleteContact} onAddActivity={handleAddActivity} onDeleteActivity={handleDeleteActivity} initialFilter={contactFilter} onClearFilter={() => setContactFilter('all')} focusedId={focusedContactId} onClearFocus={() => setFocusedContactId(null)} emailTemplates={emailTemplates} onImportCSV={(csv) => dataService.importContactsFromCSV(csv)} onBulkDeleteContacts={(ids) => ids.forEach(id => handleDeleteContact(id))} />}
-        {view === 'pipeline' && <Pipeline deals={deals} contacts={contacts} tasks={tasks} invoices={invoices} invoiceConfig={invoiceConfig} emailTemplates={emailTemplates} onAddDeal={handleAddDeal} onUpdateDeal={handleUpdateDeal} onDeleteDeal={handleDeleteDeal} onUpdateContact={handleUpdateContact} visibleStages={visibleStages} setVisibleStages={setVisibleStages} productPresets={productPresets} onAddTask={handleAddTask} onAutoDeleteTask={handleDeleteTask} focusedDealId={focusedDealId} onClearFocus={() => setFocusedDealId(null)} onAddInvoice={handleAddInvoice} onAddActivity={handleAddActivity} onNavigateToContacts={navigateToContacts} />}
-        {view === 'tasks' && <Tasks tasks={tasks} onAddTask={handleAddTask} onUpdateTask={handleUpdateTask} onDeleteTask={handleDeleteTask} focusedTaskId={focusedTaskId} onClearFocus={() => setFocusedTaskId(null)} teamMembers={teamMembers} />}
-        {view === 'email' && <EmailClient dataService={dataService} config={backendConfig} userProfile={userProfile} />}
-        {view === 'finances' && invoiceConfig && <Finances invoices={invoices} contacts={contacts} expenses={expenses} invoiceConfig={invoiceConfig} onAddInvoice={handleAddInvoice} onUpdateInvoice={handleUpdateInvoice} onDeleteInvoice={handleDeleteInvoice} onAddExpense={handleAddExpense} onUpdateExpense={handleUpdateExpense} onDeleteExpense={handleDeleteExpense} onAddActivity={handleAddActivity} onRunRetainer={handleRunRetainer} />}
-        {view === 'settings' && userProfile && invoiceConfig && <Settings userProfile={userProfile} onUpdateProfile={handleUpdateProfile} productPresets={productPresets} onUpdatePresets={handleUpdatePresets} contacts={contacts} deals={deals} tasks={tasks} invoices={invoices} expenses={expenses} activities={activities} onImportData={handleImportData} backendConfig={backendConfig} onUpdateBackendConfig={handleUpdateBackendConfig} dataService={dataService} invoiceConfig={invoiceConfig} onUpdateInvoiceConfig={handleUpdateInvoiceConfig} emailTemplates={emailTemplates} onAddTemplate={handleAddTemplate} onUpdateTemplate={handleUpdateTemplate} onDeleteTemplate={handleDeleteTemplate} />}
+        
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
+            {/* Update Notification Banner */}
+            {updateReady && (
+                <div className="bg-indigo-600 text-white px-6 py-2.5 flex items-center justify-between animate-in slide-in-from-top duration-500 z-50">
+                    <div className="flex items-center gap-3">
+                        <ArrowUpCircle className="w-5 h-5 text-indigo-200 animate-bounce" />
+                        <span className="text-sm font-bold">Update verfügbar {updateVersion ? `(v${updateVersion})` : ''}</span>
+                        <span className="text-xs text-indigo-100 hidden sm:inline">Ein neues Update wurde heruntergeladen und ist bereit zur Installation.</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <button onClick={handleInstallUpdate} className="bg-white text-indigo-600 px-4 py-1 rounded-full text-xs font-bold hover:bg-indigo-50 transition-colors shadow-sm">
+                            Jetzt installieren & Neustarten
+                        </button>
+                        <button onClick={() => setUpdateReady(false)} className="p-1 hover:bg-indigo-500 rounded-full transition-colors">
+                            <X className="w-4 h-4" />
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {view === 'dashboard' && <Dashboard tasks={tasks} deals={deals} contacts={contacts} invoices={invoices} expenses={expenses} activities={activities} onAddTask={handleAddTask} onUpdateTask={handleUpdateTask} onDeleteTask={handleDeleteTask} onNavigateToContacts={navigateToContacts} onNavigateToPipeline={navigateToPipeline} onNavigateToTasks={navigateToTasks} onNavigateToFinances={() => setView('finances')} onNavigateToEmail={() => setView('email')} teamMembers={teamMembers} />}
+            {view === 'contacts' && invoiceConfig && <Contacts contacts={contacts} activities={activities} invoices={invoices} expenses={expenses} invoiceConfig={invoiceConfig} onAddContact={handleAddContact} onUpdateContact={handleUpdateContact} onDeleteContact={handleDeleteContact} onAddActivity={handleAddActivity} onDeleteActivity={handleDeleteActivity} initialFilter={contactFilter} onClearFilter={() => setContactFilter('all')} focusedId={focusedContactId} onClearFocus={() => setFocusedContactId(null)} emailTemplates={emailTemplates} onImportCSV={(csv) => dataService.importContactsFromCSV(csv)} onBulkDeleteContacts={(ids) => ids.forEach(id => handleDeleteContact(id))} />}
+            {view === 'pipeline' && <Pipeline deals={deals} contacts={contacts} tasks={tasks} invoices={invoices} invoiceConfig={invoiceConfig} emailTemplates={emailTemplates} onAddDeal={handleAddDeal} onUpdateDeal={handleUpdateDeal} onDeleteDeal={handleDeleteDeal} onUpdateContact={handleUpdateContact} visibleStages={visibleStages} setVisibleStages={setVisibleStages} productPresets={productPresets} onAddTask={handleAddTask} onAutoDeleteTask={handleDeleteTask} focusedDealId={focusedDealId} onClearFocus={() => setFocusedDealId(null)} onAddInvoice={handleAddInvoice} onAddActivity={handleAddActivity} onNavigateToContacts={navigateToContacts} />}
+            {view === 'tasks' && <Tasks tasks={tasks} onAddTask={handleAddTask} onUpdateTask={handleUpdateTask} onDeleteTask={handleDeleteTask} focusedTaskId={focusedTaskId} onClearFocus={() => setFocusedTaskId(null)} teamMembers={teamMembers} />}
+            {view === 'email' && <EmailClient dataService={dataService} config={backendConfig} userProfile={userProfile} />}
+            {view === 'finances' && invoiceConfig && <Finances invoices={invoices} contacts={contacts} expenses={expenses} invoiceConfig={invoiceConfig} onAddInvoice={handleAddInvoice} onUpdateInvoice={handleUpdateInvoice} onDeleteInvoice={handleDeleteInvoice} onAddExpense={handleAddExpense} onUpdateExpense={handleUpdateExpense} onDeleteExpense={handleDeleteExpense} onAddActivity={handleAddActivity} onRunRetainer={handleRunRetainer} />}
+            {view === 'settings' && userProfile && invoiceConfig && <Settings userProfile={userProfile} onUpdateProfile={handleUpdateProfile} productPresets={productPresets} onUpdatePresets={handleUpdatePresets} contacts={contacts} deals={deals} tasks={tasks} invoices={invoices} expenses={expenses} activities={activities} onImportData={handleImportData} backendConfig={backendConfig} onUpdateBackendConfig={handleUpdateBackendConfig} dataService={dataService} invoiceConfig={invoiceConfig} onUpdateInvoiceConfig={handleUpdateInvoiceConfig} emailTemplates={emailTemplates} onAddTemplate={handleAddTemplate} onUpdateTemplate={handleUpdateTemplate} onDeleteTemplate={handleDeleteTemplate} />}
+        </div>
     </div>
   );
 };

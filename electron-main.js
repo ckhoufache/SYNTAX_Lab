@@ -29,10 +29,12 @@ let mainWindow;
 let server;
 
 // --- AUTO UPDATER ---
+// In Produktion sollte dies auf false stehen, für Tests mit GitHub Releases lassen wir es auf true
 Object.defineProperty(app, 'isPackaged', { get() { return true; } });
 autoUpdater.logger = console;
 autoUpdater.autoDownload = true; 
 autoUpdater.autoInstallOnAppQuit = true;
+// Deaktiviert die Signatur-Prüfung für inoffizielle Builds (GitHub Pages Installer)
 process.env.ELECTRON_UPDATER_SKIP_SIGNATURE_CHECK = 'true'; 
 
 function startLocalServer() {
@@ -108,6 +110,7 @@ ipcMain.handle('check-for-update', () => {
     if (process.env.NODE_ENV === 'development') return { updateAvailable: false, message: "Dev Modus: Keine Updates." };
     return autoUpdater.checkForUpdates()
         .then(result => {
+            if (!result) return { updateAvailable: false };
             const localVersion = app.getVersion();
             const remoteVersion = result.updateInfo.version;
             if (localVersion === remoteVersion) return { updateAvailable: false, message: "Bereits aktuell." };
@@ -116,8 +119,16 @@ ipcMain.handle('check-for-update', () => {
         .catch(err => ({ updateAvailable: false, error: err.message }));
 });
 
-ipcMain.handle('download-update', () => { autoUpdater.downloadUpdate(); return true; });
-ipcMain.handle('quit-and-install', () => { BrowserWindow.getAllWindows().forEach(w => w.close()); autoUpdater.quitAndInstall(false, true); });
+ipcMain.handle('download-update', () => { 
+    autoUpdater.downloadUpdate(); 
+    return true; 
+});
+
+ipcMain.handle('quit-and-install', () => { 
+    // WICHTIG: Nicht manuell die Fenster schließen. 
+    // quitAndInstall(isSilent, isForceRunAfter) regelt das Ende der App und den Neustart.
+    autoUpdater.quitAndInstall(false, true); 
+});
 
 autoUpdater.on('update-available', (info) => { if(mainWindow) mainWindow.webContents.send('update-status', { status: 'available', info }); });
 autoUpdater.on('update-not-available', () => { if(mainWindow) mainWindow.webContents.send('update-status', { status: 'not-available' }); });
@@ -150,23 +161,16 @@ const getImapConfig = (config) => ({
     }
 });
 
-// ROBUST FOLDER RECURSION
 function getFolderPaths(box, parentPath = '', parentDelimiter = '/') {
     let paths = [];
-    
     for (const key in box) {
         const child = box[key];
-        
-        // Use delimiter from folder, or inherit, or fallback to '/'
         const myDelimiter = child.delimiter || parentDelimiter || '/';
-        
         let fullPath = key;
         if (parentPath) {
             fullPath = `${parentPath}${myDelimiter}${key}`;
         }
-        
         paths.push({ name: key, path: fullPath });
-        
         if (child.children) {
             paths = paths.concat(getFolderPaths(child.children, fullPath, myDelimiter));
         }
@@ -180,61 +184,48 @@ ipcMain.handle('email-imap-get-boxes', async (event, config) => {
     try {
         connection = await imaps.default.connect(getImapConfig(config));
         const boxes = await connection.getBoxes();
-        console.log("IMAP Boxes found (Top Level):", Object.keys(boxes)); // Debug Log
         connection.end();
         return getFolderPaths(boxes);
     } catch (e) {
         if (connection) connection.end();
-        console.error("IMAP Get Boxes Error", e);
         throw new Error(`IMAP Ordner Fehler: ${e.message}`);
     }
 });
 
-// FIXED: Ordner erstellen using underlying node-imap instance
 ipcMain.handle('email-imap-create-folder', async (event, config, folderName) => {
     if (!imaps) throw new Error("E-Mail Module nicht geladen.");
     let connection;
     try {
         connection = await imaps.default.connect(getImapConfig(config));
-        
-        // FIX: addBox is not on the wrapper, it's on connection.imap
-        // And it requires a callback, so we wrap it in a Promise
         await new Promise((resolve, reject) => {
             connection.imap.addBox(folderName, (err) => {
                 if (err) reject(err);
                 else resolve();
             });
         });
-
         connection.end();
         return true;
     } catch (e) {
         if (connection) connection.end();
-        console.error("IMAP Create Box Error", e);
         throw new Error(`Fehler beim Erstellen: ${e.message}`);
     }
 });
 
-// FIXED: Ordner löschen using underlying node-imap instance
 ipcMain.handle('email-imap-delete-folder', async (event, config, folderPath) => {
     if (!imaps) throw new Error("E-Mail Module nicht geladen.");
     let connection;
     try {
         connection = await imaps.default.connect(getImapConfig(config));
-        
-        // FIX: delBox is on connection.imap and needs callback
         await new Promise((resolve, reject) => {
             connection.imap.delBox(folderPath, (err) => {
                 if (err) reject(err);
                 else resolve();
             });
         });
-
         connection.end();
         return true;
     } catch (e) {
         if (connection) connection.end();
-        console.error("IMAP Delete Box Error", e);
         throw new Error(`Fehler beim Löschen: ${e.message}`);
     }
 });
@@ -245,64 +236,35 @@ ipcMain.handle('email-imap-fetch', async (event, config, limit = 20, onlyUnread 
     try {
         connection = await imaps.default.connect(getImapConfig(config));
         await connection.openBox(boxName);
-
         const searchCriteria = onlyUnread ? ['UNSEEN'] : ['ALL'];
-        const fetchOptions = {
-            bodies: ['HEADER', 'TEXT', ''],
-            markSeen: false,
-            struct: true
-        };
-
+        const fetchOptions = { bodies: ['HEADER', 'TEXT', ''], markSeen: false, struct: true };
         let messages = await connection.search(searchCriteria, fetchOptions);
-        
         messages.sort((a, b) => {
             const dateA = new Date(a.parts.find(p => p.which === 'HEADER').body.date);
             const dateB = new Date(b.parts.find(p => p.which === 'HEADER').body.date);
             return dateB - dateA;
         });
-        
-        if (limit && messages.length > limit) {
-            messages = messages.slice(0, limit);
-        }
-
+        if (limit && messages.length > limit) { messages = messages.slice(0, limit); }
         const parsedMessages = [];
         for (const item of messages) {
             const allPart = item.parts.find(p => p.which === '');
             const headerPart = item.parts.find(p => p.which === 'HEADER');
-            
             let mail;
-            if (allPart) {
-                mail = await simpleParser(allPart.body);
-            } else {
-                mail = { text: "Kein Inhalt", html: "", subject: headerPart?.body?.subject, from: headerPart?.body?.from, date: headerPart?.body?.date };
-            }
-
+            if (allPart) { mail = await simpleParser(allPart.body); } else { mail = { text: "Kein Inhalt", html: "", subject: headerPart?.body?.subject, from: headerPart?.body?.from, date: headerPart?.body?.date }; }
             let dateStr = new Date().toISOString();
-            if (mail.date) {
-                dateStr = mail.date.toISOString();
-            } else if (headerPart?.body?.date) {
-                dateStr = new Date(headerPart.body.date).toISOString();
-            }
-
+            if (mail.date) { dateStr = mail.date.toISOString(); } else if (headerPart?.body?.date) { dateStr = new Date(headerPart.body.date).toISOString(); }
             parsedMessages.push({
-                id: item.attributes.uid,
-                uid: item.attributes.uid,
-                from: mail.from?.text || 'Unbekannt',
-                to: mail.to?.text || 'Ich',
-                subject: mail.subject || '(Kein Betreff)',
-                date: dateStr,
-                bodyText: mail.text || '',
-                bodyHtml: mail.html || '',
+                id: item.attributes.uid, uid: item.attributes.uid,
+                from: mail.from?.text || 'Unbekannt', to: mail.to?.text || 'Ich',
+                subject: mail.subject || '(Kein Betreff)', date: dateStr,
+                bodyText: mail.text || '', bodyHtml: mail.html || '',
                 isRead: item.attributes.flags && item.attributes.flags.includes('\\Seen')
             });
         }
-
         connection.end();
         return parsedMessages;
-
     } catch (e) {
         if (connection) connection.end();
-        console.error("IMAP Fetch Error", e);
         throw new Error(`IMAP Fehler: ${e.message}`);
     }
 });
@@ -325,19 +287,15 @@ ipcMain.handle('email-mark-read', async (event, config, uid, boxName = 'INBOX') 
 ipcMain.handle('email-smtp-send', async (event, config, mailOptions) => {
     if (!nodemailer) throw new Error("E-Mail Module nicht geladen.");
     const transporter = nodemailer.default.createTransport({
-        host: config.host,
-        port: config.port,
-        secure: config.tls, 
+        host: config.host, port: config.port, secure: config.tls, 
         auth: { user: config.user, pass: config.password },
         tls: { rejectUnauthorized: false }
     });
     try {
         const info = await transporter.sendMail({
             from: `"${config.senderName}" <${config.user}>`,
-            to: mailOptions.to,
-            subject: mailOptions.subject,
-            text: mailOptions.body,
-            html: mailOptions.body.replace(/\n/g, '<br/>'), 
+            to: mailOptions.to, subject: mailOptions.subject,
+            text: mailOptions.body, html: mailOptions.body.replace(/\n/g, '<br/>'), 
         });
         return { success: true, messageId: info.messageId };
     } catch (e) {
