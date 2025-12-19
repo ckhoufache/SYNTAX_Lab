@@ -14,6 +14,12 @@ export enum DealStage {
 
 export type ContactType = 'lead' | 'customer' | 'partner' | 'newsletter' | 'sales'; 
 
+export type TargetGroup = 
+  | 'A - B2B-Entscheider' 
+  | 'B - Industrie (Recruiting)' 
+  | 'C - High Ticket Berater' 
+  | 'D - Tech & Green Startups';
+
 export type BackendMode = 'local' | 'firebase';
 
 export interface FirebaseConfig {
@@ -90,6 +96,7 @@ export interface Contact {
   notes?: string;
   tags?: string[];
   type?: ContactType; 
+  targetGroup?: TargetGroup; // NEU: Zielgruppe A, B, C, D
   nps?: number; // NEU: 0-10
   
   // Address & Tax Data (New for Credit Notes)

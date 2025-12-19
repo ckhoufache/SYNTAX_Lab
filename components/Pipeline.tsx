@@ -1,8 +1,7 @@
 
 import React, { useState, DragEvent, useMemo } from 'react';
 import { Deal, DealStage, Contact, ProductPreset, Task, Invoice, Activity, InvoiceConfig, EmailTemplate } from '../types';
-import { Plus, X, Calendar, Trash2, Filter, Eye, EyeOff, Package, Pencil, Search, SlidersHorizontal, ArrowDownAZ, Users } from 'lucide-react';
-import { DataServiceFactory, compileInvoiceTemplate } from '../services/dataService';
+import { Plus, X, Calendar, Trash2, Pencil, Search, Linkedin } from 'lucide-react';
 
 interface PipelineProps {
   deals: Deal[];
@@ -33,27 +32,14 @@ export const Pipeline: React.FC<PipelineProps> = ({
   onAddDeal, 
   onUpdateDeal, 
   onDeleteDeal,
-  onUpdateContact,
   visibleStages,
-  setVisibleStages,
-  productPresets,
-  onAddTask,
-  tasks,
-  onAutoDeleteTask,
   focusedDealId,
-  onClearFocus,
-  onAddInvoice,
-  invoices,
-  onAddActivity,
   onNavigateToContacts,
-  invoiceConfig,
-  emailTemplates
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDealId, setEditingDealId] = useState<string | null>(null);
   const [draggedDealId, setDraggedDealId] = useState<string | null>(null);
   const [formData, setFormData] = useState({ title: '', value: '', stage: DealStage.LEAD, contactId: '', dueDate: '' });
-
   const [searchQuery, setSearchQuery] = useState('');
 
   const columns = [
@@ -170,16 +156,36 @@ export const Pipeline: React.FC<PipelineProps> = ({
                             key={deal.id} 
                             draggable 
                             onDragStart={(e) => handleDragStart(e, deal.id)} 
-                            className="bg-white p-2 rounded-lg shadow-sm border border-slate-200 hover:border-indigo-300 transition-all cursor-pointer active:cursor-grabbing group relative"
+                            className="bg-white p-2.5 rounded-lg shadow-sm border border-slate-200 hover:border-indigo-300 transition-all cursor-pointer active:cursor-grabbing group relative"
                         >
                             <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 bg-white/90 rounded p-0.5 z-10 transition-opacity">
                                 <button onClick={(e) => { e.stopPropagation(); setEditingDealId(deal.id); setFormData({ title: deal.title, value: deal.value.toString(), stage: deal.stage, contactId: deal.contactId, dueDate: deal.dueDate }); setIsModalOpen(true); }} className="text-slate-400 hover:text-indigo-600 p-0.5"><Pencil className="w-3 h-3" /></button>
                                 <button onClick={(e) => { e.stopPropagation(); onDeleteDeal(deal.id); }} className="text-slate-400 hover:text-red-500 p-0.5"><Trash2 className="w-3 h-3" /></button>
                             </div>
                             
-                            <div onClick={() => onNavigateToContacts('all', deal.contactId)} className="space-y-0.5">
-                                <h4 className="text-[11px] font-bold text-slate-900 leading-tight truncate" title={contact?.name}>{contact?.name || 'Unbekannter Kontakt'}</h4>
-                                <p className="text-[10px] text-slate-500 truncate">{contact?.company || 'Privat'}</p>
+                            <div className="space-y-0.5">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                    <h4 
+                                        onClick={() => onNavigateToContacts('all', deal.contactId)}
+                                        className="text-[11px] font-bold text-slate-900 leading-tight truncate cursor-pointer hover:text-indigo-600 transition-colors" 
+                                        title={contact?.name}
+                                    >
+                                        {contact?.name || 'Unbekannter Kontakt'}
+                                    </h4>
+                                    {contact?.linkedin && (
+                                        <a 
+                                            href={contact.linkedin} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer" 
+                                            className="text-blue-600 hover:text-blue-800 shrink-0 transition-colors"
+                                            onClick={(e) => e.stopPropagation()}
+                                            title="LinkedIn Profil öffnen"
+                                        >
+                                            <Linkedin className="w-3 h-3" />
+                                        </a>
+                                    )}
+                                </div>
+                                <p className="text-[10px] text-slate-500 truncate" onClick={() => onNavigateToContacts('all', deal.contactId)}>{contact?.company || 'Privat'}</p>
                             </div>
                             
                             <div className="flex items-center justify-between pt-1.5 mt-1.5 border-t border-slate-50">
@@ -200,7 +206,7 @@ export const Pipeline: React.FC<PipelineProps> = ({
       </div>
 
        {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
                 <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 bg-slate-50"><h2 className="text-lg font-bold text-slate-800">{editingDealId ? 'Deal bearbeiten' : 'Neuer Deal'}</h2><button onClick={() => setIsModalOpen(false)}><X className="w-5 h-5 text-slate-400" /></button></div>
                 <form onSubmit={handleSubmit} className="p-6 space-y-4">

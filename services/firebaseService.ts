@@ -12,6 +12,23 @@ import {
 } from '../types';
 import { IDataService, DEFAULT_PDF_TEMPLATE } from './dataService';
 
+/**
+ * Utility to recursively remove undefined properties from an object.
+ * Firestore does not accept 'undefined', but accepts 'null'.
+ */
+const sanitizeForFirestore = (obj: any): any => {
+  if (Array.isArray(obj)) {
+    return obj.map(v => sanitizeForFirestore(v));
+  } else if (obj !== null && typeof obj === 'object') {
+    return Object.fromEntries(
+      Object.entries(obj)
+        .filter(([_, v]) => v !== undefined)
+        .map(([k, v]) => [k, sanitizeForFirestore(v)])
+    );
+  }
+  return obj;
+};
+
 export class FirebaseDataService implements IDataService {
     private db: any;
     private auth: any;
@@ -270,8 +287,10 @@ export class FirebaseDataService implements IDataService {
     }
     private async save<T extends { id: string }>(collectionName: string, data: T): Promise<T> {
         if (!this.db) return data;
-        await setDoc(doc(this.db, collectionName, data.id), data);
-        return data;
+        // Strip undefined fields which cause Firestore errors
+        const sanitized = sanitizeForFirestore(data);
+        await setDoc(doc(this.db, collectionName, data.id), sanitized);
+        return sanitized;
     }
     private async delete(collectionName: string, id: string): Promise<void> {
         if (!this.db) return;
@@ -312,7 +331,7 @@ export class FirebaseDataService implements IDataService {
                         avatar: ''
                     };
                     contacts.push(c);
-                    batch.set(doc(this.db, 'contacts', c.id), c);
+                    batch.set(doc(this.db, 'contacts', c.id), sanitizeForFirestore(c));
                 } else { skipped++; }
             }
         });
@@ -362,14 +381,14 @@ export class FirebaseDataService implements IDataService {
     async getAllUsers(): Promise<UserProfile[]> { return this.getAll('userProfile'); }
     async saveUserProfile(p: UserProfile): Promise<UserProfile> { 
         const id = this.getLocalInstanceId();
-        await setDoc(doc(this.db, 'userProfile', id), p);
+        await setDoc(doc(this.db, 'userProfile', id), sanitizeForFirestore(p));
         return p;
     }
 
     async getProductPresets(): Promise<ProductPreset[]> { return this.getAll('productPresets'); }
     async saveProductPresets(p: ProductPreset[]): Promise<ProductPreset[]> { 
         const batch = writeBatch(this.db);
-        p.forEach(x => batch.set(doc(this.db, 'productPresets', x.id), x));
+        p.forEach(x => batch.set(doc(this.db, 'productPresets', x.id), sanitizeForFirestore(x)));
         await batch.commit();
         return p;
     }
@@ -380,7 +399,7 @@ export class FirebaseDataService implements IDataService {
         return c[0] || { pdfTemplate: DEFAULT_PDF_TEMPLATE } as any; 
     }
     async saveInvoiceConfig(c: InvoiceConfig): Promise<InvoiceConfig> { 
-        await setDoc(doc(this.db, 'invoiceConfig', 'main'), c);
+        await setDoc(doc(this.db, 'invoiceConfig', 'main'), sanitizeForFirestore(c));
         return c;
     }
 
@@ -390,7 +409,16 @@ export class FirebaseDataService implements IDataService {
     async deleteEmailTemplate(id: string): Promise<void> { await this.delete('emailTemplates', id); }
 
     async restoreBackup(data: BackupData): Promise<void> {
-        // ... (Batch logic same as previous) ...
+        if (!this.db) return;
+        const batch = writeBatch(this.db);
+        // Simplified restore logic
+        data.contacts?.forEach(c => batch.set(doc(this.db, 'contacts', c.id), sanitizeForFirestore(c)));
+        data.deals?.forEach(d => batch.set(doc(this.db, 'deals', d.id), sanitizeForFirestore(d)));
+        data.tasks?.forEach(t => batch.set(doc(this.db, 'tasks', t.id), sanitizeForFirestore(t)));
+        data.invoices?.forEach(i => batch.set(doc(this.db, 'invoices', i.id), sanitizeForFirestore(i)));
+        data.expenses?.forEach(e => batch.set(doc(this.db, 'expenses', e.id), sanitizeForFirestore(e)));
+        data.activities?.forEach(a => batch.set(doc(this.db, 'activities', a.id), sanitizeForFirestore(a)));
+        await batch.commit();
     }
 
     async processDueRetainers(): Promise<any> { return {updatedContacts:[], newInvoices:[], newActivities:[]}; }
@@ -483,7 +511,7 @@ export class FirebaseDataService implements IDataService {
             const batch = writeBatch(this.db);
             
             newCommissionInvoices.forEach(inv => {
-                batch.set(doc(this.db, 'invoices', inv.id), inv);
+                batch.set(doc(this.db, 'invoices', inv.id), sanitizeForFirestore(inv));
             });
 
             updatedSources.forEach(inv => {

@@ -14,6 +14,7 @@ interface TasksProps {
 }
 
 type ViewMode = 'month' | 'list';
+type StatusFilter = 'open' | 'completed' | 'all';
 
 export const Tasks: React.FC<TasksProps> = ({ 
     tasks, 
@@ -25,7 +26,8 @@ export const Tasks: React.FC<TasksProps> = ({
     teamMembers = [] 
 }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState<ViewMode>(focusedTaskId ? 'list' : 'list');
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('open');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
 
@@ -136,10 +138,24 @@ export const Tasks: React.FC<TasksProps> = ({
 
   const renderListView = () => {
     let displayTasks = focusedTaskId ? tasks.filter(t => t.id === focusedTaskId) : [...tasks];
+    
+    // Status Filter Application
+    if (statusFilter === 'open') {
+        displayTasks = displayTasks.filter(t => !t.isCompleted);
+    } else if (statusFilter === 'completed') {
+        displayTasks = displayTasks.filter(t => t.isCompleted);
+    }
+
     displayTasks.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
     
     return (
       <div className="space-y-3 max-w-4xl mx-auto">
+        <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg w-fit mb-6">
+            <button onClick={() => setStatusFilter('open')} className={`px-4 py-1 rounded-md text-xs font-bold transition-all ${statusFilter === 'open' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Offen</button>
+            <button onClick={() => setStatusFilter('completed')} className={`px-4 py-1 rounded-md text-xs font-bold transition-all ${statusFilter === 'completed' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Erledigt</button>
+            <button onClick={() => setStatusFilter('all')} className={`px-4 py-1 rounded-md text-xs font-bold transition-all ${statusFilter === 'all' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Alle</button>
+        </div>
+
         {focusedTaskId && (
           <div className="flex justify-between items-center bg-indigo-50 border border-indigo-100 px-4 py-2 rounded-lg mb-4 animate-in fade-in slide-in-from-top-2">
             <span className="text-sm font-medium text-indigo-700">Filter: Einzelergebnis</span>
@@ -159,7 +175,8 @@ export const Tasks: React.FC<TasksProps> = ({
                 <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${
                   task.type === 'post' ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-600'
                 }`}>{task.type}</span>
-                {task.recurrence && task.recurrence !== 'none' && <Repeat className="w-3 h-3 text-indigo-500" />}
+                {/* Fix: Wrapped Repeat icon in span to correctly apply title attribute and fix type error */}
+                {task.recurrence && task.recurrence !== 'none' && <span title={`Wiederholung: ${task.recurrence}`}><Repeat className="w-3 h-3 text-indigo-500" /></span>}
               </div>
               <div className="flex items-center gap-3 mt-1 text-xs text-slate-500">
                 <span className="flex items-center gap-1"><CalendarIcon className="w-3 h-3"/> {new Date(task.dueDate).toLocaleDateString('de-DE')}</span>
@@ -173,7 +190,7 @@ export const Tasks: React.FC<TasksProps> = ({
           </div>
         ))}
         {displayTasks.length === 0 && (
-          <div className="py-20 text-center text-slate-400 italic">Keine Aufgaben gefunden.</div>
+          <div className="py-20 text-center text-slate-400 italic">Keine Aufgaben in dieser Ansicht.</div>
         )}
       </div>
     );

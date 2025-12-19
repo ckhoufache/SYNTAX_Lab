@@ -1,4 +1,5 @@
-import { Bell, Search, Sparkles, CheckCircle2, Phone, Mail, Calendar, ArrowUpRight, Plus, X, Trash2, Circle, User, KanbanSquare, ClipboardList, AlertCircle, Clock, Check, BarChart3, TrendingUp, DollarSign, HelpCircle, Target, Zap, Heart, PieChart as PieChartIcon, Landmark } from 'lucide-react';
+
+import { Bell, Search, Sparkles, CheckCircle2, Phone, Mail, Calendar, ArrowUpRight, Plus, X, Trash2, Circle, User, KanbanSquare, ClipboardList, AlertCircle, Clock, Check, BarChart3, TrendingUp, DollarSign, HelpCircle, Target, Zap, Heart, PieChart as PieChartIcon, Landmark, Key } from 'lucide-react';
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, ReferenceLine
@@ -43,19 +44,13 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
 }) => {
   const [briefing, setBriefing] = useState<string>('');
   const [loadingBriefing, setLoadingBriefing] = useState<boolean>(false);
+  const [keyError, setKeyError] = useState<boolean>(false);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [taskModalMode, setTaskModalMode] = useState<'view' | 'add'>('view');
-  const [chartType, setChartType] = useState<'area' | 'bar'>('area');
   const [searchTerm, setSearchTerm] = useState('');
-  const [searchResults, setSearchResults] = useState<{ contacts: Contact[]; deals: Deal[]; tasks: Task[]; }>({ contacts: [], deals: [], tasks: [] });
   const [showSearchResults, setShowSearchResults] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const [showNotifications, setShowNotifications] = useState(false);
-  const notificationRef = useRef<HTMLDivElement>(null);
-  const [dismissedNotificationIds, setDismissedNotificationIds] = useState<string[]>(() => {
-      const stored = localStorage.getItem('dismissed_notifications');
-      return stored ? JSON.parse(stored) : [];
-  });
 
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskType, setNewTaskType] = useState<Task['type']>('todo');
@@ -69,24 +64,24 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
     const currentMonth = today.getMonth();
     const currentYear = today.getFullYear();
 
-    // 1. Akquise KPIs
-    const newLeadsThisMonth = contacts.filter(c => {
-        if (c.type !== 'lead' || !c.createdAt) return false;
+    const normalizedLeads = contacts.filter(c => (c.type || '').toLowerCase() === 'lead');
+    const totalLeadsCount = normalizedLeads.length;
+
+    const newLeadsThisMonth = normalizedLeads.filter(c => {
+        if (!c.createdAt) return false;
         const created = new Date(c.createdAt);
         return created.getMonth() === currentMonth && created.getFullYear() === currentYear;
     }).length;
 
-    const totalLeads = contacts.filter(c => c.type === 'lead').length;
-    const totalCustomers = contacts.filter(c => c.type === 'customer').length;
-    const conversionRate = totalLeads > 0 ? (totalCustomers / (totalLeads + totalCustomers)) * 100 : 0;
+    const totalCustomers = contacts.filter(c => (c.type || '').toLowerCase() === 'customer').length;
+    const totalPotential = totalLeadsCount + totalCustomers;
+    const conversionRate = totalPotential > 0 ? (totalCustomers / totalPotential) * 100 : 0;
 
     const marketingSalesExpenses = expenses
         .filter(e => e.category === 'marketing' || e.category === 'travel')
         .reduce((sum, e) => sum + e.amount, 0);
-    const newCustomersTotal = contacts.filter(c => c.type === 'customer').length;
-    const cac = newCustomersTotal > 0 ? marketingSalesExpenses / newCustomersTotal : 0;
+    const cac = totalCustomers > 0 ? marketingSalesExpenses / totalCustomers : 0;
 
-    // 2. Operative KPIs
     const postsThisMonth = tasks.filter(t => {
         if (t.type !== 'post' || !t.isCompleted || !t.completedAt) return false;
         const comp = new Date(t.completedAt);
@@ -107,7 +102,6 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
         ? contactsWithNps.reduce((sum, c) => sum + (c.nps || 0), 0) / contactsWithNps.length 
         : 0;
 
-    // 3. Finanz KPIs (EBITDA, Margin)
     const incomeInvoices = invoices.filter(i => (i.type === 'customer' || !i.type) && i.isPaid);
     const totalRevenue = incomeInvoices.reduce((sum, i) => sum + i.amount, 0);
     const totalOperatingExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
@@ -115,11 +109,11 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
     
     const monthlyEbitda = totalRevenue - totalOperatingExpenses - commissionExpenses;
     
-    // Gross Margin: Umsatz - Direkte Kosten (Software + Projekt-Expenses)
     const directCosts = expenses.filter(e => e.category === 'software' || e.contactId).reduce((sum, e) => sum + e.amount, 0);
     const grossMargin = totalRevenue > 0 ? ((totalRevenue - directCosts) / totalRevenue) * 100 : 0;
 
     return {
+        totalLeads: totalLeadsCount,
         leadsMonth: newLeadsThisMonth,
         conversion: conversionRate,
         cac: cac,
@@ -131,11 +125,7 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
     };
   }, [contacts, tasks, expenses, invoices]);
 
-  // Restliche Memo-Berechnungen (Umsatz, Runway etc.) bleiben gleich...
   const customerInvoices = useMemo(() => invoices.filter(i => i.type === 'customer' || !i.type), [invoices]);
-  const totalRevenue = customerInvoices.reduce((acc, curr) => acc + curr.amount, 0);
-  const activeVolume = deals.reduce((acc, curr) => (curr.stage === DealStage.NEGOTIATION || curr.stage === DealStage.PROPOSAL) ? acc + curr.value : acc, 0);
-  const dueTasksCount = tasks.filter(t => !t.isCompleted).length;
   const upcomingTasks = tasks.filter(t => { if (t.isCompleted) return false; const taskDate = new Date(t.dueDate); const today = new Date(); taskDate.setHours(0,0,0,0); today.setHours(0,0,0,0); return taskDate.getTime() === today.getTime(); }).sort((a, b) => (a.priority === 'high' ? -1 : 1));
 
   const runwayData = useMemo(() => {
@@ -166,8 +156,39 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
     });
   }, [customerInvoices]);
 
-  /* Fix: Updated handleGenerateInsight to rely on process.env.API_KEY as per guidelines */
-  const handleGenerateInsight = async () => { if (!process.env.API_KEY) { setBriefing("KI-Funktion ist nicht konfiguriert (API_KEY fehlt)."); return; } setLoadingBriefing(true); const text = await generateDailyBriefing(tasks, deals); setBriefing(text); setLoadingBriefing(false); };
+  const handleSelectKey = async () => {
+      if ((window as any).aistudio) {
+          try {
+              await (window as any).aistudio.openSelectKey();
+              // Try again immediately after modal closes
+              handleGenerateInsight();
+          } catch (e) {
+              console.error("Failed to open key selector", e);
+          }
+      }
+  };
+
+  const handleGenerateInsight = async () => { 
+    setLoadingBriefing(true);
+    setKeyError(false);
+    try {
+        const text = await generateDailyBriefing(tasks, deals); 
+        setBriefing(text); 
+    } catch (e: any) {
+        console.error("Briefing Failed:", e.message);
+        if (e.message === 'API_KEY_MISSING' || e.message === 'API_KEY_INVALID') {
+            setKeyError(true);
+            setBriefing("Kein gültiger KI-Key gefunden oder Berechtigung fehlt (evtl. kein Paid Project).");
+            // Auto-trigger selection if invalid
+            if (e.message === 'API_KEY_INVALID') handleSelectKey();
+        } else {
+            setBriefing("KI-Bericht derzeit nicht verfügbar.");
+        }
+    } finally {
+        setLoadingBriefing(false); 
+    }
+  };
+
   const handleAddNewTask = (e: React.FormEvent) => { e.preventDefault(); if (!newTaskTitle) return; const newTask: Task = { id: crypto.randomUUID(), title: newTaskTitle, type: newTaskType, priority: newTaskPriority, dueDate: newTaskDate, isCompleted: false, createdAt: new Date().toISOString(), assignedToEmail: newTaskAssignedTo || undefined }; onAddTask(newTask); setNewTaskTitle(''); setNewTaskType('todo'); setNewTaskPriority('medium'); setNewTaskAssignedTo(''); if (taskModalMode === 'add') setIsTaskModalOpen(false); };
   const toggleTaskCompletion = (task: Task) => { onUpdateTask({ ...task, isCompleted: !task.isCompleted, completedAt: !task.isCompleted ? new Date().toISOString() : undefined }); };
 
@@ -191,7 +212,7 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
         <div className="flex items-center gap-4">
             <div className="relative" ref={searchRef}><Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" /><input type="text" placeholder="Suche..." value={searchTerm} onChange={(e) => { setSearchTerm(e.target.value); setShowSearchResults(true); }} className="pl-10 pr-4 py-2 rounded-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:ring-2 focus:ring-indigo-500 w-64"/></div>
             <button onClick={onNavigateToEmail} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"><Mail className="w-5 h-5 text-slate-600 dark:text-slate-400" /></button>
-            <button onClick={() => setShowNotifications(true)} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"><Bell className="w-5 h-5 text-slate-600 dark:text-slate-400" /></button>
+            <button onClick={() => {}} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"><Bell className="w-5 h-5 text-slate-600 dark:text-slate-400" /></button>
         </div>
       </header>
 
@@ -201,9 +222,20 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
             <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform"><Sparkles className="w-32 h-32" /></div>
             <div className="flex items-center justify-between mb-4 relative z-10">
                 <div className="flex items-center gap-2"><Sparkles className="w-5 h-5 text-yellow-300" /><h2 className="font-bold text-lg uppercase tracking-tight">KI-Lagebericht</h2></div>
-                <button onClick={handleGenerateInsight} disabled={loadingBriefing} className="bg-white/20 hover:bg-white/30 px-4 py-1.5 rounded-lg text-sm font-bold border border-white/30 backdrop-blur-md transition-all">{loadingBriefing ? 'Analysiere...' : 'Bericht aktualisieren'}</button>
+                <div className="flex gap-2">
+                    {keyError && (
+                        <button onClick={handleSelectKey} className="bg-amber-400 hover:bg-amber-500 text-indigo-900 px-4 py-1.5 rounded-lg text-sm font-bold flex items-center gap-2 border border-white/30 transition-all">
+                            <Key className="w-4 h-4" /> Key auswählen
+                        </button>
+                    )}
+                    <button onClick={handleGenerateInsight} disabled={loadingBriefing} className="bg-white/20 hover:bg-white/30 px-4 py-1.5 rounded-lg text-sm font-bold border border-white/30 backdrop-blur-md transition-all">
+                        {loadingBriefing ? 'Analysiere...' : 'Bericht aktualisieren'}
+                    </button>
+                </div>
             </div>
-            <p className="text-indigo-50 max-w-3xl leading-relaxed font-medium relative z-10 text-sm">{briefing || "Lassen Sie die KI Ihre aktuellen Aufgaben, Pipeline-Daten und KPIs analysieren, um strategische Empfehlungen zu erhalten."}</p>
+            <p className="text-indigo-50 max-w-3xl leading-relaxed font-medium relative z-10 text-sm">
+                {briefing || "Lassen Sie die KI Ihre aktuellen Aufgaben, Pipeline-Daten und KPIs analysieren, um strategische Empfehlungen zu erhalten."}
+            </p>
         </div>
 
         {/* --- STRATEGIC KPI REPORTING SECTION --- */}
@@ -215,24 +247,21 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
                 <span className="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full uppercase">Live Analyse</span>
             </div>
             <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-8">
-                {/* Column 1: Akquise */}
                 <div className="space-y-4">
                     <h4 className="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-2 mb-2"><Target className="w-3 h-3 text-red-500"/> Akquise & Sales</h4>
-                    <KPIBox title="Leads / Monat" value={kpis.leadsMonth} sub="Neu im aktuellen Monat" icon={User} color="bg-blue-500" />
+                    <KPIBox title="Gesamt-Leads" value={kpis.totalLeads} sub={`Neu diesen Monat: ${kpis.leadsMonth}`} icon={User} color="bg-blue-500" />
                     <KPIBox title="Conversion Lead-Kunde" value={`${kpis.conversion.toFixed(1)}%`} sub="Historische Rate" icon={TrendingUp} color="bg-emerald-500" />
                     <KPIBox title="CAC (Acquisition Cost)" value={`${kpis.cac.toFixed(2)} €`} sub="Marketing / Neukunde" icon={DollarSign} color="bg-amber-500" />
                 </div>
-                {/* Column 2: Operations */}
                 <div className="space-y-4">
                     <h4 className="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-2 mb-2"><Zap className="w-3 h-3 text-yellow-500"/> Operative Exzellenz</h4>
                     <KPIBox title="Posts / Monat" value={kpis.postsMonth} sub="Abgeschlossene Beiträge" icon={CheckCircle2} color="bg-indigo-500" />
                     <KPIBox title="Ø Durchlaufzeit" value={`${kpis.cycleTime.toFixed(1)}h`} sub="Audio bis Fertigstellung" icon={Clock} color="bg-purple-500" />
                     <KPIBox title="Kundenzufriedenheit" value={`${kpis.nps.toFixed(1)} / 10`} sub="NPS (Net Promoter Score)" icon={Heart} color="bg-pink-500" />
                 </div>
-                {/* Column 3: Finance */}
                 <div className="space-y-4">
                     <h4 className="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-2 mb-2"><DollarSign className="w-3 h-3 text-green-500"/> Financial Health</h4>
-                    <KPIBox title="Monats-EBITDA" value={`${kpis.ebitda.toLocaleString('de-DE')} €`} sub="Umsatz abzgl. aller Kosten" icon={Landmark} color="bg-green-500" />
+                    <KPIBox title="Monats-EBITDA" value={`${kpis.ebitda.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`} sub="Umsatz abzgl. aller Kosten" icon={Landmark} color="bg-green-500" />
                     <KPIBox title="Gross Margin" value={`${kpis.grossMargin.toFixed(1)}%`} sub="Deckungsbeitrag (Rohertrag)" icon={TrendingUp} color="bg-cyan-500" />
                     <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-xl border border-indigo-100 dark:border-indigo-800">
                         <p className="text-[10px] font-bold uppercase text-indigo-400 tracking-wider">Cash Runway</p>
@@ -247,7 +276,6 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
             </div>
         </div>
 
-        {/* Existing Charts Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
                 <div className="flex justify-between items-center mb-6"><h3 className="font-bold flex items-center gap-2 dark:text-white"><TrendingUp className="w-5 h-5 text-indigo-600" /> Umsatzentwicklung</h3></div>
@@ -268,7 +296,6 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
         </div>
       </main>
 
-      {/* Task Modal Erweiterung */}
       {isTaskModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
             <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden flex flex-col">

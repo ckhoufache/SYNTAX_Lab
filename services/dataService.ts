@@ -156,13 +156,11 @@ export const DEFAULT_PDF_TEMPLATE = `<!DOCTYPE html>
 </html>`;
 
 export const compileInvoiceTemplate = (invoice: Invoice, config: InvoiceConfig, contact?: Contact): string => {
-    let html = DEFAULT_PDF_TEMPLATE; 
+    // FIX: Use custom template from config if available, otherwise fallback to default
+    let html = config.pdfTemplate || DEFAULT_PDF_TEMPLATE; 
     
     // 1. Determine Logic Mode
     const isCommission = invoice.type === 'commission';
-    
-    // Wenn 'commission', gelten Regeln für Vertriebler (hängt von deren Status ab)
-    // Wenn 'customer', gelten Regeln des Systems (InvoiceConfig)
     
     let taxRate = 0;
     let taxAmount = 0;
@@ -170,48 +168,26 @@ export const compileInvoiceTemplate = (invoice: Invoice, config: InvoiceConfig, 
     let taxRows = '';
     let taxNote = '';
     
-    // LOGIC FOR CUSTOMER INVOICE
     if (!isCommission) {
-        // Meine Einstellung prüfen
         const isSmallBusiness = config.taxRule === 'small_business';
-        
         if (isSmallBusiness) {
-            // Kleinunternehmer: Keine MwSt.
-            taxRate = 0;
-            taxAmount = 0;
-            total = invoice.amount;
-            // Keine Netto/Steuer Zeilen, nur Gesamt
-            taxRows = ``; 
+            taxRate = 0; taxAmount = 0; total = invoice.amount; taxRows = ``; 
             taxNote = "Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.";
         } else {
-            // Regelbesteuert: 19%
-            taxRate = 0.19;
-            taxAmount = invoice.amount * taxRate;
-            total = invoice.amount + taxAmount;
-            
+            taxRate = 0.19; taxAmount = invoice.amount * taxRate; total = invoice.amount + taxAmount;
             taxRows = `
                 <tr><td class="label">Netto</td><td>${invoice.amount.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</td></tr>
                 <tr><td class="label">USt. (19%)</td><td>${taxAmount.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</td></tr>
             `;
-            // Standard note (e.g. delivery date)
             taxNote = "Leistungsdatum entspricht Rechnungsdatum, sofern nicht anders angegeben.";
         }
-    } 
-    // LOGIC FOR COMMISSION (CREDIT NOTE)
-    else {
-        // Hängt vom Empfänger (Vertriebler) ab
+    } else {
         const recipientIsSmallBusiness = contact?.taxStatus === 'small_business';
-        
         if (recipientIsSmallBusiness) {
-            taxRate = 0;
-            taxAmount = 0;
-            total = invoice.amount;
-            taxRows = ``;
+            taxRate = 0; taxAmount = 0; total = invoice.amount; taxRows = ``;
             taxNote = "Die Gutschrift erfolgt ohne Umsatzsteuer gemäß § 19 UStG (Kleinunternehmer).";
         } else {
-            taxRate = 0.19;
-            taxAmount = invoice.amount * taxRate;
-            total = invoice.amount + taxAmount;
+            taxRate = 0.19; taxAmount = invoice.amount * taxRate; total = invoice.amount + taxAmount;
             taxRows = `
                 <tr><td class="label">Netto</td><td>${invoice.amount.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</td></tr>
                 <tr><td class="label">USt. (19%)</td><td>${taxAmount.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</td></tr>
@@ -220,33 +196,21 @@ export const compileInvoiceTemplate = (invoice: Invoice, config: InvoiceConfig, 
         }
     }
 
-    // Logo Processing
     let logoHtml = `<div class="company-name-header">${config.companyName || 'Meine Firma'}</div>`;
     if (config.logoBase64) {
         logoHtml = `<img src="${config.logoBase64}" class="logo-img" alt="Logo" />`;
     }
 
-    // Sender Line (Small line above address window)
     const senderLine = `${config.companyName} • ${config.addressLine1} • ${config.addressLine2}`;
-
-    // Address & Contact Data
     const contactAddress = contact?.street || '';
     const contactCity = (contact?.zip && contact?.city) ? `${contact.zip} ${contact.city}` : '';
     const contactTaxLine = contact?.taxId ? `<span style="font-size:10px; color:#64748b;">Steuer-Nr: ${contact.taxId}</span>` : '';
-    // Customer ID (Mock using part of ID)
     const customerId = contact ? contact.id.substring(0, 6).toUpperCase() : '000000';
 
-    // Intro Text
     let introTitle = '';
     let introText = '';
     
     if (isCommission) {
-        // Monat aus Rechnungsdatum extrahieren, aber Text anpassen wenn Sammelrechnung
-        // Wenn Description "Sammelabrechnung" enthält, nutzen wir das
-        const dateObj = new Date(invoice.date);
-        const monthName = dateObj.toLocaleString('de-DE', { month: 'long' });
-        const year = dateObj.getFullYear();
-        
         introTitle = `Sehr geehrte(r) ${contact?.name || 'Partner'},`;
         introText = `gemäß unserem Vertriebsvertrag rechnen wir hiermit die Provisionen ab:`;
     } else {
@@ -254,7 +218,6 @@ export const compileInvoiceTemplate = (invoice: Invoice, config: InvoiceConfig, 
         introText = "vielen Dank für Ihren Auftrag. Wir stellen Ihnen folgende Leistungen in Rechnung:";
     }
 
-    // Payment Note
     let paymentNote = '';
     if (isCommission) {
         paymentNote = "Der Betrag wird innerhalb von 14 Tagen nach Zahlungseingang der Kunden auf Ihr hinterlegtes Konto überwiesen.";
@@ -305,23 +268,15 @@ export const replaceEmailPlaceholders = (text: string, contact: Contact, config?
    let res = text || '';
    const firstName = contact.name.split(' ')[0] || '';
    const lastName = contact.name.split(' ').slice(1).join(' ') || '';
-   
    res = res.replace(/{name}/g, contact.name);
    res = res.replace(/{firstName}/g, firstName);
    res = res.replace(/{lastName}/g, lastName);
    res = res.replace(/{company}/g, contact.company);
    res = res.replace(/{email}/g, contact.email);
-   
-   if (config) {
-       res = res.replace(/{myCompany}/g, config.companyName || '');
-   }
-   
+   if (config) res = res.replace(/{myCompany}/g, config.companyName || '');
    return res;
 };
 
-// ... (Rest of file unchanged) ...
-// (Including IDataService interface and class definitions)
-// Only compiled template changes needed here.
 const makeUrlSafeBase64 = (base64: string) => {
     return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 };
@@ -377,7 +332,6 @@ export interface IDataService {
     inviteUser(email: string, role: string): Promise<void>;
 
     processDueRetainers(): Promise<{ updatedContacts: Contact[], newInvoices: Invoice[], newActivities: Activity[] }>;
-    // NEU: Batch Provisionen
     runCommissionBatch(year: number, month: number): Promise<{ createdInvoices: Invoice[], updatedSourceInvoices: Invoice[] }>;
 
     checkAndInstallUpdate(url: string, statusCallback?: (status: string) => void, force?: boolean): Promise<boolean>;
@@ -385,11 +339,10 @@ export interface IDataService {
     generatePdf(htmlContent: string): Promise<string>;
     wipeAllData(): Promise<void>;
     
-    // IMAP / SMTP Bridge
     fetchEmails(config: any, limit?: number, onlyUnread?: boolean, boxName?: string): Promise<EmailMessage[]>;
     getEmailFolders(config: any): Promise<{name: string, path: string}[]>; 
-    createEmailFolder(config: any, folderName: string): Promise<boolean>; // NEU
-    deleteEmailFolder(config: any, folderPath: string): Promise<boolean>; // NEU
+    createEmailFolder(config: any, folderName: string): Promise<boolean>; 
+    deleteEmailFolder(config: any, folderPath: string): Promise<boolean>; 
     markEmailRead(config: any, uid: number, boxName: string): Promise<boolean>; 
     sendSmtpMail(config: any, to: string, subject: string, body: string): Promise<boolean>;
 }
@@ -460,22 +413,18 @@ class LocalDataService implements IDataService {
         }
     }
 
-    // ... (Google & Mail Methods omitted for brevity, logic unchanged) ...
     async connectGoogle(service: 'calendar' | 'mail', clientId?: string): Promise<boolean> {
-        // Implementation remains unchanged
         return new Promise((resolve) => resolve(false));
     }
     async disconnectGoogle(service: 'calendar' | 'mail'): Promise<boolean> { return false; }
     async getIntegrationStatus(service: 'calendar' | 'mail'): Promise<boolean> { return false; }
     async sendMail(to: string, subject: string, body: string, attachments?: EmailAttachment[]): Promise<boolean> { return false; }
     
-    // ... (Standard CRUD omitted for brevity, logic unchanged) ...
     async checkUserAccess(email: string): Promise<boolean> { return true; }
     async inviteUser(email: string, role: string): Promise<void> {
         alert("Benutzer-Einladungen sind nur im Firebase Cloud Modus notwendig/verfügbar.");
     }
 
-    // ... (Update logic omitted) ...
     async checkAndInstallUpdate(url: string, statusCallback?: (status: string) => void, force: boolean = false): Promise<boolean> { return false; }
     async getAppVersion(): Promise<string> { return '0.0.0'; }
 
@@ -522,50 +471,31 @@ class LocalDataService implements IDataService {
     async deleteEmailTemplate(id: string): Promise<void> { const l=await this.getEmailTemplates(); this.set('emailTemplates','emailTemplates',l.filter(x=>x.id!==id)); }
     async processDueRetainers(): Promise<any> { return {updatedContacts:[], newInvoices:[], newActivities:[]}; }
     
-    // --- IMPLEMENTATION OF BATCH RUN ---
     async runCommissionBatch(year: number, month: number): Promise<{ createdInvoices: Invoice[], updatedSourceInvoices: Invoice[] }> {
         const invoices = await this.getInvoices();
         const contacts = await this.getContacts();
-        
-        // 1. Define Range (Whole Month)
-        // month is 1-12. Date uses 0-11.
         const startDate = new Date(year, month - 1, 1);
-        const endDate = new Date(year, month, 0); // Last day of month
-        
-        // 2. Filter Eligible Invoices
-        // Must be customer invoice, paid, not yet processed, paid within range, AND have a sales rep
+        const endDate = new Date(year, month, 0); 
         const eligibleInvoices = invoices.filter(inv => {
             if (inv.type === 'commission') return false;
             if (!inv.isPaid) return false;
             if (inv.commissionProcessed) return false;
             if (!inv.salesRepId) return false;
-            if (!inv.paidDate) return false; // Safety check
-
+            if (!inv.paidDate) return false;
             const paidDate = new Date(inv.paidDate);
-            // Ignore time component for strict date comparison if needed, but Date compare works if range is strict
             return paidDate >= startDate && paidDate <= endDate;
         });
-
-        if (eligibleInvoices.length === 0) {
-            return { createdInvoices: [], updatedSourceInvoices: [] };
-        }
-
-        // 3. Group by Sales Rep
+        if (eligibleInvoices.length === 0) return { createdInvoices: [], updatedSourceInvoices: [] };
         const repGroups: Record<string, Invoice[]> = {};
         eligibleInvoices.forEach(inv => {
-            const repId = inv.salesRepId!; // Checked in filter
+            const repId = inv.salesRepId!; 
             if (!repGroups[repId]) repGroups[repId] = [];
             repGroups[repId].push(inv);
         });
-
         const newCommissionInvoices: Invoice[] = [];
         const updatedSources: Invoice[] = [];
-
-        // 4. Generate Commission Invoices
         const monthName = startDate.toLocaleString('de-DE', { month: 'long', year: 'numeric' });
         const existingCommissions = invoices.filter(i => i.type === 'commission');
-        
-        // Helper to generate next number locally (simplified)
         let nextNum = 1;
         if (existingCommissions.length > 0) {
              const maxNum = existingCommissions.reduce((max, inv) => {
@@ -575,16 +505,12 @@ class LocalDataService implements IDataService {
             }, 0);
             nextNum = maxNum + 1;
         }
-
         for (const [repId, sourceInvoices] of Object.entries(repGroups)) {
             const rep = contacts.find(c => c.id === repId);
             if (!rep) continue;
-
-            const commissionRate = 0.20; // 20%
+            const commissionRate = 0.20; 
             const totalRevenue = sourceInvoices.reduce((sum, inv) => sum + inv.amount, 0);
             const totalCommission = totalRevenue * commissionRate;
-
-            // Generate Details Text
             let descriptionHTML = `<strong>Provisionsabrechnung ${monthName}</strong><br><br>`;
             descriptionHTML += `Basis: ${sourceInvoices.length} bezahlte Kundenrechnungen<br>`;
             descriptionHTML += `<ul style="margin-top:5px; padding-left:15px; font-size:11px;">`;
@@ -592,7 +518,6 @@ class LocalDataService implements IDataService {
                 descriptionHTML += `<li>${inv.invoiceNumber} (${inv.contactName}): ${inv.amount.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})}€</li>`;
             });
             descriptionHTML += `</ul>`;
-
             const newInv: Invoice = {
                 id: crypto.randomUUID(),
                 type: 'commission',
@@ -600,24 +525,18 @@ class LocalDataService implements IDataService {
                 date: new Date().toISOString().split('T')[0],
                 contactId: rep.id,
                 contactName: rep.name,
-                description: descriptionHTML, // Rich HTML Description
+                description: descriptionHTML, 
                 amount: totalCommission,
                 isPaid: false,
                 salesRepId: rep.id
             };
-            
             newCommissionInvoices.push(newInv);
             nextNum++;
-
-            // Mark sources as processed
             sourceInvoices.forEach(inv => {
                 const updated = { ...inv, commissionProcessed: true };
                 updatedSources.push(updated);
             });
         }
-
-        // 5. Persist
-        // Save new commissions
         const allInvoices = await this.getInvoices();
         const combinedInvoices = [
             ...newCommissionInvoices, 
@@ -626,9 +545,7 @@ class LocalDataService implements IDataService {
                 return updated || curr;
             })
         ];
-        
         this.set('invoices', 'invoices', combinedInvoices);
-
         return { createdInvoices: newCommissionInvoices, updatedSourceInvoices: updatedSources };
     }
 
@@ -645,12 +562,10 @@ class LocalDataService implements IDataService {
     }
     async wipeAllData(): Promise<void> { localStorage.clear(); window.location.reload(); }
 
-    // --- IMAP / SMTP IMPLEMENTATION ---
     async fetchEmails(config: any, limit = 20, onlyUnread = false, boxName = 'INBOX'): Promise<EmailMessage[]> {
         if ((window as any).require) {
             return await (window as any).require('electron').ipcRenderer.invoke('email-imap-fetch', config, limit, onlyUnread, boxName);
         }
-        console.warn("E-Mail Fetching only works in Desktop App (Electron)");
         return [];
     }
 
@@ -658,7 +573,6 @@ class LocalDataService implements IDataService {
         if ((window as any).require) {
             return await (window as any).require('electron').ipcRenderer.invoke('email-imap-get-boxes', config);
         }
-        console.warn("E-Mail Folder Fetching only works in Desktop App (Electron)");
         return [];
     }
 
@@ -680,7 +594,6 @@ class LocalDataService implements IDataService {
         if ((window as any).require) {
             return await (window as any).require('electron').ipcRenderer.invoke('email-mark-read', config, uid, boxName);
         }
-        console.warn("E-Mail Marking only works in Desktop App (Electron)");
         return false;
     }
 
@@ -689,7 +602,6 @@ class LocalDataService implements IDataService {
             const result = await (window as any).require('electron').ipcRenderer.invoke('email-smtp-send', config, { to, subject, body });
             return result.success;
         }
-        console.warn("SMTP sending only works in Desktop App (Electron)");
         return false;
     }
 }

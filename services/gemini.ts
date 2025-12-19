@@ -1,16 +1,17 @@
+
 import { GoogleGenAI } from "@google/genai";
 import { Task, Deal } from '../types';
 
-/* Fix: Updated daily briefing generation to follow @google/genai guidelines */
 export const generateDailyBriefing = async (tasks: Task[], deals: Deal[]): Promise<string> => {
   // Obtain API key exclusively from process.env.API_KEY as per guidelines
   const apiKey = process.env.API_KEY;
   
   if (!apiKey) {
-    return "API Key fehlt. Bitte stellen Sie sicher, dass process.env.API_KEY konfiguriert ist.";
+    throw new Error("API_KEY_MISSING");
   }
 
   // Always use named parameter for apiKey during initialization
+  // We create a new instance right before the call to ensure the latest key from the dialog is used
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   const taskSummary = tasks
@@ -35,21 +36,24 @@ export const generateDailyBriefing = async (tasks: Task[], deals: Deal[]): Promi
   `;
 
   try {
-    // Select gemini-3-flash-preview for basic text tasks as per guidelines
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
     });
-    // Directly access .text property (not a method)
+    
     return response.text || "Konnte keine Zusammenfassung erstellen.";
   } catch (error: any) {
-    console.error("Gemini Error:", error);
+    console.error("Gemini API Error:", error);
     
-    // Spezifische Behandlung für Quota Exceeded (429)
-    if (error.message && (error.message.includes('429') || error.message.includes('RESOURCE_EXHAUSTED'))) {
-        return "Das KI-Nutzungslimit ist vorübergehend erreicht (Quota Exceeded). Bitte versuchen Sie es später erneut.";
+    // Check for specific key-related errors as per guidelines
+    if (error.message && error.message.includes("Requested entity was not found.")) {
+        throw new Error("API_KEY_INVALID");
     }
 
-    return "Fehler bei der Verbindung zum KI-Dienst.";
+    if (error.message && (error.message.includes('429') || error.message.includes('RESOURCE_EXHAUSTED'))) {
+        return "Das KI-Nutzungslimit ist erreicht. Bitte versuchen Sie es später erneut.";
+    }
+
+    return "Fehler bei der KI-Analyse. Bitte prüfen Sie Ihre Internetverbindung.";
   }
 };
