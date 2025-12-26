@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect } from 'react';
-import { Mail, Send, RefreshCw, Trash2, Reply, Search, AlertCircle, Plus, Inbox, Send as SendIcon, Archive, Trash, Ban, FileText, Folder, MoreHorizontal, Check, X } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Mail, Send, RefreshCw, Trash2, Reply, ShieldCheck, Plus, Inbox, Send as SendIcon, Archive, Trash, Ban, FileText, Folder, Check, X, ChevronRight, ChevronDown } from 'lucide-react';
 import { EmailMessage, BackendConfig, UserProfile } from '../types';
 import { IDataService } from '../services/dataService';
 
@@ -10,7 +10,6 @@ interface EmailClientProps {
     userProfile: UserProfile | null;
 }
 
-// Helper to determine icon based on folder name (path)
 const getFolderIcon = (path: string) => {
     const lower = path.toLowerCase();
     if (lower.includes('inbox') || lower === 'posteingang') return Inbox;
@@ -22,122 +21,39 @@ const getFolderIcon = (path: string) => {
     return Folder;
 };
 
-// Helper to clean display name (e.g. remove "INBOX." prefix for display)
-const getDisplayName = (name: string, path: string) => {
-    if (name === 'INBOX') return 'Posteingang';
-    return name;
-};
-
-// Check if folder is a system folder (protected from deletion)
-const isSystemFolder = (path: string) => {
-    const lower = path.toLowerCase();
-    return lower === 'inbox' || lower.includes('inbox') && !lower.includes('.') || lower.includes('trash') || lower.includes('sent') || lower.includes('draft') || lower.includes('junk') || lower.includes('spam');
-};
-
 export const EmailClient: React.FC<EmailClientProps> = ({ dataService, config, userProfile }) => {
     const [emails, setEmails] = useState<EmailMessage[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [selectedEmail, setSelectedEmail] = useState<EmailMessage | null>(null);
     const [currentFolder, setCurrentFolder] = useState('INBOX');
-    
-    // Dynamic Folders State
-    const [folders, setFolders] = useState<{name: string, path: string}[]>([{name: 'Posteingang', path: 'INBOX'}]);
+    const [folders, setFolders] = useState<{name: string, path: string, delimiter?: string}[]>([]);
+    const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['INBOX']));
     const [foldersLoading, setFoldersLoading] = useState(false);
-
     const [isComposeOpen, setIsComposeOpen] = useState(false);
     const [composeData, setComposeData] = useState({ to: '', subject: '', body: '' });
     const [isSending, setIsSending] = useState(false);
 
-    // Folder Creation State
-    const [isCreatingFolder, setIsCreatingFolder] = useState(false);
-    const [newFolderName, setNewFolderName] = useState('');
-
-    // Initial Load: Fetch Folders first, then Emails
     useEffect(() => {
         if (config.imapHost && config.imapUser) {
             fetchFolders();
         }
-    }, [config]);
+    }, [config.imapHost, config.imapUser]);
 
-    // Fetch Emails when folder changes
     useEffect(() => {
         if (config.imapHost && config.imapUser) {
             fetchEmails(currentFolder);
         }
-    }, [currentFolder, config]);
+    }, [currentFolder, config.imapHost, config.imapUser]);
 
     const fetchFolders = async () => {
+        if (!config.imapHost) return;
         setFoldersLoading(true);
         try {
-            const imapConfig = {
-                user: config.imapUser,
-                password: config.imapPassword,
-                host: config.imapHost,
-                port: config.imapPort,
-                tls: config.imapTls
-            };
+            const imapConfig = { user: config.imapUser, password: config.imapPassword, host: config.imapHost, port: config.imapPort, tls: config.imapTls };
             const folderList = await dataService.getEmailFolders(imapConfig);
-            // Ensure INBOX is first if possible, or just sort
-            const sortedFolders = folderList.sort((a, b) => {
-                if (a.path === 'INBOX') return -1;
-                if (b.path === 'INBOX') return 1;
-                return a.name.localeCompare(b.name);
-            });
-            setFolders(sortedFolders);
+            setFolders(folderList.sort((a, b) => a.path.toUpperCase() === 'INBOX' ? -1 : a.path.localeCompare(b.path)));
         } catch (e: any) {
             console.error("Folder Fetch Error", e);
-            // Fallback: keep default INBOX
-        } finally {
-            setFoldersLoading(false);
-        }
-    };
-
-    const handleCreateFolder = async () => {
-        if (!newFolderName.trim()) return;
-        setFoldersLoading(true);
-        try {
-            const imapConfig = {
-                user: config.imapUser,
-                password: config.imapPassword,
-                host: config.imapHost,
-                port: config.imapPort,
-                tls: config.imapTls
-            };
-            const success = await dataService.createEmailFolder(imapConfig, newFolderName.trim());
-            if (success) {
-                setNewFolderName('');
-                setIsCreatingFolder(false);
-                await fetchFolders(); // Refresh list
-            } else {
-                alert("Ordner konnte nicht erstellt werden.");
-            }
-        } catch (e: any) {
-            alert("Fehler: " + e.message);
-        } finally {
-            setFoldersLoading(false);
-        }
-    };
-
-    const handleDeleteFolder = async (path: string) => {
-        if (!confirm(`Ordner "${path}" und alle E-Mails darin wirklich löschen?`)) return;
-        setFoldersLoading(true);
-        try {
-            const imapConfig = {
-                user: config.imapUser,
-                password: config.imapPassword,
-                host: config.imapHost,
-                port: config.imapPort,
-                tls: config.imapTls
-            };
-            const success = await dataService.deleteEmailFolder(imapConfig, path);
-            if (success) {
-                if (currentFolder === path) setCurrentFolder('INBOX');
-                await fetchFolders();
-            } else {
-                alert("Ordner konnte nicht gelöscht werden.");
-            }
-        } catch (e: any) {
-            alert("Fehler: " + e.message);
         } finally {
             setFoldersLoading(false);
         }
@@ -145,24 +61,14 @@ export const EmailClient: React.FC<EmailClientProps> = ({ dataService, config, u
 
     const fetchEmails = async (boxName: string) => {
         if (!config.imapHost || !config.imapUser) return;
-        
         setIsLoading(true);
         setSelectedEmail(null); 
-        
         try {
-            const imapConfig = {
-                user: config.imapUser,
-                password: config.imapPassword,
-                host: config.imapHost,
-                port: config.imapPort,
-                tls: config.imapTls
-            };
-            
-            const msgs = await dataService.fetchEmails(imapConfig, 30, false, boxName);
+            const imapConfig = { user: config.imapUser, password: config.imapPassword, host: config.imapHost, port: config.imapPort, tls: config.imapTls };
+            const msgs = await dataService.fetchEmails(imapConfig, 40, false, boxName);
             setEmails(msgs);
         } catch (e: any) {
             console.error("Fetch Error", e);
-            alert(`Fehler beim Abrufen von '${boxName}': ${e.message}`);
         } finally {
             setIsLoading(false);
         }
@@ -170,261 +76,234 @@ export const EmailClient: React.FC<EmailClientProps> = ({ dataService, config, u
 
     const handleEmailSelect = async (email: EmailMessage) => {
         setSelectedEmail(email);
-        
         if (!email.isRead) {
             setEmails(prev => prev.map(e => e.id === email.id ? { ...e, isRead: true } : e));
-            setSelectedEmail(prev => prev ? { ...prev, isRead: true } : null);
-
             try {
-                const imapConfig = {
-                    user: config.imapUser,
-                    password: config.imapPassword,
-                    host: config.imapHost,
-                    port: config.imapPort,
-                    tls: config.imapTls
-                };
+                const imapConfig = { user: config.imapUser, password: config.imapPassword, host: config.imapHost, port: config.imapPort, tls: config.imapTls };
                 await dataService.markEmailRead(imapConfig, email.uid, currentFolder);
-            } catch (e) {
-                console.error("Failed to mark as read on server", e);
-            }
+            } catch (e) { console.error(e); }
         }
+    };
+
+    const handleDragStart = (e: React.DragEvent, email: EmailMessage) => {
+        e.dataTransfer.setData('emailUid', email.uid.toString());
+        e.dataTransfer.setData('fromBox', currentFolder);
+        e.dataTransfer.effectAllowed = 'move';
+    };
+
+    const handleDropOnFolder = async (e: React.DragEvent, toBox: string) => {
+        e.preventDefault();
+        const uid = parseInt(e.dataTransfer.getData('emailUid'));
+        const fromBox = e.dataTransfer.getData('fromBox');
+        
+        if (fromBox === toBox) return;
+
+        setIsLoading(true);
+        try {
+            const imapConfig = { user: config.imapUser, password: config.imapPassword, host: config.imapHost, port: config.imapPort, tls: config.imapTls };
+            await dataService.moveEmail(imapConfig, uid, fromBox, toBox);
+            setEmails(prev => prev.filter(email => email.uid !== uid));
+            if (selectedEmail?.uid === uid) setSelectedEmail(null);
+        } catch (err: any) {
+            alert("Verschieben fehlgeschlagen: " + err.message);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const toggleExpand = (path: string) => {
+        setExpandedFolders(prev => {
+            const next = new Set(prev);
+            if (next.has(path)) next.delete(path);
+            else next.add(path);
+            return next;
+        });
     };
 
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!config.smtpHost) {
-            alert("Bitte SMTP Einstellungen in den Settings konfigurieren.");
-            return;
-        }
-
         setIsSending(true);
         try {
-            // Determine Sender Name: Combine First and Last Name if available
-            const senderName = userProfile 
-                ? `${userProfile.firstName} ${userProfile.lastName}`.trim() 
-                : 'CRM User';
-
-            const smtpConfig = {
-                user: config.smtpUser || config.imapUser, 
-                password: config.smtpPassword || config.imapPassword,
-                host: config.smtpHost,
-                port: config.smtpPort,
-                tls: config.smtpTls,
-                senderName: senderName || 'CRM User' // Fallback
-            };
-            
+            const senderName = userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : 'SyntaxLab CRM';
+            const smtpConfig = { user: config.smtpUser || config.imapUser, password: config.smtpPassword || config.imapPassword, host: config.smtpHost, port: config.smtpPort, tls: config.smtpTls, senderName };
             const success = await dataService.sendSmtpMail(smtpConfig, composeData.to, composeData.subject, composeData.body);
-            if (success) {
-                alert("E-Mail gesendet!");
-                setIsComposeOpen(false);
-                setComposeData({ to: '', subject: '', body: '' });
-            }
-        } catch (e: any) {
-            alert("Senden fehlgeschlagen: " + e.message);
-        } finally {
-            setIsSending(false);
-        }
+            if (success) { setIsComposeOpen(false); setComposeData({ to: '', subject: '', body: '' }); alert("Gesendet!"); }
+        } catch (e: any) { alert("Fehler: " + e.message); } finally { setIsSending(false); }
+    };
+
+    // Ordner-Hierarchie berechnen
+    const folderTree = useMemo(() => {
+        const tree: any[] = [];
+        const folderMap: Record<string, any> = {};
+
+        folders.forEach(f => {
+            const parts = f.path.split(/[./]/);
+            let current = tree;
+            let currentPath = '';
+
+            parts.forEach((part, idx) => {
+                currentPath = currentPath ? `${currentPath}${f.delimiter || '/'}${part}` : part;
+                if (!folderMap[currentPath]) {
+                    const node = { 
+                        name: part, 
+                        path: currentPath, 
+                        children: [], 
+                        isBox: idx === parts.length - 1 
+                    };
+                    folderMap[currentPath] = node;
+                    current.push(node);
+                }
+                current = folderMap[currentPath].children;
+            });
+        });
+        return tree;
+    }, [folders]);
+
+    const renderFolder = (node: any) => {
+        const depth = node.path.split(/[./]/).length - 1;
+        const isExpanded = expandedFolders.has(node.path);
+        const Icon = getFolderIcon(node.path);
+        const isSelected = currentFolder === node.path;
+        const hasChildren = node.children.length > 0;
+
+        return (
+            <div key={node.path} className="flex flex-col">
+                <div 
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => handleDropOnFolder(e, node.path)}
+                    style={{ paddingLeft: `${(depth * 14) + 8}px` }}
+                    className={`group flex items-center gap-2 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                        isSelected ? 'bg-indigo-50 text-indigo-600' : 'text-slate-500 hover:bg-slate-50'
+                    }`}
+                >
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); toggleExpand(node.path); }}
+                        className={`p-1 hover:bg-slate-200 rounded transition-opacity ${hasChildren ? 'opacity-100' : 'opacity-0'}`}
+                    >
+                        {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                    </button>
+                    <div className="flex items-center gap-2 flex-1 min-w-0" onClick={() => setCurrentFolder(node.path)}>
+                        <Icon className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate">{node.name === 'INBOX' ? 'Posteingang' : node.name}</span>
+                    </div>
+                </div>
+                {isExpanded && node.children.map((child: any) => renderFolder(child))}
+            </div>
+        );
     };
 
     if (!config.imapHost) {
         return (
-            <div className="flex flex-col items-center justify-center h-screen bg-slate-50 text-slate-500">
-                <AlertCircle className="w-12 h-12 mb-4 opacity-50"/>
-                <h2 className="text-xl font-bold mb-2">Postfach nicht konfiguriert</h2>
-                <p>Bitte geben Sie IMAP/SMTP Daten in den Einstellungen an.</p>
+            <div className="flex flex-col items-center justify-center h-full bg-slate-50 text-slate-500 p-10 text-center">
+                <ShieldCheck className="w-16 h-16 mb-6 text-indigo-200"/>
+                <h2 className="text-2xl font-black text-slate-800 mb-2">E-Mail Konfiguration</h2>
+                <p className="max-w-md mb-8">Hinterlegen Sie Ihre Strato-Daten in den Einstellungen.</p>
             </div>
         );
     }
 
     return (
         <div className="flex h-screen bg-slate-50 overflow-hidden">
-            
-            {/* 1. Sidebar (Dynamic Folders) - 200px */}
-            <div className="w-56 bg-slate-100 border-r border-slate-200 flex flex-col shrink-0">
-                <div className="p-4">
-                    <button onClick={() => setIsComposeOpen(true)} className="w-full bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 shadow-sm flex items-center justify-center gap-2 font-medium text-sm transition-colors">
-                        <Plus className="w-4 h-4" /> Neue E-Mail
+            <div className="w-64 bg-white border-r border-slate-200 flex flex-col shrink-0">
+                <div className="p-6">
+                    <button onClick={() => setIsComposeOpen(true)} className="w-full bg-indigo-600 text-white py-3.5 rounded-2xl hover:bg-indigo-700 shadow-xl shadow-indigo-100 flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest transition-all hover:-translate-y-1">
+                        <Plus className="w-4 h-4" /> Neue Mail
                     </button>
                 </div>
-                
-                <div className="flex-1 px-2 space-y-1 overflow-y-auto">
-                    {foldersLoading && <div className="text-xs text-center text-slate-400 py-4">Lade Ordner...</div>}
-                    
-                    {folders.map(folder => {
-                        const Icon = getFolderIcon(folder.path);
-                        const displayName = getDisplayName(folder.name, folder.path);
-                        // Simple indentation visual logic based on path delimiter if present (assuming '.' or '/')
-                        const depth = Math.max(0, folder.path.split(/[./]/).length - 1);
-                        
-                        return (
-                            <div key={folder.path} className="group relative">
-                                <button
-                                    onClick={() => setCurrentFolder(folder.path)}
-                                    style={{ paddingLeft: `${(depth * 12) + 12}px` }} // Indent nested folders
-                                    className={`w-full flex items-center gap-3 py-2 text-sm font-medium rounded-lg transition-colors text-left ${
-                                        currentFolder === folder.path 
-                                        ? 'bg-white text-indigo-600 shadow-sm' 
-                                        : 'text-slate-600 hover:bg-white/50 hover:text-slate-900'
-                                    }`}
-                                    title={folder.path}
-                                >
-                                    <Icon className={`w-4 h-4 shrink-0 ${currentFolder === folder.path ? 'text-indigo-600' : 'text-slate-400'}`} />
-                                    <span className="truncate flex-1">{displayName}</span>
-                                </button>
-                                {/* Delete Button for custom folders */}
-                                {!isSystemFolder(folder.path) && (
-                                    <button 
-                                        onClick={(e) => { e.stopPropagation(); handleDeleteFolder(folder.path); }}
-                                        className="absolute right-2 top-2 p-0.5 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                                        title="Ordner löschen"
-                                    >
-                                        <X className="w-3 h-3" />
-                                    </button>
-                                )}
-                            </div>
-                        );
-                    })}
-                </div>
-                
-                {/* Create Folder Section */}
-                <div className="p-4 border-t border-slate-200">
-                    {!isCreatingFolder ? (
-                        <div className="flex justify-between items-center">
-                            <button onClick={() => fetchFolders()} className="text-xs flex items-center gap-2 text-slate-500 hover:text-indigo-600">
-                                <RefreshCw className={`w-3 h-3 ${foldersLoading ? 'animate-spin' : ''}`}/> Ordner aktualisieren
-                            </button>
-                            <button onClick={() => setIsCreatingFolder(true)} className="p-1 text-slate-400 hover:text-indigo-600 rounded hover:bg-slate-200" title="Ordner erstellen">
-                                <Plus className="w-4 h-4"/>
-                            </button>
-                        </div>
+                <div className="flex-1 px-3 space-y-0.5 overflow-y-auto custom-scrollbar">
+                    {foldersLoading ? (
+                        <div className="py-10 text-center text-[10px] font-black uppercase text-slate-300 animate-pulse">Synchronisiere...</div>
                     ) : (
-                        <div className="bg-white p-2 rounded-lg border border-slate-300 shadow-sm animate-in slide-in-from-bottom-2">
-                            <input 
-                                autoFocus
-                                value={newFolderName}
-                                onChange={(e) => setNewFolderName(e.target.value)}
-                                placeholder="Ordnername..."
-                                className="w-full text-xs p-1 mb-2 border-b border-slate-200 outline-none"
-                                onKeyDown={(e) => e.key === 'Enter' && handleCreateFolder()}
-                            />
-                            <div className="flex justify-end gap-2">
-                                <button onClick={() => setIsCreatingFolder(false)} className="p-1 hover:bg-slate-100 rounded text-slate-500"><X className="w-3 h-3"/></button>
-                                <button onClick={handleCreateFolder} className="p-1 bg-indigo-600 text-white rounded hover:bg-indigo-700"><Check className="w-3 h-3"/></button>
-                            </div>
-                        </div>
+                        folderTree.map(node => renderFolder(node))
                     )}
+                </div>
+                <div className="p-4 border-t border-slate-100">
+                    <button onClick={fetchFolders} className="w-full py-2 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-indigo-600 flex items-center justify-center gap-2 transition-colors">
+                        <RefreshCw className={`w-3 h-3 ${foldersLoading ? 'animate-spin' : ''}`}/> Aktualisieren
+                    </button>
                 </div>
             </div>
 
-            {/* 2. E-Mail List - 350px */}
-            <div className="w-80 bg-white border-r border-slate-200 flex flex-col shrink-0">
-                <div className="p-4 border-b border-slate-100 flex justify-between items-center">
-                    <h2 className="font-bold text-slate-800 truncate" title={currentFolder}>
-                        {folders.find(f => f.path === currentFolder)?.name || currentFolder}
-                    </h2>
-                    <button onClick={() => fetchEmails(currentFolder)} disabled={isLoading} className="p-1.5 hover:bg-slate-100 rounded-full text-slate-500">
-                        <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-                    </button>
+            <div className="w-96 bg-white border-r border-slate-100 flex flex-col shrink-0">
+                <div className="px-6 py-6 border-b border-slate-50 flex justify-between items-center bg-white/80 backdrop-blur-md sticky top-0 z-10">
+                    <h2 className="font-black text-slate-800 truncate text-sm uppercase tracking-widest">{currentFolder.split(/[./]/).pop()}</h2>
+                    <button onClick={() => fetchEmails(currentFolder)} disabled={isLoading} className="p-2 hover:bg-slate-50 rounded-xl text-slate-400"><RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-indigo-600' : ''}`} /></button>
                 </div>
-                
-                <div className="flex-1 overflow-y-auto">
-                    {emails.length === 0 && !isLoading && (
-                        <div className="p-8 text-center text-slate-400 text-xs">Ordner ist leer.</div>
-                    )}
+                <div className="flex-1 overflow-y-auto custom-scrollbar">
+                    {emails.length === 0 && !isLoading && <div className="p-12 text-center text-slate-300 italic text-xs font-bold uppercase tracking-widest">Keine Nachrichten</div>}
                     {emails.map(email => (
                         <div 
                             key={email.id} 
-                            onClick={() => handleEmailSelect(email)}
-                            className={`p-3 border-b border-slate-100 cursor-pointer hover:bg-slate-50 transition-colors relative ${selectedEmail?.id === email.id ? 'bg-indigo-50/50' : ''}`}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, email)}
+                            onClick={() => handleEmailSelect(email)} 
+                            className={`p-6 border-b border-slate-50 cursor-pointer hover:bg-slate-50 transition-all relative ${selectedEmail?.id === email.id ? 'bg-indigo-50/20 border-l-4 border-l-indigo-600' : ''}`}
                         >
-                            {!email.isRead && <div className="absolute left-1 top-4 w-1.5 h-1.5 bg-indigo-500 rounded-full"></div>}
-                            
-                            <div className={`flex justify-between mb-1 pl-2`}>
-                                <span className={`text-sm truncate max-w-[70%] ${!email.isRead ? 'font-bold text-slate-900' : 'text-slate-700'}`}>{email.from}</span>
-                                <span className="text-[10px] text-slate-400 whitespace-nowrap">{new Date(email.date).toLocaleDateString()}</span>
+                            {!email.isRead && <div className="absolute left-1.5 top-1/2 -translate-y-1/2 w-2 h-2 bg-indigo-500 rounded-full shadow-lg shadow-indigo-200"></div>}
+                            <div className="flex justify-between mb-1.5">
+                                <span className={`text-[11px] truncate max-w-[70%] ${!email.isRead ? 'font-black text-slate-900' : 'text-slate-500'}`}>{email.from}</span>
+                                <span className="text-[9px] text-slate-400 font-bold">{new Date(email.date).toLocaleDateString()}</span>
                             </div>
-                            <div className={`text-xs pl-2 truncate mb-1 ${!email.isRead ? 'font-semibold text-slate-800' : 'text-slate-600'}`}>{email.subject}</div>
-                            <div className="text-[10px] pl-2 text-slate-400 truncate">{email.bodyText.substring(0, 50)}...</div>
+                            <div className={`text-xs truncate mb-2 ${!email.isRead ? 'font-black text-slate-800' : 'text-slate-600'}`}>{email.subject}</div>
+                            <div className="text-[10px] text-slate-400 truncate line-clamp-1">{email.bodyText}</div>
                         </div>
                     ))}
                 </div>
             </div>
 
-            {/* 3. Detail View - Rest */}
-            <div className="flex-1 flex flex-col bg-slate-50 h-full overflow-hidden">
+            <div className="flex-1 flex flex-col bg-slate-50 overflow-hidden">
                 {selectedEmail ? (
                     <>
-                        <div className="bg-white border-b border-slate-200 p-6 shadow-sm shrink-0">
-                            <div className="flex justify-between items-start mb-4">
-                                <h1 className="text-xl font-bold text-slate-900 leading-tight">{selectedEmail.subject}</h1>
-                                <div className="text-xs text-slate-400">{new Date(selectedEmail.date).toLocaleString('de-DE')}</div>
+                        <div className="bg-white border-b border-slate-200 p-10 shrink-0">
+                            <div className="flex justify-between items-start mb-8">
+                                <h1 className="text-2xl font-black text-slate-900 leading-tight flex-1 pr-10">{selectedEmail.subject}</h1>
+                                <div className="text-[10px] font-black uppercase text-slate-400 tracking-widest bg-slate-100 px-4 py-1.5 rounded-full">{new Date(selectedEmail.date).toLocaleString()}</div>
                             </div>
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-700 font-bold">
-                                    {selectedEmail.from.charAt(0).toUpperCase()}
-                                </div>
+                            <div className="flex items-center gap-5">
+                                <div className="w-14 h-14 bg-indigo-600 rounded-[1.25rem] flex items-center justify-center text-white font-black text-xl shadow-2xl shadow-indigo-200">{selectedEmail.from.charAt(0).toUpperCase()}</div>
                                 <div>
-                                    <div className="text-sm font-bold text-slate-800">{selectedEmail.from}</div>
-                                    <div className="text-xs text-slate-500">An: {selectedEmail.to}</div>
+                                    <div className="text-sm font-black text-slate-800">{selectedEmail.from}</div>
+                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">An: {selectedEmail.to}</div>
                                 </div>
                             </div>
                         </div>
-                        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-                            <div className="bg-white rounded-xl border border-slate-200 p-8 shadow-sm min-h-[50%]">
+                        <div className="flex-1 overflow-y-auto p-10 custom-scrollbar">
+                            <div className="bg-white rounded-[2.5rem] border border-slate-200 p-12 shadow-sm min-h-full">
                                 {selectedEmail.bodyHtml ? (
-                                    <div dangerouslySetInnerHTML={{ __html: selectedEmail.bodyHtml }} className="prose max-w-none text-sm text-slate-800" />
+                                    <div dangerouslySetInnerHTML={{ __html: selectedEmail.bodyHtml }} className="prose max-w-none text-sm text-slate-800 leading-relaxed font-medium" />
                                 ) : (
-                                    <pre className="whitespace-pre-wrap font-sans text-sm text-slate-800">{selectedEmail.bodyText}</pre>
+                                    <pre className="whitespace-pre-wrap font-sans text-sm text-slate-800 leading-relaxed font-medium">{selectedEmail.bodyText}</pre>
                                 )}
                             </div>
                         </div>
-                        <div className="p-4 bg-white border-t border-slate-200 flex justify-end gap-3 shrink-0">
-                            <button onClick={() => { setIsComposeOpen(true); setComposeData({ to: selectedEmail.from, subject: `Re: ${selectedEmail.subject}`, body: `\n\n--- Ursprüngliche Nachricht ---\nVon: ${selectedEmail.from}\nGesendet: ${selectedEmail.date}\n\n${selectedEmail.bodyText}` }) }} className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-700 rounded-lg hover:bg-indigo-100 font-medium text-sm transition-colors">
+                        <div className="p-8 bg-white border-t border-slate-200 flex justify-end shrink-0">
+                            <button onClick={() => { setIsComposeOpen(true); setComposeData({ to: selectedEmail.from, subject: `Re: ${selectedEmail.subject}`, body: `\n\n--- Nachricht ---\nVon: ${selectedEmail.from}\n\n${selectedEmail.bodyText}` }); }} className="bg-indigo-600 text-white px-10 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-indigo-100 flex items-center gap-3 hover:-translate-y-1 transition-transform">
                                 <Reply className="w-4 h-4" /> Antworten
                             </button>
                         </div>
                     </>
                 ) : (
                     <div className="flex flex-col items-center justify-center h-full text-slate-400">
-                        <Mail className="w-16 h-16 mb-4 opacity-10" />
-                        <p>Wählen Sie eine E-Mail aus.</p>
+                        <Mail className="w-12 h-12 mb-4 opacity-20" />
+                        <p className="font-black uppercase tracking-[0.4em] text-[10px]">Keine E-Mail ausgewählt</p>
                     </div>
                 )}
             </div>
 
-            {/* Compose Modal */}
             {isComposeOpen && (
-                <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/50 backdrop-blur-sm p-0 sm:p-4">
-                    <div className="bg-white w-full max-w-2xl h-full sm:h-auto sm:rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-10">
-                        <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 bg-slate-50">
-                            <h3 className="font-bold text-slate-800">Neue Nachricht</h3>
-                            <button onClick={() => setIsComposeOpen(false)}><span className="text-slate-400 hover:text-slate-600">✕</span></button>
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-4">
+                    <div className="bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl flex flex-col overflow-hidden border border-white/20">
+                        <div className="flex justify-between items-center px-10 py-8 border-b">
+                            <h3 className="font-black text-slate-800 uppercase tracking-widest text-sm">Neue Nachricht</h3>
+                            <button onClick={() => setIsComposeOpen(false)} className="p-3 hover:bg-slate-100 rounded-full transition-colors"><X className="w-6 h-6 text-slate-400" /></button>
                         </div>
-                        <form onSubmit={handleSend} className="flex-1 flex flex-col p-6 space-y-4 overflow-y-auto">
-                            <input 
-                                className="w-full border-b border-slate-200 py-2 outline-none text-sm font-medium placeholder:text-slate-400"
-                                placeholder="An: empfaenger@beispiel.de"
-                                value={composeData.to}
-                                onChange={e => setComposeData({...composeData, to: e.target.value})}
-                                required
-                            />
-                            <input 
-                                className="w-full border-b border-slate-200 py-2 outline-none text-sm font-bold placeholder:text-slate-400"
-                                placeholder="Betreff"
-                                value={composeData.subject}
-                                onChange={e => setComposeData({...composeData, subject: e.target.value})}
-                                required
-                            />
-                            <textarea 
-                                className="flex-1 w-full resize-none outline-none text-sm text-slate-700 min-h-[300px]"
-                                placeholder="Ihre Nachricht..."
-                                value={composeData.body}
-                                onChange={e => setComposeData({...composeData, body: e.target.value})}
-                                required
-                            />
+                        <form onSubmit={handleSend} className="flex-1 flex flex-col p-10 space-y-8">
+                            <input className="w-full border-b-2 border-slate-100 py-3 outline-none text-sm font-black" placeholder="Empfänger" value={composeData.to} onChange={e => setComposeData({...composeData, to: e.target.value})} required />
+                            <input className="w-full border-b-2 border-slate-100 py-3 outline-none text-sm font-black" placeholder="Betreff" value={composeData.subject} onChange={e => setComposeData({...composeData, subject: e.target.value})} required />
+                            <textarea className="flex-1 w-full p-6 bg-slate-50 rounded-[2rem] resize-none outline-none text-sm" placeholder="Ihre Nachricht..." value={composeData.body} onChange={e => setComposeData({...composeData, body: e.target.value})} required />
                             <div className="flex justify-end pt-4">
-                                <button type="submit" disabled={isSending} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2 disabled:opacity-50">
-                                    {isSending ? 'Sendet...' : <><Send className="w-4 h-4"/> Senden</>}
+                                <button type="submit" disabled={isSending} className="bg-indigo-600 text-white px-12 py-5 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-4">
+                                    {isSending ? <RefreshCw className="w-5 h-5 animate-spin"/> : <SendIcon className="w-5 h-5"/>} Senden
                                 </button>
                             </div>
                         </form>

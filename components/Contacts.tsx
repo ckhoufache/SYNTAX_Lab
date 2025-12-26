@@ -127,17 +127,19 @@ export const Contacts: React.FC<ContactsProps> = ({
     e.preventDefault();
     const finalNps = formData.nps === undefined ? null : formData.nps;
     const finalGroup = formData.targetGroup === undefined ? null : formData.targetGroup;
+    // Standard-E-Mail setzen falls Feld leer
+    const finalEmail = formData.email?.trim() || 'no@email.de';
     
     if (editingContactId) {
       const original = contacts.find(c => c.id === editingContactId);
-      if (original) onUpdateContact({ ...original, ...formData as Contact, nps: finalNps, targetGroup: finalGroup as any });
+      if (original) onUpdateContact({ ...original, ...formData as Contact, email: finalEmail, nps: finalNps, targetGroup: finalGroup as any });
     } else {
       onAddContact({
         id: crypto.randomUUID(),
         name: formData.name || '',
         role: formData.role || 'Kontakt',
         company: formData.company || '',
-        email: formData.email || '',
+        email: finalEmail,
         type: formData.type || 'lead',
         createdAt: new Date().toISOString(),
         lastContact: new Date().toISOString().split('T')[0],
@@ -387,7 +389,7 @@ export const Contacts: React.FC<ContactsProps> = ({
 
               <div>
                 <label className="text-[10px] font-bold uppercase text-slate-500">E-Mail</label>
-                <input required type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
+                <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="no@email.de (Standard)" />
               </div>
 
               <div className="grid grid-cols-2 gap-4">

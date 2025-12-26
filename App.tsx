@@ -7,6 +7,7 @@ import { Pipeline } from './components/Pipeline';
 import { Tasks } from './components/Tasks';
 import { Finances } from './components/Finances';
 import { Settings } from './components/Settings';
+import { KPIAnalytics } from './components/KPIAnalytics'; // NEU
 import { LoginScreen } from './components/LoginScreen';
 import { EmailClient } from './components/EmailClient';
 import { DataServiceFactory, IDataService } from './services/dataService';
@@ -21,9 +22,7 @@ export const App = () => {
   const [view, setView] = useState<ViewState>('dashboard');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-
   const [updateReady, setUpdateReady] = useState(false);
   const [updateVersion, setUpdateVersion] = useState('');
 
@@ -56,105 +55,39 @@ export const App = () => {
           await dataService.init(); 
           if ((window as any).require) {
               const ipc = (window as any).require('electron').ipcRenderer;
-              ipc.invoke('check-for-update').catch((e: any) => console.log("Update check failed", e));
-              
-              // Listener für Update-Status-Events vom Main-Prozess
-              ipc.on('update-status', (event: any, data: any) => {
-                  console.log("Update-Event empfangen:", data.status);
-                  if (data.status === 'downloaded') {
-                      setUpdateReady(true);
-                      if (data.info && data.info.version) setUpdateVersion(data.info.version);
-                  }
-              });
+              ipc.invoke('check-for-update').catch((e: any) => console.log("Update failed", e));
+              ipc.on('update-status', (event: any, data: any) => { if (data.status === 'downloaded') { setUpdateReady(true); if (data.info?.version) setUpdateVersion(data.info.version); } });
           }
       };
       init();
   }, [dataService]);
 
-  const handleInstallUpdate = () => {
-      if ((window as any).require) {
-          const ipc = (window as any).require('electron').ipcRenderer;
-          ipc.invoke('quit-and-install');
-      }
-  };
-
-  const loadData = useCallback(async (isBackground = false) => {
-      if (!isBackground) setIsLoading(true);
+  const loadData = useCallback(async (background = false) => {
+      if (!background) setIsLoading(true);
       try {
           const [c, d, t, i, e, a, up, pp, ic, et, users] = await Promise.all([
-              dataService.getContacts(),
-              dataService.getDeals(),
-              dataService.getTasks(),
-              dataService.getInvoices(),
-              dataService.getExpenses(),
-              dataService.getActivities(),
-              dataService.getUserProfile(),
-              dataService.getProductPresets(),
-              dataService.getInvoiceConfig(),
-              dataService.getEmailTemplates(),
-              dataService.getAllUsers()
+              dataService.getContacts(), dataService.getDeals(), dataService.getTasks(),
+              dataService.getInvoices(), dataService.getExpenses(), dataService.getActivities(),
+              dataService.getUserProfile(), dataService.getProductPresets(), dataService.getInvoiceConfig(),
+              dataService.getEmailTemplates(), dataService.getAllUsers()
           ]);
           setContacts(c); setDeals(d); setTasks(t); setInvoices(i); setExpenses(e); setActivities(a);
           setProductPresets(pp); setInvoiceConfig(ic); setEmailTemplates(et); setTeamMembers(users);
           if(up) setUserProfile(up);
-      } catch (err: any) {
-          console.error("Load failed", err);
-          if (!isBackground) alert("Daten konnten nicht geladen werden.");
-      } finally {
-          if (!isBackground) setIsLoading(false);
-      }
+      } catch (err: any) { console.error(err); } finally { if (!background) setIsLoading(false); }
   }, [dataService]);
 
-  useEffect(() => {
-      if (isAuthenticated) loadData(true);
-  }, [view, isAuthenticated, loadData]);
+  useEffect(() => { if (isAuthenticated) loadData(true); }, [view, isAuthenticated, loadData]);
 
-  const handleLogin = async (profile: UserProfile) => {
-      setUserProfile(profile);
-      await dataService.saveUserProfile(profile); 
-      await loadData(false); 
-      setIsAuthenticated(true);
-  };
-  
-  const handleLogout = () => {
-      setIsAuthenticated(false);
-      setUserProfile(null);
-      window.location.reload(); 
-  };
+  const handleLogin = async (profile: UserProfile) => { setUserProfile(profile); await dataService.saveUserProfile(profile); await loadData(false); setIsAuthenticated(true); };
+  const handleLogout = () => { setIsAuthenticated(false); setUserProfile(null); window.location.reload(); };
+  const handleUpdateBackendConfig = (config: BackendConfig) => { setBackendConfig(config); localStorage.setItem('backend_config', JSON.stringify(config)); };
 
-  const handleUpdateBackendConfig = (config: BackendConfig) => {
-      setBackendConfig(config);
-      localStorage.setItem('backend_config', JSON.stringify(config));
-  };
-
-  const handleAddContact = async (c: Contact) => { 
-    await dataService.saveContact(c); 
-    setContacts(prev => [c, ...prev]); 
-    if (c.type === 'lead') {
-        const newDeal: Deal = { id: crypto.randomUUID(), title: `Deal: ${c.name}`, value: 0, stage: DealStage.LEAD, contactId: c.id, dueDate: new Date().toISOString().split('T')[0], stageEnteredDate: new Date().toISOString().split('T')[0] };
-        await handleAddDeal(newDeal);
-    }
-    const act: Activity = { id: crypto.randomUUID(), contactId: c.id, type: 'system_deal', content: 'Kontakt erstellt', date: new Date().toISOString().split('T')[0], timestamp: new Date().toISOString() }; 
-    await handleAddActivity(act); 
-  };
-
+  const handleAddContact = async (c: Contact) => { await dataService.saveContact(c); setContacts(prev => [c, ...prev]); };
   const handleUpdateContact = async (c: Contact) => { await dataService.updateContact(c); setContacts(prev => prev.map(x => x.id === c.id ? c : x)); };
-  const handleDeleteContact = async (id: string) => { await dataService.deleteContact(id); setContacts(prev => prev.filter(x => x.id !== id)); setDeals(prev => prev.filter(d => d.contactId !== id)); setTasks(prev => prev.filter(t => t.relatedEntityId !== id)); setActivities(prev => prev.filter(a => a.contactId !== id)); };
+  const handleDeleteContact = async (id: string) => { await dataService.deleteContact(id); setContacts(prev => prev.filter(x => x.id !== id)); };
   const handleAddDeal = async (d: Deal) => { await dataService.saveDeal(d); setDeals(prev => [d, ...prev]); };
-  const handleUpdateDeal = async (d: Deal) => { 
-    const originalDeal = deals.find(x => x.id === d.id);
-    await dataService.updateDeal(d); 
-    setDeals(prev => prev.map(x => x.id === d.id ? d : x)); 
-    if (d.stage === DealStage.WON && originalDeal?.stage !== DealStage.WON) {
-        const contact = contacts.find(c => c.id === d.contactId);
-        if (contact) {
-            if (contact.type !== 'customer') { handleUpdateContact({ ...contact, type: 'customer' }); }
-            const startDate = contact.retainerStartDate || new Date().toISOString().split('T')[0];
-            const newTask: Task = { id: crypto.randomUUID(), title: `Wöchentlicher Post: ${contact.name}`, type: 'post', priority: 'medium', dueDate: startDate, isCompleted: false, createdAt: new Date().toISOString(), recurrence: 'weekly', relatedEntityId: contact.id };
-            await handleAddTask(newTask);
-        }
-    }
-  };
+  const handleUpdateDeal = async (d: Deal) => { await dataService.updateDeal(d); setDeals(prev => prev.map(x => x.id === d.id ? d : x)); };
   const handleDeleteDeal = async (id: string) => { await dataService.deleteDeal(id); setDeals(prev => prev.filter(x => x.id !== id)); };
   const handleAddTask = async (t: Task) => { await dataService.saveTask(t); setTasks(prev => [t, ...prev]); };
   const handleUpdateTask = async (t: Task) => { await dataService.updateTask(t); setTasks(prev => prev.map(x => x.id === t.id ? t : x)); };
@@ -173,45 +106,22 @@ export const App = () => {
   const handleAddTemplate = async (t: EmailTemplate) => { await dataService.saveEmailTemplate(t); setEmailTemplates(prev => [t, ...prev]); };
   const handleUpdateTemplate = async (t: EmailTemplate) => { await dataService.updateEmailTemplate(t); setEmailTemplates(prev => prev.map(x => x.id === t.id ? t : x)); };
   const handleDeleteTemplate = async (id: string) => { await dataService.deleteEmailTemplate(id); setEmailTemplates(prev => prev.filter(x => x.id !== id)); };
-  const handleImportData = useCallback(async (data: BackupData) => { if(confirm("Dies überschreibt alle aktuellen Daten. Fortfahren?")) { setIsLoading(true); try { await dataService.restoreBackup(data); window.location.reload(); } catch (e: any) { alert("Fehler: " + e.message); setIsLoading(false); } } }, [dataService]);
+  const handleImportData = useCallback(async (data: BackupData) => { if(confirm("Überschreiben?")) { setIsLoading(true); try { await dataService.restoreBackup(data); window.location.reload(); } catch { setIsLoading(false); } } }, [dataService]);
   const handleRunRetainer = async () => { setIsLoading(true); const res = await dataService.processDueRetainers(); if(res.newInvoices.length > 0) { setInvoices(prev => [...res.newInvoices, ...prev]); setActivities(prev => [...res.newActivities, ...prev]); setContacts(prev => prev.map(c => res.updatedContacts.find(u => u.id === c.id) || c)); } setIsLoading(false); };
-
-  const navigateToContacts = (filter: 'all' | 'recent', focusId?: string) => { setView('contacts'); setContactFilter(filter); setFocusedContactId(focusId || null); };
-  const navigateToPipeline = (stages: DealStage[], focusId?: string) => { setView('pipeline'); setVisibleStages(stages.length ? stages : Object.values(DealStage)); setFocusedDealId(focusId || null); };
-  const navigateToTasks = (focusId?: string) => { setView('tasks'); setFocusedTaskId(focusId || null); };
 
   if (!isAuthenticated) return <LoginScreen onLogin={handleLogin} backendConfig={backendConfig} onUpdateConfig={handleUpdateBackendConfig} isLoading={isLoading} />;
 
   return (
     <div className="flex h-screen overflow-hidden font-sans bg-slate-50 relative">
         <Sidebar currentView={view} onChangeView={setView} userProfile={userProfile} onLogout={handleLogout} isCollapsed={isSidebarCollapsed} onToggle={() => setIsSidebarCollapsed(!isSidebarCollapsed)} />
-        
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
-            {/* Update Notification Banner */}
-            {updateReady && (
-                <div className="bg-indigo-600 text-white px-6 py-2.5 flex items-center justify-between animate-in slide-in-from-top duration-500 z-50">
-                    <div className="flex items-center gap-3">
-                        <ArrowUpCircle className="w-5 h-5 text-indigo-200 animate-bounce" />
-                        <span className="text-sm font-bold">Update verfügbar {updateVersion ? `(v${updateVersion})` : ''}</span>
-                        <span className="text-xs text-indigo-100 hidden sm:inline">Ein neues Update wurde heruntergeladen und ist bereit zur Installation.</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <button onClick={handleInstallUpdate} className="bg-white text-indigo-600 px-4 py-1 rounded-full text-xs font-bold hover:bg-indigo-50 transition-colors shadow-sm">
-                            Jetzt installieren & Neustarten
-                        </button>
-                        <button onClick={() => setUpdateReady(false)} className="p-1 hover:bg-indigo-500 rounded-full transition-colors">
-                            <X className="w-4 h-4" />
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {view === 'dashboard' && <Dashboard tasks={tasks} deals={deals} contacts={contacts} invoices={invoices} expenses={expenses} activities={activities} onAddTask={handleAddTask} onUpdateTask={handleUpdateTask} onDeleteTask={handleDeleteTask} onNavigateToContacts={navigateToContacts} onNavigateToPipeline={navigateToPipeline} onNavigateToTasks={navigateToTasks} onNavigateToFinances={() => setView('finances')} onNavigateToEmail={() => setView('email')} teamMembers={teamMembers} />}
+            {view === 'dashboard' && <Dashboard tasks={tasks} deals={deals} contacts={contacts} invoices={invoices} expenses={expenses} activities={activities} backendConfig={backendConfig} onNavigateToSettings={() => setView('settings')} onNavigateToKPI={() => setView('kpi')} />}
             {view === 'contacts' && invoiceConfig && <Contacts contacts={contacts} activities={activities} invoices={invoices} expenses={expenses} invoiceConfig={invoiceConfig} onAddContact={handleAddContact} onUpdateContact={handleUpdateContact} onDeleteContact={handleDeleteContact} onAddActivity={handleAddActivity} onDeleteActivity={handleDeleteActivity} initialFilter={contactFilter} onClearFilter={() => setContactFilter('all')} focusedId={focusedContactId} onClearFocus={() => setFocusedContactId(null)} emailTemplates={emailTemplates} onImportCSV={(csv) => dataService.importContactsFromCSV(csv)} onBulkDeleteContacts={(ids) => ids.forEach(id => handleDeleteContact(id))} />}
-            {view === 'pipeline' && <Pipeline deals={deals} contacts={contacts} activities={activities} tasks={tasks} invoices={invoices} invoiceConfig={invoiceConfig} emailTemplates={emailTemplates} onAddDeal={handleAddDeal} onUpdateDeal={handleUpdateDeal} onDeleteDeal={handleDeleteDeal} onUpdateContact={handleUpdateContact} visibleStages={visibleStages} setVisibleStages={setVisibleStages} productPresets={productPresets} onAddTask={handleAddTask} onAutoDeleteTask={handleDeleteTask} focusedDealId={focusedDealId} onClearFocus={() => setFocusedDealId(null)} onAddInvoice={handleAddInvoice} onAddActivity={handleAddActivity} onDeleteActivity={handleDeleteActivity} onNavigateToContacts={navigateToContacts} />}
+            {view === 'pipeline' && <Pipeline deals={deals} contacts={contacts} activities={activities} tasks={tasks} invoices={invoices} invoiceConfig={invoiceConfig} emailTemplates={emailTemplates} onAddDeal={handleAddDeal} onUpdateDeal={handleUpdateDeal} onDeleteDeal={handleDeleteDeal} onUpdateContact={handleUpdateContact} visibleStages={visibleStages} setVisibleStages={setVisibleStages} productPresets={productPresets} onAddTask={handleAddTask} onAutoDeleteTask={handleDeleteTask} focusedDealId={focusedDealId} onClearFocus={() => setFocusedDealId(null)} onAddInvoice={handleAddInvoice} onAddActivity={handleAddActivity} onDeleteActivity={handleDeleteActivity} onNavigateToContacts={(f, id) => {setView('contacts'); setContactFilter(f); setFocusedContactId(id||null);}} />}
             {view === 'tasks' && <Tasks tasks={tasks} onAddTask={handleAddTask} onUpdateTask={handleUpdateTask} onDeleteTask={handleDeleteTask} focusedTaskId={focusedTaskId} onClearFocus={() => setFocusedTaskId(null)} teamMembers={teamMembers} />}
             {view === 'email' && <EmailClient dataService={dataService} config={backendConfig} userProfile={userProfile} />}
             {view === 'finances' && invoiceConfig && <Finances invoices={invoices} contacts={contacts} expenses={expenses} invoiceConfig={invoiceConfig} onAddInvoice={handleAddInvoice} onUpdateInvoice={handleUpdateInvoice} onDeleteInvoice={handleDeleteInvoice} onAddExpense={handleAddExpense} onUpdateExpense={handleUpdateExpense} onDeleteExpense={handleDeleteExpense} onAddActivity={handleAddActivity} onRunRetainer={handleRunRetainer} />}
+            {view === 'kpi' && <KPIAnalytics invoices={invoices} contacts={contacts} expenses={expenses} deals={deals} />}
             {view === 'settings' && userProfile && invoiceConfig && <Settings userProfile={userProfile} onUpdateProfile={handleUpdateProfile} productPresets={productPresets} onUpdatePresets={handleUpdatePresets} contacts={contacts} deals={deals} tasks={tasks} invoices={invoices} expenses={expenses} activities={activities} onImportData={handleImportData} backendConfig={backendConfig} onUpdateBackendConfig={handleUpdateBackendConfig} dataService={dataService} invoiceConfig={invoiceConfig} onUpdateInvoiceConfig={handleUpdateInvoiceConfig} emailTemplates={emailTemplates} onAddTemplate={handleAddTemplate} onUpdateTemplate={handleUpdateTemplate} onDeleteTemplate={handleDeleteTemplate} />}
         </div>
     </div>

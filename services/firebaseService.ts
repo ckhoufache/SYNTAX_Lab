@@ -1,4 +1,3 @@
-
 import { initializeApp } from 'firebase/app';
 import { 
     getFirestore, collection, getDocs, doc, setDoc, deleteDoc, getDoc,
@@ -651,6 +650,14 @@ export class FirebaseDataService implements IDataService {
             return result.success;
         }
         console.warn("SMTP sending only works in Desktop App (Electron)");
+        return false;
+    }
+
+    // Fix: Added missing moveEmail implementation to satisfy IDataService
+    async moveEmail(config: any, uid: number, fromBox: string, toBox: string): Promise<boolean> {
+        if ((window as any).require) {
+            return await (window as any).require('electron').ipcRenderer.invoke('email-imap-move', config, uid, fromBox, toBox);
+        }
         return false;
     }
 }

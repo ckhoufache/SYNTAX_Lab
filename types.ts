@@ -1,5 +1,5 @@
 
-export type ViewState = 'dashboard' | 'contacts' | 'pipeline' | 'settings' | 'tasks' | 'finances' | 'email';
+export type ViewState = 'dashboard' | 'contacts' | 'pipeline' | 'settings' | 'tasks' | 'finances' | 'email' | 'kpi';
 export type Theme = 'light' | 'dark';
 
 export enum DealStage {
@@ -38,9 +38,9 @@ export interface BackendConfig {
   apiToken?: string;
   googleClientId?: string;
   apiKey?: string; 
+  geminiApiKey?: string;
   firebaseConfig?: FirebaseConfig; 
   
-  // Custom IMAP/SMTP Config
   imapHost?: string;
   imapPort?: number;
   imapUser?: string;
@@ -55,7 +55,7 @@ export interface BackendConfig {
 }
 
 export interface EmailMessage {
-    id: string; // Message-ID or Sequence Number
+    id: string; 
     uid: number;
     from: string;
     to: string;
@@ -70,9 +70,8 @@ export interface ProductPreset {
   id: string;
   title: string;
   value: number;
-  isSubscription?: boolean; // Veraltet, wir nutzen jetzt spezifischere Felder
-  isRetainer?: boolean;     // NEU: Kennzeichnet ob es ein Abo ist
-  retainerInterval?: 'monthly' | 'quarterly' | 'yearly'; // NEU: Intervall
+  isRetainer?: boolean;    
+  retainerInterval?: 'monthly' | 'quarterly' | 'yearly';
 }
 
 export interface UserProfile {
@@ -92,20 +91,19 @@ export interface Contact {
   email: string;
   avatar: string;
   lastContact: string;
-  createdAt?: string; // NEU
+  createdAt?: string;
   linkedin?: string;
   notes?: string;
   tags?: string[];
   type?: ContactType; 
-  targetGroup?: TargetGroup; // NEU: Zielgruppe A, B, C, D
-  nps?: number; // NEU: 0-10
+  targetGroup?: TargetGroup;
+  nps?: number;
   
-  // Address & Tax Data (New for Credit Notes)
   street?: string;
   zip?: string;
   city?: string;
-  taxId?: string; // Steuernummer des Vertrieblers
-  taxStatus?: 'standard' | 'small_business'; // Regelbesteuerung oder Kleinunternehmer
+  taxId?: string;
+  taxStatus?: 'standard' | 'small_business';
   
   salesRepId?: string; 
 
@@ -126,6 +124,7 @@ export interface Activity {
     date: string; 
     timestamp: string; 
     relatedId?: string; 
+    isRead?: boolean;
 }
 
 export interface Deal {
@@ -143,10 +142,10 @@ export interface Deal {
 export interface Task {
   id: string;
   title: string;
-  type: 'call' | 'email' | 'meeting' | 'todo' | 'post'; // NEU: post
+  type: 'call' | 'email' | 'meeting' | 'todo' | 'post';
   dueDate: string;
-  createdAt?: string; // NEU
-  completedAt?: string; // NEU
+  createdAt?: string;
+  completedAt?: string;
   isCompleted: boolean;
   relatedEntityId?: string;
   priority: 'low' | 'medium' | 'high';
@@ -176,13 +175,14 @@ export interface Invoice {
   salesRepId?: string;     
   salesRepName?: string;   
   commissionAmount?: number; 
-  commissionProcessed?: boolean; // Wenn true, wurde dieser Umsatz bereits verprovisioniert
+  commissionProcessed?: boolean; 
+  commissionRate?: number;
 }
 
 export interface Expense {
   id: string;
   title: string;
-  amount: number; // Dies ist immer der NETTO Betrag für die Gewinnrechnung
+  amount: number;
   date: string;
   category: 'office' | 'software' | 'travel' | 'marketing' | 'personnel' | 'other';
   notes?: string;
@@ -192,10 +192,9 @@ export interface Expense {
   contactName?: string; 
   interval?: 'one_time' | 'monthly' | 'quarterly' | 'half_yearly' | 'yearly';
   
-  // Tax Logic
-  taxRate?: number; // 0, 7, 19
-  taxMethod?: 'gross' | 'net'; // Was hat der User eingegeben?
-  originalInputAmount?: number; // Der Wert, den der User ins Feld getippt hat
+  taxRate?: number; 
+  taxMethod?: 'gross' | 'net';
+  originalInputAmount?: number;
 }
 
 export interface EmailAttachment {
@@ -243,13 +242,6 @@ export interface EmailTemplate {
     body: string;
 }
 
-export interface DashboardStats {
-  totalRevenue: number;
-  activeDeals: number;
-  newContacts: number;
-  conversionRate: number;
-}
-
 export interface BackupData {
   contacts: Contact[];
   deals: Deal[];
@@ -264,4 +256,5 @@ export interface BackupData {
   theme: Theme;
   timestamp: string;
   version: string;
+  backendConfig?: BackendConfig;
 }

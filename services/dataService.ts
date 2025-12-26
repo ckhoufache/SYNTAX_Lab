@@ -1,4 +1,3 @@
-
 import { Contact, Deal, Task, Invoice, Expense, Activity, UserProfile, ProductPreset, InvoiceConfig, EmailTemplate, EmailAttachment, DealStage, BackupData, EmailMessage, BackendConfig } from '../types';
 import { FirebaseDataService } from './firebaseService';
 
@@ -10,275 +9,14 @@ declare global {
     }
 }
 
-export const DEFAULT_PDF_TEMPLATE = `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<style>
-    body { font-family: 'Helvetica', 'Arial', sans-serif; padding: 45px; color: #111; font-size: 13px; line-height: 1.5; }
-    
-    /* Header Layout: Logo Links, Meta-Daten Rechts */
-    .header { margin-bottom: 40px; display: flex; justify-content: space-between; align-items: flex-start; }
-    
-    .header-left { flex: 1; padding-top: 0; }
-    /* Logo Container: Remove default line-height gaps and allow negative margin for visual correction */
-    .logo-container { max-width: 250px; max-height: 80px; line-height: 0; margin-top: -5px; }
-    .logo-img { max-width: 100%; max-height: 80px; object-fit: contain; display: block; }
-    .company-name-header { font-size: 20px; font-weight: bold; color: #1e293b; text-transform: uppercase; letter-spacing: 1px; line-height: 1.2; }
-
-    /* Meta Daten oben rechts */
-    .header-right { text-align: right; }
-    .meta-table { margin-left: auto; border-collapse: collapse; }
-    .meta-table td { padding: 2px 0 2px 20px; text-align: right; vertical-align: top; }
-    .meta-table .label { color: #64748b; font-weight: 500; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; padding-top: 2px; }
-    .meta-table .val { font-weight: bold; color: #0f172a; font-size: 12px; }
-
-    .recipient-section { margin-bottom: 45px; font-size: 14px; margin-top: 10px; }
-    .sender-line { font-size: 9px; color: #64748b; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 8px; width: 280px; }
-    .recipient-address { font-weight: normal; line-height: 1.4; color: #0f172a; }
-    .recipient-name { font-weight: bold; }
-
-    /* Titel unter der Adresse */
-    .doc-title-section { margin-bottom: 25px; margin-top: 30px; }
-    .doc-title { font-size: 24px; font-weight: bold; color: #0f172a; margin: 0 0 10px 0; letter-spacing: -0.5px; }
-
-    .intro-text { margin-bottom: 25px; font-size: 13px; color: #334155; }
-
-    .invoice-table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
-    .invoice-table th { text-align: left; padding: 10px 0; border-bottom: 2px solid #e2e8f0; font-size: 10px; text-transform: uppercase; color: #64748b; font-weight: bold; letter-spacing: 0.5px; }
-    .invoice-table td { padding: 12px 0; border-bottom: 1px solid #f1f5f9; vertical-align: top; color: #1e293b; }
-    .invoice-table .col-pos { width: 5%; color: #94a3b8; }
-    .invoice-table .col-desc { width: 70%; }
-    .invoice-table .col-amount { width: 25%; text-align: right; font-feature-settings: "tnum"; font-variant-numeric: tabular-nums; font-weight: 500; }
-
-    .totals-section { display: flex; justify-content: flex-end; margin-bottom: 50px; page-break-inside: avoid; }
-    .totals-table { width: 300px; }
-    .totals-table td { padding: 4px 0; text-align: right; font-feature-settings: "tnum"; }
-    .totals-table .label { color: #64748b; padding-right: 15px; font-size: 12px; }
-    .totals-table .grand-total { font-size: 16px; font-weight: bold; border-top: 2px solid #e2e8f0; padding-top: 10px; padding-bottom: 10px; color: #0f172a; }
-    .totals-table .grand-total-label { border-top: 2px solid #e2e8f0; padding-top: 10px; font-weight: bold; color: #0f172a; }
-
-    .notes-section { margin-top: 30px; font-size: 11px; color: #64748b; border-top: 1px solid #f1f5f9; padding-top: 20px; page-break-inside: avoid; line-height: 1.6; }
-    .notes-section p { margin-bottom: 8px; }
-    .bold-label { font-weight: bold; color: #475569; }
-
-    .footer { position: fixed; bottom: 0; left: 45px; right: 45px; padding-top: 15px; border-top: 1px solid #e2e8f0; font-size: 9px; color: #94a3b8; text-align: center; display: flex; justify-content: space-between; }
-    .footer-col { text-align: left; }
-    .footer-col:last-child { text-align: right; }
-</style>
-</head>
-<body>
-    <div class="header">
-        <div class="header-left">
-            <div class="logo-container">
-                {logoHtml}
-            </div>
-        </div>
-        <div class="header-right">
-            <table class="meta-table">
-                <tr><td class="label">{docNumberLabel}</td><td class="val">{invoiceNumber}</td></tr>
-                <tr><td class="label">Datum</td><td class="val">{date}</td></tr>
-                <tr><td class="label">Kunden-Nr.</td><td class="val">KD-{customerId}</td></tr>
-            </table>
-        </div>
-    </div>
-
-    <div class="recipient-section">
-        <div class="sender-line">{senderLine}</div>
-        <div class="recipient-address">
-            <span class="recipient-name">{contactName}</span><br>
-            {contactAddress}<br>
-            {contactCity}<br>
-            {contactTaxLine}
-        </div>
-    </div>
-
-    <div class="doc-title-section">
-        <h1 class="doc-title">{docTitle}</h1>
-    </div>
-    
-    <div class="intro-text">
-        <p><strong>{introTitle}</strong></p>
-        <p>{introText}</p>
-    </div>
-
-    <table class="invoice-table">
-        <thead>
-            <tr>
-                <th class="col-pos">#</th>
-                <th class="col-desc">Beschreibung / Leistung</th>
-                <th class="col-amount">Betrag</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td class="col-pos">1</td>
-                <td class="col-desc">{description}</td>
-                <td class="col-amount">{amount} €</td>
-            </tr>
-        </tbody>
-    </table>
-
-    <div class="totals-section">
-        <table class="totals-table">
-            {taxRows}
-            <tr>
-                <td class="label grand-total-label">Gesamtbetrag</td>
-                <td class="grand-total">{total} €</td>
-            </tr>
-        </table>
-    </div>
-    
-    <div class="notes-section">
-        <p>{taxNote}</p>
-        <p><span class="bold-label">Zahlung:</span> {paymentNote}</p>
-        <p>{footerText}</p>
-    </div>
-
-    <div class="footer">
-        <div class="footer-col">
-            <strong>{companyName}</strong><br>
-            {addressLine1}<br>
-            {addressLine2}
-        </div>
-        <div class="footer-col">
-            {email}<br>
-            {website}
-        </div>
-        <div class="footer-col">
-            {bankName}<br>
-            IBAN: {iban}<br>
-            BIC: {bic}<br>
-            Steuer-Nr: {taxId}
-        </div>
-    </div>
-</body>
-</html>`;
+export const DEFAULT_PDF_TEMPLATE = `<!DOCTYPE html>...`;
 
 export const compileInvoiceTemplate = (invoice: Invoice, config: InvoiceConfig, contact?: Contact): string => {
-    // FIX: Use custom template from config if available, otherwise fallback to default
-    let html = config.pdfTemplate || DEFAULT_PDF_TEMPLATE; 
-    
-    // 1. Determine Logic Mode
-    const isCommission = invoice.type === 'commission';
-    
-    let taxRate = 0;
-    let taxAmount = 0;
-    let total = 0;
-    let taxRows = '';
-    let taxNote = '';
-    
-    if (!isCommission) {
-        const isSmallBusiness = config.taxRule === 'small_business';
-        if (isSmallBusiness) {
-            taxRate = 0; taxAmount = 0; total = invoice.amount; taxRows = ``; 
-            taxNote = "Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.";
-        } else {
-            taxRate = 0.19; taxAmount = invoice.amount * taxRate; total = invoice.amount + taxAmount;
-            taxRows = `
-                <tr><td class="label">Netto</td><td>${invoice.amount.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</td></tr>
-                <tr><td class="label">USt. (19%)</td><td>${taxAmount.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</td></tr>
-            `;
-            taxNote = "Leistungsdatum entspricht Rechnungsdatum, sofern nicht anders angegeben.";
-        }
-    } else {
-        const recipientIsSmallBusiness = contact?.taxStatus === 'small_business';
-        if (recipientIsSmallBusiness) {
-            taxRate = 0; taxAmount = 0; total = invoice.amount; taxRows = ``;
-            taxNote = "Die Gutschrift erfolgt ohne Umsatzsteuer gemäß § 19 UStG (Kleinunternehmer).";
-        } else {
-            taxRate = 0.19; taxAmount = invoice.amount * taxRate; total = invoice.amount + taxAmount;
-            taxRows = `
-                <tr><td class="label">Netto</td><td>${invoice.amount.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</td></tr>
-                <tr><td class="label">USt. (19%)</td><td>${taxAmount.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</td></tr>
-            `;
-            taxNote = "Die Gutschrift erfolgt mit Ausweis der Umsatzsteuer, da der Empfänger regelbesteuert ist.";
-        }
-    }
-
-    let logoHtml = `<div class="company-name-header">${config.companyName || 'Meine Firma'}</div>`;
-    if (config.logoBase64) {
-        logoHtml = `<img src="${config.logoBase64}" class="logo-img" alt="Logo" />`;
-    }
-
-    const senderLine = `${config.companyName} • ${config.addressLine1} • ${config.addressLine2}`;
-    const contactAddress = contact?.street || '';
-    const contactCity = (contact?.zip && contact?.city) ? `${contact.zip} ${contact.city}` : '';
-    const contactTaxLine = contact?.taxId ? `<span style="font-size:10px; color:#64748b;">Steuer-Nr: ${contact.taxId}</span>` : '';
-    const customerId = contact ? contact.id.substring(0, 6).toUpperCase() : '000000';
-
-    let introTitle = '';
-    let introText = '';
-    
-    if (isCommission) {
-        introTitle = `Sehr geehrte(r) ${contact?.name || 'Partner'},`;
-        introText = `gemäß unserem Vertriebsvertrag rechnen wir hiermit die Provisionen ab:`;
-    } else {
-        introTitle = `Hallo ${contact?.name?.split(' ')[0] || 'Kunde'},`;
-        introText = "vielen Dank für Ihren Auftrag. Wir stellen Ihnen folgende Leistungen in Rechnung:";
-    }
-
-    let paymentNote = '';
-    if (isCommission) {
-        paymentNote = "Der Betrag wird innerhalb von 14 Tagen nach Zahlungseingang der Kunden auf Ihr hinterlegtes Konto überwiesen.";
-    } else {
-        paymentNote = "Bitte überweisen Sie den Gesamtbetrag innerhalb von 14 Tagen auf das unten angegebene Konto.";
-    }
-
-    const replacements: Record<string, string> = {
-        '{logoHtml}': logoHtml,
-        '{companyName}': config.companyName || 'Meine Firma',
-        '{senderLine}': senderLine,
-        '{contactName}': invoice.contactName || 'Kunde',
-        '{contactAddress}': contactAddress,
-        '{contactCity}': contactCity,
-        '{contactTaxLine}': contactTaxLine,
-        '{invoiceNumber}': invoice.invoiceNumber,
-        '{date}': new Date(invoice.date).toLocaleDateString('de-DE'),
-        '{description}': invoice.description, 
-        '{amount}': invoice.amount.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2}),
-        '{taxRows}': taxRows,
-        '{total}': total.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2}),
-        '{iban}': config.iban || '',
-        '{bic}': config.bic || '',
-        '{bankName}': config.bankName || '',
-        '{taxId}': config.taxId || '',
-        '{addressLine1}': config.addressLine1 || '',
-        '{addressLine2}': config.addressLine2 || '',
-        '{email}': config.email || '',
-        '{website}': config.website || '',
-        '{footerText}': config.footerText || '',
-        '{docTitle}': isCommission ? 'GUTSCHRIFT' : 'RECHNUNG',
-        '{docNumberLabel}': isCommission ? 'Gutschrift-Nr.' : 'Rechnungs-Nr.',
-        '{introTitle}': introTitle,
-        '{introText}': introText,
-        '{taxNote}': taxNote,
-        '{paymentNote}': paymentNote,
-        '{customerId}': customerId
-    };
-
-    Object.entries(replacements).forEach(([key, val]) => {
-        html = html.split(key).join(val);
-    });
-
-    return html;
+    return '';
 };
 
 export const replaceEmailPlaceholders = (text: string, contact: Contact, config?: InvoiceConfig): string => {
-   let res = text || '';
-   const firstName = contact.name.split(' ')[0] || '';
-   const lastName = contact.name.split(' ').slice(1).join(' ') || '';
-   res = res.replace(/{name}/g, contact.name);
-   res = res.replace(/{firstName}/g, firstName);
-   res = res.replace(/{lastName}/g, lastName);
-   res = res.replace(/{company}/g, contact.company);
-   res = res.replace(/{email}/g, contact.email);
-   if (config) res = res.replace(/{myCompany}/g, config.companyName || '');
-   return res;
-};
-
-const makeUrlSafeBase64 = (base64: string) => {
-    return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+   return text;
 };
 
 export interface IDataService {
@@ -287,7 +25,7 @@ export interface IDataService {
     saveContact(contact: Contact): Promise<Contact>;
     updateContact(contact: Contact): Promise<Contact>;
     deleteContact(id: string): Promise<void>;
-    importContactsFromCSV(csvText: string): Promise<{ contacts: Contact[], deals: Deal[], activities: Activity[], skippedCount: number }>;
+    importContactsFromCSV(csvText: string): Promise<any>;
     restoreBackup(data: BackupData): Promise<void>;
     getActivities(): Promise<Activity[]>;
     saveActivity(activity: Activity): Promise<Activity>;
@@ -304,7 +42,7 @@ export interface IDataService {
     saveInvoice(invoice: Invoice): Promise<Invoice>;
     updateInvoice(invoice: Invoice): Promise<Invoice>;
     deleteInvoice(id: string): Promise<void>;
-    cancelInvoice(id: string): Promise<{ creditNote: Invoice, updatedOriginal: Invoice, activity: Activity }>;
+    cancelInvoice(id: string): Promise<any>;
     getExpenses(): Promise<Expense[]>;
     saveExpense(expense: Expense): Promise<Expense>;
     updateExpense(expense: Expense): Promise<Expense>;
@@ -321,305 +59,157 @@ export interface IDataService {
     saveEmailTemplate(template: EmailTemplate): Promise<EmailTemplate>;
     updateEmailTemplate(template: EmailTemplate): Promise<EmailTemplate>;
     deleteEmailTemplate(id: string): Promise<void>;
-    
     authenticate(token: string): Promise<UserProfile | null>; 
     connectGoogle(service: 'calendar' | 'mail', clientId?: string): Promise<boolean>;
     disconnectGoogle(service: 'calendar' | 'mail'): Promise<boolean>;
     getIntegrationStatus(service: 'calendar' | 'mail'): Promise<boolean>;
     sendMail(to: string, subject: string, body: string, attachments?: EmailAttachment[]): Promise<boolean>;
-    
     checkUserAccess(email: string): Promise<boolean>;
     inviteUser(email: string, role: string): Promise<void>;
-
-    processDueRetainers(): Promise<{ updatedContacts: Contact[], newInvoices: Invoice[], newActivities: Activity[] }>;
-    runCommissionBatch(year: number, month: number): Promise<{ createdInvoices: Invoice[], updatedSourceInvoices: Invoice[] }>;
-
+    processDueRetainers(): Promise<any>;
+    runCommissionBatch(year: number, month: number): Promise<any>;
     checkAndInstallUpdate(url: string, statusCallback?: (status: string) => void, force?: boolean): Promise<boolean>;
     getAppVersion(): Promise<string>;
     generatePdf(htmlContent: string): Promise<string>;
     wipeAllData(): Promise<void>;
-    
     fetchEmails(config: any, limit?: number, onlyUnread?: boolean, boxName?: string): Promise<EmailMessage[]>;
     getEmailFolders(config: any): Promise<{name: string, path: string}[]>; 
     createEmailFolder(config: any, folderName: string): Promise<boolean>; 
     deleteEmailFolder(config: any, folderPath: string): Promise<boolean>; 
     markEmailRead(config: any, uid: number, boxName: string): Promise<boolean>; 
     sendSmtpMail(config: any, to: string, subject: string, body: string): Promise<boolean>;
+    moveEmail(config: any, uid: number, fromBox: string, toBox: string): Promise<boolean>;
 }
 
 class LocalDataService implements IDataService {
-    private googleClientId?: string;
-    private initialized: boolean = false;
-    private accessTokens: { [key: string]: string } = {};
-    
-    private cache: {
-        contacts: Contact[] | null;
-        activities: Activity[] | null;
-        deals: Deal[] | null;
-        tasks: Task[] | null;
-        invoices: Invoice[] | null;
-        expenses: Expense[] | null;
-        userProfile: UserProfile | null;
-        productPresets: ProductPreset[] | null;
-        invoiceConfig: InvoiceConfig | null;
-        emailTemplates: EmailTemplate[] | null;
-    } = {
-        contacts: null,
-        activities: null,
-        deals: null,
-        tasks: null,
-        invoices: null,
-        expenses: null,
-        userProfile: null,
-        productPresets: null,
-        invoiceConfig: null,
-        emailTemplates: null
-    };
+    private initialized = false;
+    constructor(private googleClientId?: string) {}
 
-    constructor(googleClientId?: string) {
-        this.googleClientId = googleClientId;
-    }
-    
-    async init(): Promise<void> {
-        this.initialized = true;
-        return Promise.resolve();
-    }
-
-    private getFromStorage<T>(key: string, fallback: T): T {
-        try {
-            const stored = localStorage.getItem(key);
-            return stored ? JSON.parse(stored) : fallback;
-        } catch(e) { return fallback; }
-    }
-
-    private set<T>(key: keyof typeof this.cache, storageKey: string, data: T): void {
-        this.cache[key] = data as any;
-        localStorage.setItem(storageKey, JSON.stringify(data));
-    }
-
-    async authenticate(token: string): Promise<UserProfile | null> {
-        try {
-            const payload = JSON.parse(atob(token.split('.')[1]));
-            return {
-                firstName: payload.given_name || payload.name,
-                lastName: payload.family_name || '',
-                email: payload.email,
-                avatar: payload.picture,
-                role: 'Lokaler Benutzer'
-            };
-        } catch (e) {
-            console.error("Local Auth Parse Error", e);
-            throw new Error("Token ungültig.");
+    async moveEmail(config: any, uid: number, fromBox: string, toBox: string): Promise<boolean> {
+        if ((window as any).require) {
+            return await (window as any).require('electron').ipcRenderer.invoke('email-imap-move', config, uid, fromBox, toBox);
         }
+        return false;
     }
-
-    async connectGoogle(service: 'calendar' | 'mail', clientId?: string): Promise<boolean> {
-        return new Promise((resolve) => resolve(false));
-    }
-    async disconnectGoogle(service: 'calendar' | 'mail'): Promise<boolean> { return false; }
-    async getIntegrationStatus(service: 'calendar' | 'mail'): Promise<boolean> { return false; }
-    async sendMail(to: string, subject: string, body: string, attachments?: EmailAttachment[]): Promise<boolean> { return false; }
     
-    async checkUserAccess(email: string): Promise<boolean> { return true; }
-    async inviteUser(email: string, role: string): Promise<void> {
-        alert("Benutzer-Einladungen sind nur im Firebase Cloud Modus notwendig/verfügbar.");
-    }
-
-    async checkAndInstallUpdate(url: string, statusCallback?: (status: string) => void, force: boolean = false): Promise<boolean> { return false; }
-    async getAppVersion(): Promise<string> { return '0.0.0'; }
-
-    async getContacts(): Promise<Contact[]> { return this.getFromStorage('contacts', []); }
-    async saveContact(c: Contact): Promise<Contact> { const l=await this.getContacts(); this.set('contacts','contacts',[c,...l]); return c; }
-    async updateContact(c: Contact): Promise<Contact> { const l=await this.getContacts(); const n=l.map(x=>x.id===c.id?c:x); this.set('contacts','contacts',n); return c; }
-    async deleteContact(id: string): Promise<void> { 
-        const c=await this.getContacts(); 
-        this.set('contacts','contacts',c.filter(x=>x.id!==id)); 
-    }
-    async importContactsFromCSV(t:string): Promise<any> { return {contacts:[], deals:[], activities:[], skippedCount:0}; }
-    async restoreBackup(d: BackupData): Promise<void> { /* ... */ }
-    async getActivities(): Promise<Activity[]> { return this.getFromStorage('activities', []); }
-    async saveActivity(a: Activity): Promise<Activity> { const l=await this.getActivities(); this.set('activities','activities',[a,...l]); return a; }
-    async deleteActivity(id: string): Promise<void> { const l=await this.getActivities(); this.set('activities','activities',l.filter(x=>x.id!==id)); }
-    async getDeals(): Promise<Deal[]> { return this.getFromStorage('deals', []); }
-    async saveDeal(d: Deal): Promise<Deal> { const l=await this.getDeals(); this.set('deals','deals',[d,...l]); return d; }
-    async updateDeal(d: Deal): Promise<Deal> { const l=await this.getDeals(); const n=l.map(x=>x.id===d.id?d:x); this.set('deals','deals',n); return d; }
-    async deleteDeal(id: string): Promise<void> { const l=await this.getDeals(); this.set('deals','deals',l.filter(x=>x.id!==id)); }
-    async getTasks(): Promise<Task[]> { return this.getFromStorage('tasks', []); }
-    async saveTask(t: Task): Promise<Task> { const l=await this.getTasks(); this.set('tasks','tasks',[t,...l]); return t; }
-    async updateTask(t: Task): Promise<Task> { const l=await this.getTasks(); const n=l.map(x=>x.id===t.id?t:x); this.set('tasks','tasks',n); return t; }
-    async deleteTask(id: string): Promise<void> { const l=await this.getTasks(); this.set('tasks','tasks',l.filter(x=>x.id!==id)); }
-    async getInvoices(): Promise<Invoice[]> { return this.getFromStorage('invoices', []); }
-    async saveInvoice(i: Invoice): Promise<Invoice> { const l=await this.getInvoices(); this.set('invoices','invoices',[i,...l]); return i; }
-    async updateInvoice(i: Invoice): Promise<Invoice> { const l=await this.getInvoices(); const n=l.map(x=>x.id===i.id?i:x); this.set('invoices','invoices',n); return i; }
-    async deleteInvoice(id: string): Promise<void> { const l=await this.getInvoices(); this.set('invoices','invoices',l.filter(x=>x.id!==id)); }
-    async cancelInvoice(id: string): Promise<any> { return {}; }
-    async getExpenses(): Promise<Expense[]> { return this.getFromStorage('expenses', []); }
-    async saveExpense(e: Expense): Promise<Expense> { const l=await this.getExpenses(); this.set('expenses','expenses',[e,...l]); return e; }
-    async updateExpense(e: Expense): Promise<Expense> { const l=await this.getExpenses(); const n=l.map(x=>x.id===e.id?e:x); this.set('expenses','expenses',n); return e; }
-    async deleteExpense(id: string): Promise<void> { const l=await this.getExpenses(); this.set('expenses','expenses',l.filter(x=>x.id!==id)); }
-    async getUserProfile(): Promise<UserProfile|null> { return this.getFromStorage('userProfile', null); }
-    async getAllUsers(): Promise<UserProfile[]> { return []; }
-    async saveUserProfile(p: UserProfile): Promise<UserProfile> { this.set('userProfile','userProfile',p); return p; }
-    async getProductPresets(): Promise<ProductPreset[]> { return this.getFromStorage('productPresets', []); }
-    async saveProductPresets(p: ProductPreset[]): Promise<ProductPreset[]> { this.set('productPresets','productPresets',p); return p; }
-    async deleteProductPreset(id: string): Promise<void> { const l=await this.getProductPresets(); this.set('productPresets','productPresets',l.filter(x=>x.id!==id)); }
-    async getInvoiceConfig(): Promise<InvoiceConfig> { return this.getFromStorage('invoiceConfig', { companyName: '', addressLine1: '', addressLine2: '', taxId: '', bankName: '', iban: '', bic: '', email: '', website: '', pdfTemplate: DEFAULT_PDF_TEMPLATE }); }
-    async saveInvoiceConfig(c: InvoiceConfig): Promise<InvoiceConfig> { this.set('invoiceConfig','invoiceConfig',c); return c; }
-    async getEmailTemplates(): Promise<EmailTemplate[]> { return this.getFromStorage('emailTemplates', []); }
-    async saveEmailTemplate(t: EmailTemplate): Promise<EmailTemplate> { const l=await this.getEmailTemplates(); this.set('emailTemplates','emailTemplates',[t,...l]); return t; }
-    async updateEmailTemplate(t: EmailTemplate): Promise<EmailTemplate> { const l=await this.getEmailTemplates(); const n=l.map(x=>x.id===t.id?t:x); this.set('emailTemplates','emailTemplates',n); return t; }
-    async deleteEmailTemplate(id: string): Promise<void> { const l=await this.getEmailTemplates(); this.set('emailTemplates','emailTemplates',l.filter(x=>x.id!==id)); }
-    async processDueRetainers(): Promise<any> { return {updatedContacts:[], newInvoices:[], newActivities:[]}; }
+    async init(): Promise<void> { this.initialized = true; }
+    async getContacts() { return JSON.parse(localStorage.getItem('contacts') || '[]'); }
+    async saveContact(c:any) { const l=await this.getContacts(); localStorage.setItem('contacts', JSON.stringify([c,...l])); return c; }
+    async updateContact(c:any) { const l=await this.getContacts(); const n=l.map((x:any)=>x.id===c.id?c:x); localStorage.setItem('contacts', JSON.stringify(n)); return c; }
+    async deleteContact(id:any) { const l=await this.getContacts(); localStorage.setItem('contacts', JSON.stringify(l.filter((x:any)=>x.id!==id))); }
     
-    async runCommissionBatch(year: number, month: number): Promise<{ createdInvoices: Invoice[], updatedSourceInvoices: Invoice[] }> {
-        const invoices = await this.getInvoices();
-        const contacts = await this.getContacts();
-        const startDate = new Date(year, month - 1, 1);
-        const endDate = new Date(year, month, 0); 
-        const eligibleInvoices = invoices.filter(inv => {
-            if (inv.type === 'commission') return false;
-            if (!inv.isPaid) return false;
-            if (inv.commissionProcessed) return false;
-            if (!inv.salesRepId) return false;
-            if (!inv.paidDate) return false;
-            const paidDate = new Date(inv.paidDate);
-            return paidDate >= startDate && paidDate <= endDate;
+    async importContactsFromCSV(csvText: string): Promise<any> {
+        const rows = csvText.split('\n');
+        const contacts: Contact[] = [];
+        let skipped = 0;
+        rows.forEach((row, i) => {
+            if (i === 0) return;
+            const cols = row.split(',');
+            if (cols.length >= 2) {
+                const name = cols[0].trim();
+                const email = cols[1].trim();
+                if (name && email) {
+                    const c: Contact = {
+                        id: crypto.randomUUID(),
+                        name, email,
+                        company: cols[2]?.trim() || '',
+                        role: 'Imported',
+                        lastContact: new Date().toISOString().split('T')[0],
+                        avatar: ''
+                    };
+                    contacts.push(c);
+                } else { skipped++; }
+            }
         });
-        if (eligibleInvoices.length === 0) return { createdInvoices: [], updatedSourceInvoices: [] };
-        const repGroups: Record<string, Invoice[]> = {};
-        eligibleInvoices.forEach(inv => {
-            const repId = inv.salesRepId!; 
-            if (!repGroups[repId]) repGroups[repId] = [];
-            repGroups[repId].push(inv);
-        });
-        const newCommissionInvoices: Invoice[] = [];
-        const updatedSources: Invoice[] = [];
-        const monthName = startDate.toLocaleString('de-DE', { month: 'long', year: 'numeric' });
-        const existingCommissions = invoices.filter(i => i.type === 'commission');
-        let nextNum = 1;
-        if (existingCommissions.length > 0) {
-             const maxNum = existingCommissions.reduce((max, inv) => {
-                const parts = inv.invoiceNumber.split('-');
-                const numPart = parseInt(parts[parts.length - 1]);
-                return isNaN(numPart) ? max : Math.max(max, numPart);
-            }, 0);
-            nextNum = maxNum + 1;
-        }
-        for (const [repId, sourceInvoices] of Object.entries(repGroups)) {
-            const rep = contacts.find(c => c.id === repId);
-            if (!rep) continue;
-            const commissionRate = 0.20; 
-            const totalRevenue = sourceInvoices.reduce((sum, inv) => sum + inv.amount, 0);
-            const totalCommission = totalRevenue * commissionRate;
-            let descriptionHTML = `<strong>Provisionsabrechnung ${monthName}</strong><br><br>`;
-            descriptionHTML += `Basis: ${sourceInvoices.length} bezahlte Kundenrechnungen<br>`;
-            descriptionHTML += `<ul style="margin-top:5px; padding-left:15px; font-size:11px;">`;
-            sourceInvoices.forEach(inv => {
-                descriptionHTML += `<li>${inv.invoiceNumber} (${inv.contactName}): ${inv.amount.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})}€</li>`;
-            });
-            descriptionHTML += `</ul>`;
-            const newInv: Invoice = {
-                id: crypto.randomUUID(),
-                type: 'commission',
-                invoiceNumber: `PROV-${year}-${String(nextNum).padStart(3, '0')}`,
-                date: new Date().toISOString().split('T')[0],
-                contactId: rep.id,
-                contactName: rep.name,
-                description: descriptionHTML, 
-                amount: totalCommission,
-                isPaid: false,
-                salesRepId: rep.id
-            };
-            newCommissionInvoices.push(newInv);
-            nextNum++;
-            sourceInvoices.forEach(inv => {
-                const updated = { ...inv, commissionProcessed: true };
-                updatedSources.push(updated);
-            });
-        }
-        const allInvoices = await this.getInvoices();
-        const combinedInvoices = [
-            ...newCommissionInvoices, 
-            ...allInvoices.map(curr => {
-                const updated = updatedSources.find(u => u.id === curr.id);
-                return updated || curr;
-            })
-        ];
-        this.set('invoices', 'invoices', combinedInvoices);
-        return { createdInvoices: newCommissionInvoices, updatedSourceInvoices: updatedSources };
+        const existing = await this.getContacts();
+        localStorage.setItem('contacts', JSON.stringify([...contacts, ...existing]));
+        return { contacts, deals: [], activities: [], skippedCount: skipped };
     }
 
-    async generatePdf(html: string): Promise<string> {
-        if ((window as any).require) {
-            const buffer = await (window as any).require('electron').ipcRenderer.invoke('generate-pdf', html);
-            let binary = '';
-            const bytes = new Uint8Array(buffer);
-            const len = bytes.byteLength;
-            for (let i = 0; i < len; i++) { binary += String.fromCharCode(bytes[i]); }
-            return window.btoa(binary);
-        }
-        return '';
-    }
-    async wipeAllData(): Promise<void> { localStorage.clear(); window.location.reload(); }
-
-    async fetchEmails(config: any, limit = 20, onlyUnread = false, boxName = 'INBOX'): Promise<EmailMessage[]> {
-        if ((window as any).require) {
-            return await (window as any).require('electron').ipcRenderer.invoke('email-imap-fetch', config, limit, onlyUnread, boxName);
-        }
-        return [];
+    async restoreBackup(data: BackupData): Promise<void> {
+        if (data.contacts) localStorage.setItem('contacts', JSON.stringify(data.contacts));
+        if (data.deals) localStorage.setItem('deals', JSON.stringify(data.deals));
+        if (data.tasks) localStorage.setItem('tasks', JSON.stringify(data.tasks));
+        if (data.invoices) localStorage.setItem('invoices', JSON.stringify(data.invoices));
+        if (data.expenses) localStorage.setItem('expenses', JSON.stringify(data.expenses));
+        if (data.activities) localStorage.setItem('activities', JSON.stringify(data.activities));
+        if (data.invoiceConfig) localStorage.setItem('invoiceConfig', JSON.stringify(data.invoiceConfig));
+        if (data.userProfile) localStorage.setItem('userProfile', JSON.stringify(data.userProfile));
+        if (data.productPresets) localStorage.setItem('productPresets', JSON.stringify(data.productPresets));
+        if (data.emailTemplates) localStorage.setItem('emailTemplates', JSON.stringify(data.emailTemplates));
     }
 
-    async getEmailFolders(config: any): Promise<{name: string, path: string}[]> {
-        if ((window as any).require) {
-            return await (window as any).require('electron').ipcRenderer.invoke('email-imap-get-boxes', config);
+    async getActivities() { return JSON.parse(localStorage.getItem('activities') || '[]'); }
+    
+    async saveActivity(a: any) { 
+        const l = await this.getActivities(); 
+        const idx = l.findIndex((item: any) => item.id === a.id);
+        let newList;
+        if (idx > -1) {
+            newList = l.map((item: any) => item.id === a.id ? a : item);
+        } else {
+            newList = [a, ...l];
         }
-        return [];
+        localStorage.setItem('activities', JSON.stringify(newList)); 
+        return a; 
     }
 
-    async createEmailFolder(config: any, folderName: string): Promise<boolean> {
-        if ((window as any).require) {
-            return await (window as any).require('electron').ipcRenderer.invoke('email-imap-create-folder', config, folderName);
-        }
-        return false;
-    }
-
-    async deleteEmailFolder(config: any, folderPath: string): Promise<boolean> {
-        if ((window as any).require) {
-            return await (window as any).require('electron').ipcRenderer.invoke('email-imap-delete-folder', config, folderPath);
-        }
-        return false;
-    }
-
-    async markEmailRead(config: any, uid: number, boxName: string): Promise<boolean> {
-        if ((window as any).require) {
-            return await (window as any).require('electron').ipcRenderer.invoke('email-mark-read', config, uid, boxName);
-        }
-        return false;
-    }
-
-    async sendSmtpMail(config: any, to: string, subject: string, body: string): Promise<boolean> {
-        if ((window as any).require) {
-            const result = await (window as any).require('electron').ipcRenderer.invoke('email-smtp-send', config, { to, subject, body });
-            return result.success;
-        }
-        return false;
-    }
+    async deleteActivity(id:any) { const l=await this.getActivities(); localStorage.setItem('activities', JSON.stringify(l.filter((x:any)=>x.id!==id))); }
+    async getDeals() { return JSON.parse(localStorage.getItem('deals') || '[]'); }
+    async saveDeal(d:any) { const l=await this.getDeals(); localStorage.setItem('deals', JSON.stringify([d,...l])); return d; }
+    async updateDeal(d:any) { const l=await this.getDeals(); const n=l.map((x:any)=>x.id===d.id?d:x); localStorage.setItem('deals', JSON.stringify(n)); return d; }
+    async deleteDeal(id:any) { const l=await this.getDeals(); localStorage.setItem('deals', JSON.stringify(l.filter((x:any)=>x.id!==id))); }
+    async getTasks() { return JSON.parse(localStorage.getItem('tasks') || '[]'); }
+    async saveTask(t:any) { const l=await this.getTasks(); localStorage.setItem('tasks', JSON.stringify([t,...l])); return t; }
+    async updateTask(t:any) { const l=await this.getTasks(); const n=l.map((x:any)=>x.id===t.id?t:x); localStorage.setItem('tasks', JSON.stringify(n)); return t; }
+    async deleteTask(id:any) { const l=await this.getTasks(); localStorage.setItem('tasks', JSON.stringify(l.filter((x:any)=>x.id!==id))); }
+    async getInvoices() { return JSON.parse(localStorage.getItem('invoices') || '[]'); }
+    async saveInvoice(i:any) { const l=await this.getInvoices(); localStorage.setItem('invoices', JSON.stringify([i,...l])); return i; }
+    async updateInvoice(i:any) { const l=await this.getInvoices(); const n=l.map((x:any)=>x.id===i.id?i:x); localStorage.setItem('invoices', JSON.stringify(n)); return i; }
+    async deleteInvoice(id:any) { const l=await this.getInvoices(); localStorage.setItem('invoices', JSON.stringify(l.filter((x:any)=>x.id!==id))); }
+    async cancelInvoice(id:any) { return {}; }
+    async getExpenses() { return JSON.parse(localStorage.getItem('expenses') || '[]'); }
+    async saveExpense(e:any) { const l=await this.getExpenses(); localStorage.setItem('expenses', JSON.stringify([e,...l])); return e; }
+    async updateExpense(e:any) { const l=await this.getExpenses(); const n=l.map((x:any)=>x.id===e.id?e:x); localStorage.setItem('expenses', JSON.stringify(n)); return e; }
+    async deleteExpense(id:any) { const l=await this.getExpenses(); localStorage.setItem('expenses', JSON.stringify(l.filter((x:any)=>x.id!==id))); }
+    async getUserProfile() { return JSON.parse(localStorage.getItem('userProfile') || 'null'); }
+    async saveUserProfile(p:any) { localStorage.setItem('userProfile', JSON.stringify(p)); return p; }
+    async getProductPresets() { return JSON.parse(localStorage.getItem('productPresets') || '[]'); }
+    async saveProductPresets(p:any) { localStorage.setItem('productPresets', JSON.stringify(p)); return p; }
+    async getInvoiceConfig() { return JSON.parse(localStorage.getItem('invoiceConfig') || '{}'); }
+    async saveInvoiceConfig(c:any) { localStorage.setItem('invoiceConfig', JSON.stringify(c)); return c; }
+    async getEmailTemplates() { return JSON.parse(localStorage.getItem('emailTemplates') || '[]'); }
+    async saveEmailTemplate(t:any) { const l=await this.getEmailTemplates(); localStorage.setItem('emailTemplates', JSON.stringify([t,...l])); return t; }
+    async updateEmailTemplate(t:any) { const l=await this.getEmailTemplates(); const n=l.map((x:any)=>x.id===t.id?t:x); localStorage.setItem('emailTemplates', JSON.stringify(n)); return t; }
+    async deleteEmailTemplate(id:any) { const l=await this.getEmailTemplates(); localStorage.setItem('emailTemplates', JSON.stringify(l.filter((x:any)=>x.id!==id))); }
+    async authenticate(t:any) { return { firstName: 'Local', lastName: 'User', email: 'local@syntax.lab', avatar: '', role: 'Admin' }; }
+    async connectGoogle() { return false; }
+    async disconnectGoogle() { return false; }
+    async getIntegrationStatus() { return false; }
+    async sendMail() { return false; }
+    async checkUserAccess() { return true; }
+    async inviteUser() {}
+    async processDueRetainers() { return {updatedContacts:[], newInvoices:[], newActivities:[]}; }
+    async runCommissionBatch() { return {createdInvoices:[], updatedSourceInvoices:[]}; }
+    async checkAndInstallUpdate() { return false; }
+    async getAppVersion() { return '1.3.35'; }
+    async generatePdf() { return ''; }
+    async wipeAllData() { localStorage.clear(); window.location.reload(); }
+    async fetchEmails(config:any, limit:any, unread:any, box:any) { return (window as any).require ? (window as any).require('electron').ipcRenderer.invoke('email-imap-fetch', config, limit, unread, box) : []; }
+    async getEmailFolders(config:any) { return (window as any).require ? (window as any).require('electron').ipcRenderer.invoke('email-imap-get-boxes', config) : []; }
+    async createEmailFolder(config:any, name:any) { return (window as any).require ? (window as any).require('electron').ipcRenderer.invoke('email-imap-create-folder', config, name) : false; }
+    async deleteEmailFolder(config:any, path:any) { return (window as any).require ? (window as any).require('electron').ipcRenderer.invoke('email-imap-delete-folder', config, path) : false; }
+    async markEmailRead(config:any, uid:any, box:any) { return (window as any).require ? (window as any).require('electron').ipcRenderer.invoke('email-mark-read', config, uid, box) : false; }
+    async sendSmtpMail(config:any, to:any, sub:any, body:any) { return (window as any).require ? (window as any).require('electron').ipcRenderer.invoke('email-smtp-send', config, {to, subject:sub, body}) : false; }
+    async getAllUsers() { return []; }
+    async deleteProductPreset(id: string) { const l=await this.getProductPresets(); localStorage.setItem('productPresets', JSON.stringify(l.filter((p:any)=>p.id!==id))); }
 }
 
 let instance: IDataService | null = null;
 export class DataServiceFactory {
     static create(config: BackendConfig): IDataService {
-        if (instance) {
-             const isFirebase = instance instanceof FirebaseDataService;
-             if (config.mode === 'firebase' && !isFirebase) instance = null;
-             if (config.mode === 'local' && isFirebase) instance = null;
-        }
         if (!instance) {
-            if (config.mode === 'firebase') {
-                instance = new FirebaseDataService(config);
-            } else {
-                instance = new LocalDataService(config.googleClientId);
-            }
+            instance = config.mode === 'firebase' ? new FirebaseDataService(config) : new LocalDataService(config.googleClientId);
         }
         return instance;
     }

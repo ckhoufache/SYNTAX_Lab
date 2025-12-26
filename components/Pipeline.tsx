@@ -38,6 +38,7 @@ export const Pipeline: React.FC<PipelineProps> = ({
   onAddActivity,
   onDeleteActivity,
   visibleStages,
+  setVisibleStages,
   focusedDealId,
   onNavigateToContacts,
 }) => {
@@ -109,8 +110,6 @@ export const Pipeline: React.FC<PipelineProps> = ({
   const handleDragStart = (e: React.DragEvent, id: string) => { 
     setDraggedDealId(id); 
     e.dataTransfer.effectAllowed = 'move'; 
-    // We don't want the drawer to open on drag start, but since drag starts immediately, 
-    // we let the browser handle it. The click event usually fires on mouseup if no drag occurred.
   };
 
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); };
@@ -122,7 +121,6 @@ export const Pipeline: React.FC<PipelineProps> = ({
     if (deal && deal.stage !== targetStage) {
         onUpdateDeal({ ...deal, stage: targetStage, stageEnteredDate: new Date().toISOString().split('T')[0] });
         
-        // Add activity for stage change
         onAddActivity({
             id: crypto.randomUUID(),
             contactId: deal.contactId,
@@ -151,6 +149,17 @@ export const Pipeline: React.FC<PipelineProps> = ({
       setNewNote('');
   };
 
+  const toggleStageVisibility = (stage: DealStage) => {
+      if (visibleStages.includes(stage)) {
+          // Mindestens eine Stufe muss sichtbar bleiben
+          if (visibleStages.length > 1) {
+              setVisibleStages(visibleStages.filter(s => s !== stage));
+          }
+      } else {
+          setVisibleStages([...visibleStages, stage]);
+      }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title || !formData.value || !formData.contactId) return;
@@ -168,6 +177,26 @@ export const Pipeline: React.FC<PipelineProps> = ({
       <header className="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center shrink-0">
         <h1 className="text-xl font-bold text-slate-800">Pipeline</h1>
         <div className="flex items-center gap-3">
+             {/* Stage Toggles */}
+             <div className="hidden lg:flex items-center gap-1 bg-slate-100 rounded-lg p-1 border border-slate-200">
+                {Object.values(DealStage).map(stage => {
+                    const isVisible = visibleStages.includes(stage);
+                    return (
+                        <button
+                            key={stage}
+                            onClick={() => toggleStageVisibility(stage)}
+                            className={`px-2 py-1 rounded text-[9px] font-bold uppercase transition-all whitespace-nowrap ${
+                                isVisible 
+                                ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' 
+                                : 'text-slate-400 hover:text-slate-600'
+                            }`}
+                        >
+                            {stage}
+                        </button>
+                    );
+                })}
+             </div>
+
              <div className="flex items-center gap-2 bg-slate-100 rounded-lg p-1 border border-slate-200">
                 <div className="relative">
                     <Search className="absolute left-2.5 top-1.5 w-4 h-4 text-slate-400" />
@@ -350,7 +379,7 @@ export const Pipeline: React.FC<PipelineProps> = ({
 
        {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-md overflow-hidden">
                 <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 bg-slate-50"><h2 className="text-lg font-bold text-slate-800">{editingDealId ? 'Deal bearbeiten' : 'Neuer Deal'}</h2><button onClick={() => setIsModalOpen(false)}><X className="w-5 h-5 text-slate-400" /></button></div>
                 <form onSubmit={handleSubmit} className="p-6 space-y-4">
                     <div><label className="text-[10px] font-bold uppercase text-slate-500">Titel</label><input required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
