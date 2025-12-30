@@ -1,3 +1,4 @@
+
 import { 
   Bell, Search, Sparkles, CheckCircle2, User, TrendingUp, 
   Target, Zap, BarChart3, Clock, 
@@ -74,8 +75,9 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
 
   const handleMarkAllRead = async () => {
     if (onUpdateActivity) {
-      // Wir aktualisieren alle parallel im Backend/State
-      await Promise.all(unreadActivities.map(act => onUpdateActivity({ ...act, isRead: true })));
+      for (const act of unreadActivities) {
+          onUpdateActivity({ ...act, isRead: true });
+      }
     }
     setShowNotifications(false);
   };

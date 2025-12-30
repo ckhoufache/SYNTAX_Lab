@@ -1,16 +1,18 @@
 
 import React, { useState, useMemo } from 'react';
-import { Search, Plus, Linkedin, X, Pencil, Trash2, Star, Heart, Target, Filter, History, MessageSquare, Info, Clock, Calendar, Send, User } from 'lucide-react';
-import { Contact, Activity, EmailTemplate, Invoice, Expense, InvoiceConfig, TargetGroup } from '../types';
+import { Search, Plus, Linkedin, X, Pencil, Trash2, Star, Heart, Target, Filter, History, MessageSquare, Info, Clock, Calendar, Send, User, KanbanSquare, Check } from 'lucide-react';
+import { Contact, Activity, EmailTemplate, Invoice, Expense, InvoiceConfig, TargetGroup, Deal, DealStage } from '../types';
 
 interface ContactsProps {
   contacts: Contact[];
   activities: Activity[];
+  deals: Deal[];
   onAddContact: (contact: Contact) => void;
   onUpdateContact: (contact: Contact) => void;
   onDeleteContact: (id: string) => void;
   onAddActivity: (activity: Activity) => void;
   onDeleteActivity: (id: string) => void;
+  onAddDeal: (deal: Deal) => void;
   initialFilter: 'all' | 'recent';
   onClearFilter: () => void;
   focusedId: string | null;
@@ -49,22 +51,27 @@ const getTargetGroupBadge = (group?: TargetGroup) => {
 export const Contacts: React.FC<ContactsProps> = ({ 
   contacts,
   activities,
+  deals,
   onAddContact, 
   onUpdateContact, 
   onDeleteContact,
   onAddActivity,
-  onDeleteActivity
+  onDeleteActivity,
+  onAddDeal
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'all' | 'customer' | 'lead' | 'sales'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'customer' | 'lead' | 'sales' | 'no_pipeline'>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingContactId, setEditingContactId] = useState<string | null>(null);
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
   const [newNote, setNewNote] = useState('');
+  const [isProcessingBatch, setIsProcessingBatch] = useState(false);
   
   const [formData, setFormData] = useState<Partial<Contact>>({
     name: '', role: '', company: '', email: '', type: 'lead', nps: undefined, linkedin: '', targetGroup: undefined
   });
+
+  const contactsInPipeline = useMemo(() => new Set(deals.map(d => d.contactId)), [deals]);
 
   const filteredContacts = useMemo(() => {
     return contacts.filter(c => {
@@ -78,10 +85,12 @@ export const Contacts: React.FC<ContactsProps> = ({
       if (!matchesSearch) return false;
 
       if (activeTab === 'all') return true;
+      if (activeTab === 'no_pipeline') return !contactsInPipeline.has(c.id);
+      
       const contactType = (c.type || 'lead').toLowerCase();
       return contactType === activeTab;
     });
-  }, [contacts, searchTerm, activeTab]);
+  }, [contacts, searchTerm, activeTab, contactsInPipeline]);
 
   const selectedContact = useMemo(() => 
     contacts.find(c => c.id === selectedContactId), 
@@ -123,19 +132,40 @@ export const Contacts: React.FC<ContactsProps> = ({
       setNewNote('');
   };
 
+  const handleBatchToPipeline = async () => {
+      const targets = filteredContacts.filter(c => !contactsInPipeline.has(c.id));
+      if (targets.length === 0) return;
+      if (!confirm(`${targets.length} Kontakte als Lead in die Pipeline verschieben?`)) return;
+
+      setIsProcessingBatch(true);
+      for (const contact of targets) {
+          onAddDeal({
+              id: crypto.randomUUID(),
+              title: `Anfrage: ${contact.company || contact.name}`,
+              value: 0,
+              stage: DealStage.LEAD,
+              contactId: contact.id,
+              dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+              stageEnteredDate: new Date().toISOString().split('T')[0]
+          });
+      }
+      setIsProcessingBatch(false);
+      alert(`${targets.length} Einträge erstellt.`);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const finalNps = formData.nps === undefined ? null : formData.nps;
     const finalGroup = formData.targetGroup === undefined ? null : formData.targetGroup;
-    // Standard-E-Mail setzen falls Feld leer
     const finalEmail = formData.email?.trim() || 'no@email.de';
     
     if (editingContactId) {
       const original = contacts.find(c => c.id === editingContactId);
       if (original) onUpdateContact({ ...original, ...formData as Contact, email: finalEmail, nps: finalNps, targetGroup: finalGroup as any });
     } else {
+      const newContactId = crypto.randomUUID();
       onAddContact({
-        id: crypto.randomUUID(),
+        id: newContactId,
         name: formData.name || '',
         role: formData.role || 'Kontakt',
         company: formData.company || '',
@@ -147,6 +177,17 @@ export const Contacts: React.FC<ContactsProps> = ({
         ...formData as any,
         nps: finalNps,
         targetGroup: finalGroup as any
+      });
+
+      // Automatisch Deal erstellen für Leads
+      onAddDeal({
+          id: crypto.randomUUID(),
+          title: `Neuer Lead: ${formData.company || formData.name}`,
+          value: 0,
+          stage: DealStage.LEAD,
+          contactId: newContactId,
+          dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          stageEnteredDate: new Date().toISOString().split('T')[0]
       });
     }
     handleCloseModal();
@@ -175,16 +216,27 @@ export const Contacts: React.FC<ContactsProps> = ({
         </div>
       </header>
       
-      <div className="bg-white px-8 border-b border-slate-100 flex gap-1 shrink-0">
-        {(['all', 'lead', 'customer', 'sales'] as const).map(tab => (
-          <button 
-            key={tab}
-            onClick={() => setActiveTab(tab)} 
-            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors capitalize ${activeTab === tab ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-          >
-            {tab === 'all' ? 'Alle' : tab === 'sales' ? 'Vertrieb' : tab + 's'}
-          </button>
-        ))}
+      <div className="bg-white px-8 border-b border-slate-100 flex justify-between items-center shrink-0">
+        <div className="flex gap-1">
+          {(['all', 'lead', 'customer', 'sales', 'no_pipeline'] as const).map(tab => (
+            <button 
+              key={tab}
+              onClick={() => setActiveTab(tab)} 
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors capitalize ${activeTab === tab ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+            >
+              {tab === 'all' ? 'Alle' : tab === 'sales' ? 'Vertrieb' : tab === 'no_pipeline' ? 'Ohne Pipeline' : tab + 's'}
+            </button>
+          ))}
+        </div>
+        {activeTab === 'no_pipeline' && filteredContacts.length > 0 && (
+            <button 
+              onClick={handleBatchToPipeline}
+              disabled={isProcessingBatch}
+              className="bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-100 hover:bg-emerald-100 flex items-center gap-2 transition-all"
+            >
+                <KanbanSquare className="w-3.5 h-3.5"/> Pipeline Sync ({filteredContacts.length})
+            </button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
@@ -219,11 +271,14 @@ export const Contacts: React.FC<ContactsProps> = ({
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
-                      (contact.type || '').toLowerCase() === 'customer' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
-                    }`}>
-                      {contact.type || 'Lead'}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
+                        (contact.type || '').toLowerCase() === 'customer' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
+                      }`}>
+                        {contact.type || 'Lead'}
+                      </span>
+                      {contactsInPipeline.has(contact.id) && <KanbanSquare className="w-3 h-3 text-indigo-400" title="In Pipeline" />}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {getTargetGroupBadge(contact.targetGroup)}

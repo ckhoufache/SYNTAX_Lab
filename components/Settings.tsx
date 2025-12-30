@@ -314,7 +314,7 @@ export const Settings: React.FC<SettingsProps> = (props) => {
                             <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600"><Fingerprint className="w-6 h-6"/></div>
                             <div>
                                 <p className="text-xs font-black uppercase text-slate-400">Aktuelle Version</p>
-                                <p className="font-bold text-slate-800 text-lg">v1.3.35-Stable</p>
+                                <p className="font-bold text-slate-800 text-lg">v1.3.36-Stable</p>
                             </div>
                         </div>
                         <button 
@@ -337,7 +337,7 @@ export const Settings: React.FC<SettingsProps> = (props) => {
                 <div className="p-6 bg-indigo-50 rounded-2xl border border-indigo-100 text-center space-y-4">
                     <DownloadCloud className="w-10 h-10 text-indigo-600 mx-auto" /><h3 className="font-black text-slate-800">Export</h3><p className="text-xs text-slate-500">JSON Voll-Backup aller Daten.</p>
                     <button onClick={() => {
-                        const data: BackupData = { contacts, deals, tasks, invoices, expenses, activities, invoiceConfig, userProfile, productPresets, backendConfig, theme: 'light', timestamp: new Date().toISOString(), version: '1.3.35' };
+                        const data: BackupData = { contacts, deals, tasks, invoices, expenses, activities, invoiceConfig, userProfile, productPresets, backendConfig, theme: 'light', timestamp: new Date().toISOString(), version: '1.3.36' };
                         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
                         const url = URL.createObjectURL(blob);
                         const a = document.createElement('a'); a.href = url; a.download = `CRM_Backup_${new Date().toISOString().split('T')[0]}.json`; a.click();

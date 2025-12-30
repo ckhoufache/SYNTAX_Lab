@@ -1,7 +1,7 @@
 
 import React, { useState, DragEvent, useMemo } from 'react';
 import { Deal, DealStage, Contact, ProductPreset, Task, Invoice, Activity, InvoiceConfig, EmailTemplate } from '../types';
-import { Plus, X, Calendar, Trash2, Pencil, Search, Linkedin, History, MessageSquare, Send, Clock, Target, Info } from 'lucide-react';
+import { Plus, X, Calendar, Trash2, Pencil, Search, Linkedin, History, MessageSquare, Send, Clock, Target, Info, Package, DollarSign, CheckCircle2 } from 'lucide-react';
 
 interface PipelineProps {
   deals: Deal[];
@@ -39,6 +39,8 @@ export const Pipeline: React.FC<PipelineProps> = ({
   onDeleteActivity,
   visibleStages,
   setVisibleStages,
+  productPresets,
+  onAddInvoice,
   focusedDealId,
   onNavigateToContacts,
 }) => {
@@ -48,6 +50,12 @@ export const Pipeline: React.FC<PipelineProps> = ({
   const [formData, setFormData] = useState({ title: '', value: '', stage: DealStage.LEAD, contactId: '', dueDate: '' });
   const [searchQuery, setSearchQuery] = useState('');
   
+  // State for Preset Selection Modal
+  const [presetDeal, setPresetDeal] = useState<{id: string, stage: DealStage} | null>(null);
+  
+  // State for Won Action Modal
+  const [wonDeal, setWonDeal] = useState<Deal | null>(null);
+
   // State for Activity Drawer
   const [selectedDealId, setSelectedDealId] = useState<string | null>(null);
   const [newNote, setNewNote] = useState('');
@@ -119,18 +127,72 @@ export const Pipeline: React.FC<PipelineProps> = ({
     if (!draggedDealId) return;
     const deal = deals.find(d => d.id === draggedDealId);
     if (deal && deal.stage !== targetStage) {
-        onUpdateDeal({ ...deal, stage: targetStage, stageEnteredDate: new Date().toISOString().split('T')[0] });
         
-        onAddActivity({
-            id: crypto.randomUUID(),
-            contactId: deal.contactId,
-            type: 'system_deal',
-            content: `Phase gewechselt zu: ${targetStage}`,
-            date: new Date().toISOString().split('T')[0],
-            timestamp: new Date().toISOString()
-        });
+        if (targetStage === DealStage.PROPOSAL || targetStage === DealStage.NEGOTIATION) {
+            setPresetDeal({ id: deal.id, stage: targetStage });
+        } else if (targetStage === DealStage.WON) {
+            setWonDeal({ ...deal, stage: targetStage });
+        } else {
+            finalizeStageChange(deal, targetStage);
+        }
     }
     setDraggedDealId(null);
+  };
+
+  const finalizeStageChange = (deal: Deal, targetStage: DealStage, updatedValue?: number) => {
+    onUpdateDeal({ 
+        ...deal, 
+        stage: targetStage, 
+        value: updatedValue !== undefined ? updatedValue : deal.value,
+        stageEnteredDate: new Date().toISOString().split('T')[0] 
+    });
+    
+    onAddActivity({
+        id: crypto.randomUUID(),
+        contactId: deal.contactId,
+        type: 'system_deal',
+        content: `Phase gewechselt zu: ${targetStage}${updatedValue !== undefined ? ` (Wert aktualisiert auf ${updatedValue}€)` : ''}`,
+        date: new Date().toISOString().split('T')[0],
+        timestamp: new Date().toISOString()
+    });
+  };
+
+  const handleSelectPreset = (preset: ProductPreset) => {
+      if (!presetDeal) return;
+      const deal = deals.find(d => d.id === presetDeal.id);
+      if (deal) finalizeStageChange(deal, presetDeal.stage, preset.value);
+      setPresetDeal(null);
+  };
+
+  const handleWonAction = (createInvoice: boolean) => {
+      if (!wonDeal) return;
+      const contact = contacts.find(c => c.id === wonDeal.contactId);
+      
+      finalizeStageChange(wonDeal, DealStage.WON);
+      
+      if (createInvoice && contact) {
+          onAddInvoice({
+              id: crypto.randomUUID(),
+              type: 'customer',
+              invoiceNumber: `RE-${Date.now()}`,
+              description: `Abschluss: ${wonDeal.title}`,
+              date: new Date().toISOString().split('T')[0],
+              contactId: contact.id,
+              contactName: contact.name,
+              amount: wonDeal.value,
+              isPaid: false
+          });
+          
+          onAddActivity({
+              id: crypto.randomUUID(),
+              contactId: contact.id,
+              type: 'system_invoice',
+              content: `Rechnung automatisch erstellt nach Deal-Gewinn: ${wonDeal.title}`,
+              date: new Date().toISOString().split('T')[0],
+              timestamp: new Date().toISOString()
+          });
+      }
+      setWonDeal(null);
   };
 
   const handleAddNote = (e: React.FormEvent) => {
@@ -151,7 +213,6 @@ export const Pipeline: React.FC<PipelineProps> = ({
 
   const toggleStageVisibility = (stage: DealStage) => {
       if (visibleStages.includes(stage)) {
-          // Mindestens eine Stufe muss sichtbar bleiben
           if (visibleStages.length > 1) {
               setVisibleStages(visibleStages.filter(s => s !== stage));
           }
@@ -177,7 +238,6 @@ export const Pipeline: React.FC<PipelineProps> = ({
       <header className="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center shrink-0">
         <h1 className="text-xl font-bold text-slate-800">Pipeline</h1>
         <div className="flex items-center gap-3">
-             {/* Stage Toggles */}
              <div className="hidden lg:flex items-center gap-1 bg-slate-100 rounded-lg p-1 border border-slate-200">
                 {Object.values(DealStage).map(stage => {
                     const isVisible = visibleStages.includes(stage);
@@ -376,6 +436,61 @@ export const Pipeline: React.FC<PipelineProps> = ({
               </div>
           </div>
       )}
+
+       {/* PRESET SELECTION MODAL */}
+       {presetDeal && (
+           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-in fade-in">
+               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200">
+                   <div className="px-6 py-4 border-b bg-slate-50 flex justify-between items-center">
+                       <h3 className="font-bold text-slate-800">Produkt / Angebot wählen</h3>
+                       <button onClick={() => setPresetDeal(null)}><X className="w-5 h-5 text-slate-400"/></button>
+                   </div>
+                   <div className="p-6 space-y-3">
+                       <p className="text-xs text-slate-500 mb-4">Wählen Sie ein Preset, um den Deal-Wert automatisch zu aktualisieren.</p>
+                       {productPresets.map(p => (
+                           <button 
+                             key={p.id} 
+                             onClick={() => handleSelectPreset(p)}
+                             className="w-full flex justify-between items-center p-4 rounded-xl border border-slate-100 bg-white hover:border-indigo-300 hover:shadow-md transition-all group"
+                           >
+                               <div className="flex items-center gap-3">
+                                   <div className="p-2 bg-indigo-50 rounded-lg group-hover:bg-indigo-100 transition-colors"><Package className="w-4 h-4 text-indigo-600"/></div>
+                                   <span className="font-bold text-sm text-slate-700">{p.title}</span>
+                               </div>
+                               <span className="text-indigo-600 font-black text-sm">{p.value.toLocaleString('de-DE')} €</span>
+                           </button>
+                       ))}
+                       <button onClick={() => {
+                           const deal = deals.find(d => d.id === presetDeal.id);
+                           if(deal) finalizeStageChange(deal, presetDeal.stage);
+                           setPresetDeal(null);
+                       }} className="w-full py-3 text-xs font-bold text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors">Ohne Preisänderung fortfahren</button>
+                   </div>
+               </div>
+           </div>
+       )}
+
+       {/* WON MODAL */}
+       {wonDeal && (
+           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-in fade-in">
+               <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-sm overflow-hidden p-10 text-center relative">
+                   <div className="mb-6 p-4 bg-green-100 rounded-full w-20 h-20 mx-auto flex items-center justify-center animate-bounce">
+                       <CheckCircle2 className="w-10 h-10 text-green-600"/>
+                   </div>
+                   <h2 className="text-2xl font-black text-slate-900 mb-2">Glückwunsch!</h2>
+                   <p className="text-sm text-slate-500 mb-8 leading-relaxed">Der Deal <strong>{wonDeal.title}</strong> wurde gewonnen. Möchten Sie direkt eine Rechnung erstellen?</p>
+                   
+                   <div className="space-y-3">
+                       <button onClick={() => handleWonAction(true)} className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-indigo-100 flex items-center justify-center gap-2 hover:-translate-y-1 transition-all">
+                           <DollarSign className="w-4 h-4"/> Rechnung erstellen
+                       </button>
+                       <button onClick={() => handleWonAction(false)} className="w-full py-4 rounded-2xl font-black text-xs uppercase tracking-widest text-slate-400 hover:bg-slate-50 transition-all">
+                           Nur abschließen
+                       </button>
+                   </div>
+               </div>
+           </div>
+       )}
 
        {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">

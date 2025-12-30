@@ -1,3 +1,4 @@
+
 import { Contact, Deal, Task, Invoice, Expense, Activity, UserProfile, ProductPreset, InvoiceConfig, EmailTemplate, EmailAttachment, DealStage, BackupData, EmailMessage, BackendConfig } from '../types';
 import { FirebaseDataService } from './firebaseService';
 
@@ -192,7 +193,7 @@ class LocalDataService implements IDataService {
     async processDueRetainers() { return {updatedContacts:[], newInvoices:[], newActivities:[]}; }
     async runCommissionBatch() { return {createdInvoices:[], updatedSourceInvoices:[]}; }
     async checkAndInstallUpdate() { return false; }
-    async getAppVersion() { return '1.3.35'; }
+    async getAppVersion() { return '1.3.36'; }
     async generatePdf() { return ''; }
     async wipeAllData() { localStorage.clear(); window.location.reload(); }
     async fetchEmails(config:any, limit:any, unread:any, box:any) { return (window as any).require ? (window as any).require('electron').ipcRenderer.invoke('email-imap-fetch', config, limit, unread, box) : []; }
