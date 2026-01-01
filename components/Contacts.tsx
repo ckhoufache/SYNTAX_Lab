@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Search, Plus, Linkedin, X, Pencil, Trash2, Star, Heart, Target, Filter, History, MessageSquare, Info, Clock, Calendar, Send, User, KanbanSquare, Check } from 'lucide-react';
+import { Search, Plus, Linkedin, X, Pencil, Trash2, Star, Heart, Target, Filter, History, MessageSquare, Info, Clock, Calendar, Send, User, KanbanSquare, Check, Landmark, ShieldCheck } from 'lucide-react';
 import { Contact, Activity, EmailTemplate, Invoice, Expense, InvoiceConfig, TargetGroup, Deal, DealStage } from '../types';
 
 interface ContactsProps {
@@ -68,7 +68,8 @@ export const Contacts: React.FC<ContactsProps> = ({
   const [isProcessingBatch, setIsProcessingBatch] = useState(false);
   
   const [formData, setFormData] = useState<Partial<Contact>>({
-    name: '', role: '', company: '', email: '', type: 'lead', nps: undefined, linkedin: '', targetGroup: undefined
+    name: '', role: '', company: '', email: '', type: 'lead', nps: undefined, linkedin: '', targetGroup: undefined,
+    taxId: '', taxStatus: 'standard', street: '', zip: '', city: ''
   });
 
   const contactsInPipeline = useMemo(() => new Set(deals.map(d => d.contactId)), [deals]);
@@ -107,7 +108,7 @@ export const Contacts: React.FC<ContactsProps> = ({
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setEditingContactId(null);
-    setFormData({ name: '', role: '', company: '', email: '', type: 'lead', nps: undefined, linkedin: '', targetGroup: undefined });
+    setFormData({ name: '', role: '', company: '', email: '', type: 'lead', nps: undefined, linkedin: '', targetGroup: undefined, taxId: '', taxStatus: 'standard', street: '', zip: '', city: '' });
   };
 
   const openEditModal = (contact: Contact) => {
@@ -133,8 +134,12 @@ export const Contacts: React.FC<ContactsProps> = ({
   };
 
   const handleBatchToPipeline = async () => {
-      const targets = filteredContacts.filter(c => !contactsInPipeline.has(c.id));
-      if (targets.length === 0) return;
+      // WICHTIG: Typ 'sales' von der automatischen Batch-Erstellung ausschließen
+      const targets = filteredContacts.filter(c => !contactsInPipeline.has(c.id) && c.type !== 'sales');
+      if (targets.length === 0) {
+          alert("Keine berechtigten Leads (keine Sales-Kontakte) gefunden.");
+          return;
+      }
       if (!confirm(`${targets.length} Kontakte als Lead in die Pipeline verschieben?`)) return;
 
       setIsProcessingBatch(true);
@@ -164,7 +169,7 @@ export const Contacts: React.FC<ContactsProps> = ({
       if (original) onUpdateContact({ ...original, ...formData as Contact, email: finalEmail, nps: finalNps, targetGroup: finalGroup as any });
     } else {
       const newContactId = crypto.randomUUID();
-      onAddContact({
+      const newContact: Contact = {
         id: newContactId,
         name: formData.name || '',
         role: formData.role || 'Kontakt',
@@ -177,18 +182,22 @@ export const Contacts: React.FC<ContactsProps> = ({
         ...formData as any,
         nps: finalNps,
         targetGroup: finalGroup as any
-      });
+      };
+      
+      onAddContact(newContact);
 
-      // Automatisch Deal erstellen für Leads
-      onAddDeal({
-          id: crypto.randomUUID(),
-          title: `Neuer Lead: ${formData.company || formData.name}`,
-          value: 0,
-          stage: DealStage.LEAD,
-          contactId: newContactId,
-          dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-          stageEnteredDate: new Date().toISOString().split('T')[0]
-      });
+      // Automatisch Deal erstellen NUR wenn NICHT Typ 'sales'
+      if (newContact.type !== 'sales') {
+          onAddDeal({
+              id: crypto.randomUUID(),
+              title: `Neuer Lead: ${formData.company || formData.name}`,
+              value: 0,
+              stage: DealStage.LEAD,
+              contactId: newContactId,
+              dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+              stageEnteredDate: new Date().toISOString().split('T')[0]
+          });
+      }
     }
     handleCloseModal();
   };
@@ -234,7 +243,7 @@ export const Contacts: React.FC<ContactsProps> = ({
               disabled={isProcessingBatch}
               className="bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-100 hover:bg-emerald-100 flex items-center gap-2 transition-all"
             >
-                <KanbanSquare className="w-3.5 h-3.5"/> Pipeline Sync ({filteredContacts.length})
+                <KanbanSquare className="w-3.5 h-3.5"/> Pipeline Sync ({filteredContacts.filter(c => c.type !== 'sales').length})
             </button>
         )}
       </div>
@@ -273,7 +282,8 @@ export const Contacts: React.FC<ContactsProps> = ({
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
                       <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
-                        (contact.type || '').toLowerCase() === 'customer' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
+                        (contact.type || '').toLowerCase() === 'customer' ? 'bg-green-100 text-green-700' : 
+                        (contact.type || '').toLowerCase() === 'sales' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
                       }`}>
                         {contact.type || 'Lead'}
                       </span>
@@ -400,15 +410,25 @@ export const Contacts: React.FC<ContactsProps> = ({
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
             <div className="flex justify-between items-center px-6 py-4 border-b bg-slate-50">
               <h2 className="text-lg font-bold text-slate-800">{editingContactId ? 'Kontakt bearbeiten' : 'Neuer Kontakt'}</h2>
               <button onClick={handleCloseModal}><X className="w-5 h-5 text-slate-400" /></button>
             </div>
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              <div>
-                <label className="text-[10px] font-bold uppercase text-slate-500">Name</label>
-                <input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
+            <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto custom-scrollbar">
+              <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-slate-500">Name</label>
+                    <input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
+                  </div>
+                   <div>
+                    <label className="text-[10px] font-bold uppercase text-slate-500">Status</label>
+                    <select value={formData.type} onChange={e => setFormData({...formData, type: e.target.value as any})} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
+                        <option value="lead">Lead</option>
+                        <option value="customer">Kunde</option>
+                        <option value="sales">Vertrieb (Sales)</option>
+                    </select>
+                   </div>
               </div>
               
               <div className="grid grid-cols-2 gap-4">
@@ -417,16 +437,33 @@ export const Contacts: React.FC<ContactsProps> = ({
                   <input required value={formData.company} onChange={e => setFormData({...formData, company: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold uppercase text-slate-500">Status</label>
-                  <select value={formData.type} onChange={e => setFormData({...formData, type: e.target.value as any})} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
-                    <option value="lead">Lead</option>
-                    <option value="customer">Kunde</option>
-                    <option value="sales">Vertrieb</option>
-                  </select>
+                    <label className="text-[10px] font-bold uppercase text-slate-500">Position</label>
+                    <input value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="z.B. CEO" />
                 </div>
               </div>
 
-              <div>
+              {/* NEU: Spezielle Sales-Felder */}
+              {formData.type === 'sales' && (
+                <div className="bg-purple-50 p-4 rounded-xl border border-purple-100 space-y-4 animate-in slide-in-from-top-2 duration-300">
+                    <h3 className="text-[10px] font-black uppercase text-purple-600 flex items-center gap-2"><Landmark className="w-3.5 h-3.5"/> Rechnungsrelevante Vertriebs-Daten</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-[10px] font-bold uppercase text-slate-500">Steuernummer / USt-ID</label>
+                            <input value={formData.taxId || ''} onChange={e => setFormData({...formData, taxId: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white" placeholder="DE123456789" />
+                        </div>
+                        <div>
+                            <label className="text-[10px] font-bold uppercase text-slate-500">Besteuerung</label>
+                            <select value={formData.taxStatus || 'standard'} onChange={e => setFormData({...formData, taxStatus: e.target.value as any})} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
+                                <option value="standard">Regelbesteuerung (19%)</option>
+                                <option value="small_business">Kleinunternehmer (§ 19 UStG)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <p className="text-[10px] text-purple-400 italic">Diese Daten werden automatisch für Provisionsgutschriften verwendet.</p>
+                </div>
+              )}
+
+              <div className="border-t pt-4">
                 <label className="text-[10px] font-bold uppercase text-slate-500 flex items-center gap-1">
                     <Target className="w-2.5 h-2.5 text-indigo-500"/> Zielgruppe (A-D)
                 </label>
@@ -458,7 +495,18 @@ export const Contacts: React.FC<ContactsProps> = ({
                   </div>
               </div>
 
-              <div className="pt-4 flex justify-end gap-3">
+              <div className="space-y-4 pt-4 border-t">
+                  <h4 className="text-[10px] font-black uppercase text-slate-400">Rechnungsanschrift (Optional)</h4>
+                  <div className="grid grid-cols-1 gap-4">
+                        <input placeholder="Straße & Hausnummer" value={formData.street || ''} onChange={e=>setFormData({...formData, street:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                        <div className="grid grid-cols-3 gap-2">
+                            <input placeholder="PLZ" value={formData.zip || ''} onChange={e=>setFormData({...formData, zip:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                            <input placeholder="Stadt" value={formData.city || ''} onChange={e=>setFormData({...formData, city:e.target.value})} className="col-span-2 w-full px-3 py-2 border rounded-lg text-sm" />
+                        </div>
+                  </div>
+              </div>
+
+              <div className="pt-8 flex justify-end gap-3 sticky bottom-0 bg-white pb-2">
                 <button type="button" onClick={handleCloseModal} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">Abbrechen</button>
                 <button type="submit" className="px-6 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all">
                   {editingContactId ? 'Speichern' : 'Anlegen'}

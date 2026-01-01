@@ -1,7 +1,7 @@
 
 import React, { useMemo } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
-import { TrendingUp, TrendingDown, Users, Target, Landmark, BarChart3, PieChart as PieIcon } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend, LineChart, Line } from 'recharts';
+import { TrendingUp, TrendingDown, Users, Target, Landmark, BarChart3, PieChart as PieIcon, Zap, Wallet, ArrowUpRight } from 'lucide-react';
 import { Invoice, Contact, Expense, Deal } from '../types';
 
 interface KPIAnalyticsProps {
@@ -18,14 +18,21 @@ export const KPIAnalytics: React.FC<KPIAnalyticsProps> = ({ invoices, contacts, 
   const formatPercent = (val: number) => val.toFixed(2) + '%';
 
   const stats = useMemo(() => {
-    const revenue = invoices.filter(i => i.isPaid && !i.isCancelled).reduce((sum, i) => sum + i.amount, 0);
+    const paidInvoices = invoices.filter(i => i.isPaid && !i.isCancelled);
+    const revenue = paidInvoices.reduce((sum, i) => sum + i.amount, 0);
     const cost = expenses.reduce((sum, e) => sum + e.amount, 0);
     const profit = revenue - cost;
+    
     const leads = contacts.filter(c => (c.type || '').toLowerCase() === 'lead').length;
     const customers = contacts.filter(c => (c.type || '').toLowerCase() === 'customer').length;
     const convRate = (leads + customers) > 0 ? (customers / (leads + customers)) * 100 : 0;
     
-    return { revenue, cost, profit, leads, customers, convRate };
+    // Marketing & Growth KPIs
+    const marketingExpenses = expenses.filter(e => e.category === 'marketing').reduce((sum, e) => sum + e.amount, 0);
+    const cac = customers > 0 ? marketingExpenses / customers : 0;
+    const clv = customers > 0 ? revenue / customers : 0;
+    
+    return { revenue, cost, profit, leads, customers, convRate, cac, clv, marketingExpenses };
   }, [invoices, expenses, contacts]);
 
   const categoryData = useMemo(() => {
@@ -52,7 +59,7 @@ export const KPIAnalytics: React.FC<KPIAnalyticsProps> = ({ invoices, contacts, 
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
         <div className="bg-white p-8 rounded-[2rem] border border-slate-200 shadow-sm">
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Brutto-Umsatz</p>
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Brutto-Umsatz (bezahlt)</p>
           <h2 className="text-3xl font-black text-indigo-600 mt-2">{formatEuro(stats.revenue)}</h2>
           <div className="flex items-center gap-2 mt-4 text-emerald-600 font-bold text-xs"><TrendingUp className="w-4 h-4"/> +12.50% vs. Vormonat</div>
         </div>
@@ -66,6 +73,31 @@ export const KPIAnalytics: React.FC<KPIAnalyticsProps> = ({ invoices, contacts, 
           <h2 className="text-3xl font-black text-slate-800 mt-2">{formatPercent(stats.convRate)}</h2>
           <div className="w-full bg-slate-100 h-2 rounded-full mt-6 overflow-hidden"><div className="bg-indigo-600 h-full" style={{width: `${stats.convRate}%`}}></div></div>
         </div>
+      </div>
+
+      {/* NEUE SEKTION: GROWTH METRICS */}
+      <h3 className="text-sm font-black text-slate-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-3"><Zap className="w-4 h-4 text-amber-500"/> Marketing & Growth Insights</h3>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+          <div className="bg-gradient-to-br from-indigo-600 to-indigo-800 p-6 rounded-3xl text-white shadow-lg shadow-indigo-100">
+              <p className="text-[9px] font-black uppercase tracking-widest opacity-70">CAC (Acquisition Cost)</p>
+              <h4 className="text-2xl font-black mt-1">{formatEuro(stats.cac)}</h4>
+              <p className="text-[10px] mt-2 font-medium opacity-80">Marketingbudget / Neukunden</p>
+          </div>
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">CLV (Lifetime Value)</p>
+              <h4 className="text-2xl font-black text-slate-800 mt-1">{formatEuro(stats.clv)}</h4>
+              <p className="text-[10px] mt-2 font-medium text-emerald-600 flex items-center gap-1"><ArrowUpRight className="w-3 h-3"/> Ø Umsatz pro Kunde</p>
+          </div>
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Marketing Invest</p>
+              <h4 className="text-2xl font-black text-slate-800 mt-1">{formatEuro(stats.marketingExpenses)}</h4>
+              <p className="text-[10px] mt-2 font-medium text-slate-500">Gesamte Marketingausgaben</p>
+          </div>
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">ROI Faktor</p>
+              <h4 className="text-2xl font-black text-indigo-600 mt-1">{(stats.clv / (stats.cac || 1)).toFixed(1)}x</h4>
+              <p className="text-[10px] mt-2 font-medium text-slate-500">Umsatz pro Akquise-Euro</p>
+          </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-20">

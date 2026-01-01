@@ -5,10 +5,10 @@ import {
   Database, Upload, Mail, Landmark, Key, Info, Zap, 
   DownloadCloud, Shield, Building2, Cpu, Wrench, FileText, 
   ImageIcon, BellRing, Settings2, Fingerprint, Globe, Check, X,
-  RefreshCw, Play
+  RefreshCw, Play, Code
 } from 'lucide-react';
 import { UserProfile, ProductPreset, Contact, Deal, Task, BackupData, BackendConfig, Invoice, Expense, Activity, EmailTemplate, InvoiceConfig, EmailSettings } from '../types';
-import { IDataService } from '../services/dataService';
+import { IDataService, DEFAULT_PDF_TEMPLATE } from '../services/dataService';
 
 export interface SettingsProps {
   userProfile: UserProfile;
@@ -161,7 +161,7 @@ export const Settings: React.FC<SettingsProps> = (props) => {
                             )}
                         </div>
                     </div>
-                    <div className="md:col-span-2 flex justify-end"><button type="submit" className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2"><Save className="w-4 h-4"/> Profil speichern</button></div>
+                    <div className="md:col-span-2 flex justify-end"><button type="submit" className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2"><Save className="w-4 h-4"/> Profil gespeichert</button></div>
                 </form>
             </SubAccordion>
             <SubAccordion title="Unternehmens-Branding" isOpen={subOpen === 'company'} onToggle={() => setSubOpen(subOpen === 'company' ? null : 'company')}>
@@ -227,6 +227,25 @@ export const Settings: React.FC<SettingsProps> = (props) => {
                         <div><label className="text-[10px] font-black uppercase text-slate-400">Fußzeilentext (PDF)</label><textarea value={invConfigForm.footerText} onChange={e=>setInvConfigForm({...invConfigForm, footerText: e.target.value})} className="w-full p-2 border rounded-lg h-20 text-sm" placeholder="Vielen Dank für Ihren Auftrag..." /></div>
                     </div>
                     <div className="flex justify-end"><button type="submit" className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold">Finanz-Settings speichern</button></div>
+                </form>
+            </SubAccordion>
+            
+            <SubAccordion title="Rechnungs-Design (HTML/PDF)" isOpen={subOpen === 'pdf_editor'} onToggle={() => setSubOpen(subOpen === 'pdf_editor' ? null : 'pdf_editor')}>
+                <form onSubmit={handleInvSubmit} className="space-y-4">
+                    <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-xl text-[10px] text-indigo-700 font-bold leading-relaxed">
+                        <Code className="w-4 h-4 mb-1"/> 
+                        Fortgeschritten: Sie können das HTML/CSS-Layout Ihrer Rechnungen anpassen. 
+                        Verwenden Sie Platzhalter wie <code>{"{{documentTitle}}"}</code>, <code>{"{{invoiceNumber}}"}</code>, <code>{"{{logoBase64}}"}</code>.
+                    </div>
+                    <textarea 
+                        value={invConfigForm.pdfTemplate || DEFAULT_PDF_TEMPLATE} 
+                        onChange={e => setInvConfigForm({...invConfigForm, pdfTemplate: e.target.value})}
+                        className="w-full h-96 p-4 font-mono text-[11px] border rounded-2xl bg-slate-900 text-indigo-300 focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
+                    <div className="flex justify-between items-center">
+                        <button type="button" onClick={() => { if(confirm("Auf Standard zurücksetzen?")) setInvConfigForm({...invConfigForm, pdfTemplate: DEFAULT_PDF_TEMPLATE}); }} className="text-xs font-bold text-slate-400 hover:text-red-500">Standard wiederherstellen</button>
+                        <button type="submit" className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold">Design speichern</button>
+                    </div>
                 </form>
             </SubAccordion>
          </SettingsCategory>
@@ -314,7 +333,7 @@ export const Settings: React.FC<SettingsProps> = (props) => {
                             <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600"><Fingerprint className="w-6 h-6"/></div>
                             <div>
                                 <p className="text-xs font-black uppercase text-slate-400">Aktuelle Version</p>
-                                <p className="font-bold text-slate-800 text-lg">v1.3.36-Stable</p>
+                                <p className="font-bold text-slate-800 text-lg">v1.3.37-Stable</p>
                             </div>
                         </div>
                         <button 
@@ -337,7 +356,7 @@ export const Settings: React.FC<SettingsProps> = (props) => {
                 <div className="p-6 bg-indigo-50 rounded-2xl border border-indigo-100 text-center space-y-4">
                     <DownloadCloud className="w-10 h-10 text-indigo-600 mx-auto" /><h3 className="font-black text-slate-800">Export</h3><p className="text-xs text-slate-500">JSON Voll-Backup aller Daten.</p>
                     <button onClick={() => {
-                        const data: BackupData = { contacts, deals, tasks, invoices, expenses, activities, invoiceConfig, userProfile, productPresets, backendConfig, theme: 'light', timestamp: new Date().toISOString(), version: '1.3.36' };
+                        const data: BackupData = { contacts, deals, tasks, invoices, expenses, activities, invoiceConfig, userProfile, productPresets, backendConfig, theme: 'light', timestamp: new Date().toISOString(), version: '1.3.37' };
                         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
                         const url = URL.createObjectURL(blob);
                         const a = document.createElement('a'); a.href = url; a.download = `CRM_Backup_${new Date().toISOString().split('T')[0]}.json`; a.click();
