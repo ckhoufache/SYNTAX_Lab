@@ -1,4 +1,3 @@
-
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
@@ -19,14 +18,7 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
-    rollupOptions: {
-      external: [
-        'firebase/app',
-        'firebase/firestore',
-        'firebase/auth',
-        'firebase/storage'
-      ]
-    }
+    // Removed external rollupOptions for firebase to ensure bundling
   },
   server: {
     port: 5173,

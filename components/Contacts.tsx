@@ -1,7 +1,8 @@
 
 import React, { useState, useMemo } from 'react';
-import { Search, Plus, Linkedin, X, Pencil, Trash2, Star, Heart, Target, Filter, History, MessageSquare, Info, Clock, Calendar, Send, User, KanbanSquare, Check, Landmark, ShieldCheck } from 'lucide-react';
+import { Search, Plus, Linkedin, X, Pencil, Trash2, Star, Heart, Target, Filter, History, MessageSquare, Info, Clock, Calendar, Send, User, KanbanSquare, Check, Landmark, ShieldCheck, Globe, AlertCircle, Package } from 'lucide-react';
 import { Contact, Activity, EmailTemplate, Invoice, Expense, InvoiceConfig, TargetGroup, Deal, DealStage } from '../types';
+import { ConfirmDialog } from './ConfirmDialog';
 
 interface ContactsProps {
   contacts: Contact[];
@@ -60,16 +61,18 @@ export const Contacts: React.FC<ContactsProps> = ({
   onAddDeal
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'all' | 'customer' | 'lead' | 'sales' | 'no_pipeline'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'customer' | 'lead' | 'sales' | 'request' | 'no_pipeline'>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingContactId, setEditingContactId] = useState<string | null>(null);
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
   const [newNote, setNewNote] = useState('');
   const [isProcessingBatch, setIsProcessingBatch] = useState(false);
+  const [contactToDelete, setContactToDelete] = useState<string | null>(null);
   
   const [formData, setFormData] = useState<Partial<Contact>>({
     name: '', role: '', company: '', email: '', type: 'lead', nps: undefined, linkedin: '', targetGroup: undefined,
-    taxId: '', taxStatus: 'standard', street: '', zip: '', city: ''
+    taxId: '', taxStatus: 'standard', street: '', zip: '', city: '', message: '', source: '', deliveryMethod: undefined,
+    contractStartDate: '', contractStage: undefined
   });
 
   const contactsInPipeline = useMemo(() => new Set(deals.map(d => d.contactId)), [deals]);
@@ -108,7 +111,11 @@ export const Contacts: React.FC<ContactsProps> = ({
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setEditingContactId(null);
-    setFormData({ name: '', role: '', company: '', email: '', type: 'lead', nps: undefined, linkedin: '', targetGroup: undefined, taxId: '', taxStatus: 'standard', street: '', zip: '', city: '' });
+    setFormData({ 
+        name: '', role: '', company: '', email: '', type: 'lead', nps: undefined, linkedin: '', targetGroup: undefined, 
+        taxId: '', taxStatus: 'standard', street: '', zip: '', city: '', message: '', source: '', deliveryMethod: undefined,
+        contractStartDate: '', contractStage: undefined
+    });
   };
 
   const openEditModal = (contact: Contact) => {
@@ -201,9 +208,29 @@ export const Contacts: React.FC<ContactsProps> = ({
     }
     handleCloseModal();
   };
+  
+  const initiateDelete = (id: string) => {
+      setContactToDelete(id);
+  };
+  
+  const executeDelete = () => {
+      if (contactToDelete) {
+          onDeleteContact(contactToDelete);
+          if (selectedContactId === contactToDelete) setSelectedContactId(null);
+          setContactToDelete(null);
+      }
+  };
 
   return (
     <div className="flex-1 bg-slate-50 h-screen overflow-hidden flex flex-col relative">
+      <ConfirmDialog 
+        isOpen={!!contactToDelete}
+        title="Kontakt wirklich löschen?"
+        message="Diese Aktion entfernt den Kontakt und alle verknüpften Daten unwiderruflich aus dem System."
+        onConfirm={executeDelete}
+        onCancel={() => setContactToDelete(null)}
+      />
+
       <header className="bg-white border-b border-slate-200 px-8 py-6 flex justify-between items-center shrink-0">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Kontakte</h1>
@@ -225,15 +252,18 @@ export const Contacts: React.FC<ContactsProps> = ({
         </div>
       </header>
       
-      <div className="bg-white px-8 border-b border-slate-100 flex justify-between items-center shrink-0">
+      <div className="bg-white px-8 border-b border-slate-100 flex justify-between items-center shrink-0 overflow-x-auto">
         <div className="flex gap-1">
-          {(['all', 'lead', 'customer', 'sales', 'no_pipeline'] as const).map(tab => (
+          {(['all', 'request', 'lead', 'customer', 'sales', 'no_pipeline'] as const).map(tab => (
             <button 
               key={tab}
               onClick={() => setActiveTab(tab)} 
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors capitalize ${activeTab === tab ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors capitalize whitespace-nowrap ${activeTab === tab ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
             >
-              {tab === 'all' ? 'Alle' : tab === 'sales' ? 'Vertrieb' : tab === 'no_pipeline' ? 'Ohne Pipeline' : tab + 's'}
+              {tab === 'all' ? 'Alle' : tab === 'request' ? 'Anfragen' : tab === 'sales' ? 'Vertrieb' : tab === 'no_pipeline' ? 'Ohne Pipeline' : tab + 's'}
+              {tab === 'request' && contacts.filter(c => c.type === 'request').length > 0 && (
+                  <span className="ml-2 bg-amber-500 text-white text-[9px] px-1.5 rounded-full">{contacts.filter(c => c.type === 'request').length}</span>
+              )}
             </button>
           ))}
         </div>
@@ -241,7 +271,7 @@ export const Contacts: React.FC<ContactsProps> = ({
             <button 
               onClick={handleBatchToPipeline}
               disabled={isProcessingBatch}
-              className="bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-100 hover:bg-emerald-100 flex items-center gap-2 transition-all"
+              className="bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-100 hover:bg-emerald-100 flex items-center gap-2 transition-all shrink-0"
             >
                 <KanbanSquare className="w-3.5 h-3.5"/> Pipeline Sync ({filteredContacts.filter(c => c.type !== 'sales').length})
             </button>
@@ -283,9 +313,11 @@ export const Contacts: React.FC<ContactsProps> = ({
                     <div className="flex items-center gap-2">
                       <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
                         (contact.type || '').toLowerCase() === 'customer' ? 'bg-green-100 text-green-700' : 
-                        (contact.type || '').toLowerCase() === 'sales' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
+                        (contact.type || '').toLowerCase() === 'sales' ? 'bg-purple-100 text-purple-700' : 
+                        (contact.type || '').toLowerCase() === 'request' ? 'bg-amber-100 text-amber-700 border border-amber-200' :
+                        'bg-blue-100 text-blue-700'
                       }`}>
-                        {contact.type || 'Lead'}
+                        {contact.type === 'request' ? 'Anfrage' : contact.type || 'Lead'}
                       </span>
                       {contactsInPipeline.has(contact.id) && <KanbanSquare className="w-3 h-3 text-indigo-400" title="In Pipeline" />}
                     </div>
@@ -309,7 +341,7 @@ export const Contacts: React.FC<ContactsProps> = ({
                           <a href={contact.linkedin} target="_blank" rel="noopener noreferrer" className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all"><Linkedin className="w-4 h-4"/></a>
                       )}
                       <button onClick={() => openEditModal(contact)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"><Pencil className="w-4 h-4"/></button>
-                      <button onClick={() => onDeleteContact(contact.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"><Trash2 className="w-4 h-4"/></button>
+                      <button onClick={() => initiateDelete(contact.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"><Trash2 className="w-4 h-4"/></button>
                     </div>
                   </td>
                 </tr>
@@ -339,7 +371,53 @@ export const Contacts: React.FC<ContactsProps> = ({
                       <X className="w-5 h-5"/>
                   </button>
               </div>
+
+              {/* ANFRAGE DETAILS (Wenn vorhanden) */}
+              {(selectedContact.message || selectedContact.source) && (
+                  <div className="bg-amber-50 p-6 border-b border-amber-100 space-y-3">
+                      <h4 className="text-xs font-black uppercase text-amber-600 flex items-center gap-2">
+                          <AlertCircle className="w-3.5 h-3.5"/> Anfrage von Landingpage
+                      </h4>
+                      {selectedContact.source && (
+                          <div className="flex items-center gap-2 text-xs text-amber-800">
+                              <Globe className="w-3.5 h-3.5 opacity-50"/> 
+                              <span className="font-bold">Quelle:</span> {selectedContact.source}
+                          </div>
+                      )}
+                      {selectedContact.message && (
+                          <div className="bg-white/80 p-3 rounded-lg border border-amber-100 text-sm text-slate-700 italic relative">
+                              <span className="absolute -top-2 left-2 text-2xl text-amber-200">"</span>
+                              {selectedContact.message}
+                          </div>
+                      )}
+                  </div>
+              )}
               
+              {/* KUNDEN DETAILS */}
+              {selectedContact.type === 'customer' && (
+                  <div className="bg-slate-50 border-b border-slate-200">
+                      {selectedContact.deliveryMethod && (
+                          <div className="px-6 py-3 flex items-center gap-3 text-sm text-slate-700 border-b border-slate-100">
+                              <div className="p-1.5 bg-slate-200 rounded text-slate-600"><Package className="w-3.5 h-3.5"/></div>
+                              <div>
+                                <span className="block text-[9px] font-bold uppercase opacity-60">Lieferform</span>
+                                <span className="font-bold">{selectedContact.deliveryMethod === 'email_attachment' ? 'E-Mail' : 'Doc Freigabe'}</span>
+                              </div>
+                          </div>
+                      )}
+                      {selectedContact.contractStage && (
+                          <div className="px-6 py-3 flex items-center gap-3 text-sm text-indigo-800 bg-indigo-50/50">
+                              <div className="p-1.5 bg-indigo-100 rounded text-indigo-600"><Landmark className="w-3.5 h-3.5"/></div>
+                              <div>
+                                <span className="block text-[9px] font-bold uppercase opacity-60">Vertragsstatus</span>
+                                <span className="font-bold capitalize">{selectedContact.contractStage} </span>
+                                {selectedContact.contractStartDate && <span className="text-xs opacity-70"> (Start: {new Date(selectedContact.contractStartDate).toLocaleDateString()})</span>}
+                              </div>
+                          </div>
+                      )}
+                  </div>
+              )}
+
               <div className="p-6 border-b border-slate-100 shrink-0">
                   <form onSubmit={handleAddNote} className="space-y-3">
                       <label className="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-2">
@@ -425,12 +503,60 @@ export const Contacts: React.FC<ContactsProps> = ({
                     <label className="text-[10px] font-bold uppercase text-slate-500">Status</label>
                     <select value={formData.type} onChange={e => setFormData({...formData, type: e.target.value as any})} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
                         <option value="lead">Lead</option>
+                        <option value="request">Anfrage (Neu)</option>
                         <option value="customer">Kunde</option>
                         <option value="sales">Vertrieb (Sales)</option>
                     </select>
                    </div>
               </div>
               
+              {/* NEU: Option für Lieferform nur bei Kunden */}
+              {formData.type === 'customer' && (
+                  <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 animate-in fade-in slide-in-from-top-1 space-y-3">
+                      <h3 className="text-[10px] font-black uppercase text-indigo-600 flex items-center gap-2">
+                          <Package className="w-3.5 h-3.5"/> Kundenspezifische Daten
+                      </h3>
+                      <div className="flex gap-6">
+                          <label className="flex items-center gap-2 cursor-pointer group">
+                              <input 
+                                  type="radio" 
+                                  name="deliveryMethod"
+                                  value="email_attachment"
+                                  checked={formData.deliveryMethod === 'email_attachment'}
+                                  onChange={() => setFormData({...formData, deliveryMethod: 'email_attachment'})}
+                                  className="w-4 h-4 text-indigo-600 border-indigo-300 focus:ring-indigo-500"
+                              />
+                              <span className="text-sm text-slate-700 group-hover:text-indigo-700 transition-colors">Per E-Mail Anhang</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer group">
+                              <input 
+                                  type="radio" 
+                                  name="deliveryMethod"
+                                  value="doc_share"
+                                  checked={formData.deliveryMethod === 'doc_share'}
+                                  onChange={() => setFormData({...formData, deliveryMethod: 'doc_share'})}
+                                  className="w-4 h-4 text-indigo-600 border-indigo-300 focus:ring-indigo-500"
+                              />
+                              <span className="text-sm text-slate-700 group-hover:text-indigo-700 transition-colors">Doc Freigabe</span>
+                          </label>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                          <div>
+                              <label className="text-[10px] font-bold uppercase text-slate-500">Vertragsstart</label>
+                              <input type="date" value={formData.contractStartDate || ''} onChange={e=>setFormData({...formData, contractStartDate:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm bg-white" />
+                          </div>
+                          <div>
+                              <label className="text-[10px] font-bold uppercase text-slate-500">Vertragsphase</label>
+                              <select value={formData.contractStage || ''} onChange={e=>setFormData({...formData, contractStage:e.target.value as any})} className="w-full px-3 py-2 border rounded-lg text-sm bg-white">
+                                  <option value="">-- Keine --</option>
+                                  <option value="pilot">Pilot-Phase</option>
+                                  <option value="standard">Standard</option>
+                              </select>
+                          </div>
+                      </div>
+                  </div>
+              )}
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-[10px] font-bold uppercase text-slate-500">Firma</label>
@@ -440,6 +566,21 @@ export const Contacts: React.FC<ContactsProps> = ({
                     <label className="text-[10px] font-bold uppercase text-slate-500">Position</label>
                     <input value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="z.B. CEO" />
                 </div>
+              </div>
+
+              {/* NEU: Landingpage Daten */}
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-4">
+                  <h3 className="text-[10px] font-black uppercase text-slate-400 flex items-center gap-2"><Globe className="w-3.5 h-3.5"/> Herkunft & Anfrage</h3>
+                  <div className="grid grid-cols-1 gap-4">
+                      <div>
+                          <label className="text-[10px] font-bold uppercase text-slate-500">Quelle</label>
+                          <input value={formData.source || ''} onChange={e => setFormData({...formData, source: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white" placeholder="z.B. Landingpage V1" />
+                      </div>
+                      <div>
+                          <label className="text-[10px] font-bold uppercase text-slate-500">Nachricht</label>
+                          <textarea value={formData.message || ''} onChange={e => setFormData({...formData, message: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white min-h-[80px]" placeholder="Inhalt der Kontaktanfrage..." />
+                      </div>
+                  </div>
               </div>
 
               {/* NEU: Spezielle Sales-Felder */}

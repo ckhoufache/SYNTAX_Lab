@@ -35,6 +35,7 @@ export const Pipeline: React.FC<PipelineProps> = ({
   onAddDeal, 
   onUpdateDeal, 
   onDeleteDeal,
+  onUpdateContact,
   onAddActivity,
   onDeleteActivity,
   visibleStages,
@@ -167,8 +168,41 @@ export const Pipeline: React.FC<PipelineProps> = ({
   const handleWonAction = (createInvoice: boolean) => {
       if (!wonDeal) return;
       const contact = contacts.find(c => c.id === wonDeal.contactId);
+      const todayDate = new Date().toISOString().split('T')[0];
       
       finalizeStageChange(wonDeal, DealStage.WON);
+      
+      // LOGIK FÜR VERTRAGS-SETUP (Pilot vs Standard)
+      if (contact) {
+          const dealTitle = wonDeal.title.toLowerCase();
+          // Prüfung auf "Pilot" oder "Beta" im Titel
+          const isPilot = dealTitle.includes('pilot') || dealTitle.includes('beta');
+          // Standard-Fall (alles andere ist Standard)
+          const contractStage = isPilot ? 'pilot' : 'standard';
+          
+          const updatedContact: Contact = {
+              ...contact,
+              type: 'customer',
+              contractStartDate: todayDate, // Tag der Unterschrift
+              retainerActive: true,
+              retainerAmount: wonDeal.value,
+              retainerInterval: 'monthly',
+              retainerNextBilling: todayDate, // Tag der Rechnung = Tag der Unterschrift
+              // Status basierend auf Deal-Namen
+              contractStage: contractStage
+          };
+          
+          onUpdateContact(updatedContact);
+
+          onAddActivity({
+              id: crypto.randomUUID(),
+              contactId: contact.id,
+              type: 'system_deal',
+              content: `Vertrag gestartet (${contractStage === 'pilot' ? 'Pilot-Phase' : 'Standard'}). Abrechnungstag auf ${todayDate} gesetzt.`,
+              date: todayDate,
+              timestamp: new Date().toISOString()
+          });
+      }
       
       if (createInvoice && contact) {
           onAddInvoice({
@@ -176,7 +210,7 @@ export const Pipeline: React.FC<PipelineProps> = ({
               type: 'customer',
               invoiceNumber: `RE-${Date.now()}`,
               description: `Abschluss: ${wonDeal.title}`,
-              date: new Date().toISOString().split('T')[0],
+              date: todayDate,
               contactId: contact.id,
               contactName: contact.name,
               amount: wonDeal.value,
@@ -187,8 +221,8 @@ export const Pipeline: React.FC<PipelineProps> = ({
               id: crypto.randomUUID(),
               contactId: contact.id,
               type: 'system_invoice',
-              content: `Rechnung automatisch erstellt nach Deal-Gewinn: ${wonDeal.title}`,
-              date: new Date().toISOString().split('T')[0],
+              content: `Erste Rechnung automatisch erstellt für: ${wonDeal.title}`,
+              date: todayDate,
               timestamp: new Date().toISOString()
           });
       }
@@ -478,14 +512,22 @@ export const Pipeline: React.FC<PipelineProps> = ({
                        <CheckCircle2 className="w-10 h-10 text-green-600"/>
                    </div>
                    <h2 className="text-2xl font-black text-slate-900 mb-2">Glückwunsch!</h2>
-                   <p className="text-sm text-slate-500 mb-8 leading-relaxed">Der Deal <strong>{wonDeal.title}</strong> wurde gewonnen. Möchten Sie direkt eine Rechnung erstellen?</p>
+                   <p className="text-sm text-slate-500 mb-8 leading-relaxed">
+                       Der Deal <strong>{wonDeal.title}</strong> wurde gewonnen. 
+                       <br/><br/>
+                       <span className="text-xs bg-indigo-50 text-indigo-700 px-2 py-1 rounded">
+                           Automatisch: Status auf Kunde & Rechnungszyklus auf Heute gesetzt.
+                           <br/>
+                           {(wonDeal.title.toLowerCase().includes('pilot') || wonDeal.title.toLowerCase().includes('beta')) ? "(Pilot-Phase erkannt)" : "(Standard-Vertrag erkannt)"}
+                       </span>
+                   </p>
                    
                    <div className="space-y-3">
                        <button onClick={() => handleWonAction(true)} className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-indigo-100 flex items-center justify-center gap-2 hover:-translate-y-1 transition-all">
-                           <DollarSign className="w-4 h-4"/> Rechnung erstellen
+                           <DollarSign className="w-4 h-4"/> 1. Rechnung jetzt erstellen
                        </button>
                        <button onClick={() => handleWonAction(false)} className="w-full py-4 rounded-2xl font-black text-xs uppercase tracking-widest text-slate-400 hover:bg-slate-50 transition-all">
-                           Nur abschließen
+                           Nur Status ändern
                        </button>
                    </div>
                </div>

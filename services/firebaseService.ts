@@ -1,4 +1,4 @@
-import { initializeApp } from 'firebase/app';
+import firebase from 'firebase/compat/app';
 import { 
     getFirestore, collection, getDocs, doc, setDoc, deleteDoc, getDoc,
     query, where, orderBy, limit, writeBatch, enableIndexedDbPersistence 
@@ -37,7 +37,12 @@ export class FirebaseDataService implements IDataService {
     constructor(config: BackendConfig) {
         if (config.firebaseConfig && config.firebaseConfig.apiKey) {
             try {
-                const app = initializeApp(config.firebaseConfig);
+                // Check if app already initialized to avoid duplicate app errors
+                // Use compat API for app initialization to handle TS resolution issues with modular firebase/app
+                const app = firebase.apps.length === 0 
+                    ? firebase.initializeApp(config.firebaseConfig) 
+                    : firebase.app();
+
                 this.db = getFirestore(app);
                 this.auth = getAuth(app);
                 this.initialized = true;
@@ -282,7 +287,17 @@ export class FirebaseDataService implements IDataService {
         if (!this.db) return [];
         const colRef = collection(this.db, collectionName);
         const snapshot = await getDocs(colRef);
-        return snapshot.docs.map(doc => doc.data() as T);
+        return snapshot.docs.map(doc => {
+            const data = doc.data();
+            // CRITICAL FIX: If the stored object does not have an 'id' property (like external/website contacts),
+            // use the Firestore Document ID. This ensures every item is deletable/editable.
+            // Also inject firestoreId for robust reference.
+            return {
+                ...data,
+                id: data.id || doc.id,
+                firestoreId: doc.id
+            } as unknown as T;
+        });
     }
     private async save<T extends { id: string }>(collectionName: string, data: T): Promise<T> {
         if (!this.db) return data;
@@ -299,12 +314,39 @@ export class FirebaseDataService implements IDataService {
     async getContacts(): Promise<Contact[]> { return this.getAll('contacts'); }
     async saveContact(c: Contact): Promise<Contact> { return this.save('contacts', c); }
     async updateContact(c: Contact): Promise<Contact> { return this.save('contacts', c); }
+    
+    // FIX: Enhanced deleteContact to resolve ID mismatch from external imports
     async deleteContact(id: string): Promise<void> { 
+        if (!this.db) return;
+
+        // 1. Try to find the document by direct key first (standard case)
+        let docRef = doc(this.db, 'contacts', id);
+        const docSnap = await getDoc(docRef);
+
+        // 2. If not found by key, search by 'id' field (imported case)
+        if (!docSnap.exists()) {
+            const q = query(collection(this.db, 'contacts'), where('id', '==', id));
+            const querySnap = await getDocs(q);
+            if (!querySnap.empty) {
+                // If found via query, use THAT document reference
+                docRef = querySnap.docs[0].ref;
+            } else {
+                console.warn(`Cannot delete: Contact with ID ${id} not found in DB.`);
+                return;
+            }
+        }
+
         const batch = writeBatch(this.db);
-        batch.delete(doc(this.db, 'contacts', id));
-        // Simple cascade
+        batch.delete(docRef);
+        
+        // Cascade delete Deals
         const deals = await getDocs(query(collection(this.db, 'deals'), where('contactId', '==', id)));
         deals.forEach(d => batch.delete(d.ref));
+
+        // Cascade delete Activities
+        const activities = await getDocs(query(collection(this.db, 'activities'), where('contactId', '==', id)));
+        activities.forEach(a => batch.delete(a.ref));
+
         await batch.commit();
     }
     
@@ -385,12 +427,39 @@ export class FirebaseDataService implements IDataService {
     }
 
     async getProductPresets(): Promise<ProductPreset[]> { return this.getAll('productPresets'); }
-    async saveProductPresets(p: ProductPreset[]): Promise<ProductPreset[]> { 
+    
+    // CRITICAL FIX: Implement Sync Logic for Presets
+    // This ensures deleted presets in the UI are also deleted in Firestore
+    async saveProductPresets(presets: ProductPreset[]): Promise<ProductPreset[]> { 
+        if (!this.db) return presets;
+        
         const batch = writeBatch(this.db);
-        p.forEach(x => batch.set(doc(this.db, 'productPresets', x.id), sanitizeForFirestore(x)));
+        
+        // 1. Fetch ALL existing presets from DB
+        const existingSnapshot = await getDocs(collection(this.db, 'productPresets'));
+        const existingIds = new Set(existingSnapshot.docs.map(d => d.id));
+        
+        // 2. Identify presets to keep/update
+        const currentIds = new Set(presets.map(p => p.id));
+        
+        // 3. Delete presets that are in DB but NOT in the new list
+        existingSnapshot.docs.forEach(docSnap => {
+            if (!currentIds.has(docSnap.id)) {
+                batch.delete(docSnap.ref);
+            }
+        });
+        
+        // 4. Set/Update all items in the new list
+        presets.forEach(x => {
+            // Ensure ID exists
+            const docRef = doc(this.db, 'productPresets', x.id);
+            batch.set(docRef, sanitizeForFirestore(x));
+        });
+
         await batch.commit();
-        return p;
+        return presets;
     }
+    
     async deleteProductPreset(id: string): Promise<void> { await this.delete('productPresets', id); }
 
     async getInvoiceConfig(): Promise<InvoiceConfig> { 
@@ -420,7 +489,116 @@ export class FirebaseDataService implements IDataService {
         await batch.commit();
     }
 
-    async processDueRetainers(): Promise<any> { return {updatedContacts:[], newInvoices:[], newActivities:[]}; }
+    async processDueRetainers(): Promise<{updatedContacts: Contact[], newInvoices: Invoice[], newActivities: Activity[]}> {
+        const contacts = await this.getContacts();
+        // Load config to get pilot duration
+        const config = await this.getInvoiceConfig();
+        const pilotMonths = config.pilotDurationMonths || 3; // Default to 3 months if not set
+        
+        // Fetch product presets to find the source/target preset if configured
+        const presets = await this.getProductPresets();
+        
+        const targetPresetId = config.pilotTargetPresetId;
+        const targetPreset = targetPresetId ? presets.find(p => p.id === targetPresetId) : null;
+        
+        const sourcePresetId = config.pilotSourcePresetId;
+        const sourcePreset = sourcePresetId ? presets.find(p => p.id === sourcePresetId) : null;
+
+        const today = new Date();
+        const todayStr = today.toISOString().split('T')[0];
+        
+        const dueContacts = contacts.filter(c => 
+            c.retainerActive && 
+            c.retainerNextBilling && 
+            c.retainerNextBilling <= todayStr
+        );
+
+        if (dueContacts.length === 0) {
+            return { updatedContacts: [], newInvoices: [], newActivities: [] };
+        }
+
+        const batch = writeBatch(this.db);
+        const newInvoices: Invoice[] = [];
+        const newActivities: Activity[] = [];
+        const updatedContacts: Contact[] = [];
+
+        for (const contact of dueContacts) {
+            let updatedContact = { ...contact };
+            let amount = contact.retainerAmount || 0;
+            let logMsg = '';
+
+            // PILOT CHECK: Upgrade to Standard after configurable months
+            if (contact.contractStartDate && contact.contractStage === 'pilot') {
+                const startDate = new Date(contact.contractStartDate);
+                const diffTime = Math.abs(today.getTime() - startDate.getTime());
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+                
+                // Calculate threshold days approx
+                const thresholdDays = pilotMonths * 30;
+
+                if (diffDays > thresholdDays) {
+                    // Use target preset value if configured, otherwise fallback to 1500
+                    amount = targetPreset ? targetPreset.value : 1500;
+                    const newStageName = targetPreset ? targetPreset.title : 'Standard';
+                    const oldStageName = sourcePreset ? sourcePreset.title : 'Pilot';
+                    
+                    updatedContact.retainerAmount = amount;
+                    updatedContact.contractStage = 'standard';
+                    logMsg = `Pilot beendet (${pilotMonths} Monate). Upgrade von ${oldStageName} auf ${newStageName} (${amount.toLocaleString('de-DE')}€).`;
+                    
+                    const activity: Activity = {
+                        id: crypto.randomUUID(),
+                        contactId: contact.id,
+                        type: 'system_deal',
+                        content: logMsg,
+                        date: todayStr,
+                        timestamp: new Date().toISOString()
+                    };
+                    newActivities.push(activity);
+                    batch.set(doc(this.db, 'activities', activity.id), sanitizeForFirestore(activity));
+                }
+            }
+
+            // Create Invoice
+            const newInvoice: Invoice = {
+                id: crypto.randomUUID(),
+                type: 'customer',
+                invoiceNumber: `RE-${Date.now()}-${Math.floor(Math.random()*1000)}`,
+                description: `Retainer / Service Pauschale (${updatedContact.contractStage === 'pilot' && sourcePreset ? sourcePreset.title : (updatedContact.contractStage === 'standard' && targetPreset ? targetPreset.title : updatedContact.contractStage)})`,
+                date: todayStr,
+                contactId: contact.id,
+                contactName: contact.name,
+                amount: amount,
+                isPaid: false,
+                salesRepId: contact.salesRepId // Ensure Sales Rep is linked for commission calculation later
+            };
+            newInvoices.push(newInvoice);
+            batch.set(doc(this.db, 'invoices', newInvoice.id), sanitizeForFirestore(newInvoice));
+
+            // Log Invoice Creation
+            const invActivity: Activity = {
+                id: crypto.randomUUID(),
+                contactId: contact.id,
+                type: 'system_invoice',
+                content: `Automatische Rechnung erstellt: ${newInvoice.invoiceNumber} (${amount}€)`,
+                date: todayStr,
+                timestamp: new Date().toISOString()
+            };
+            newActivities.push(invActivity);
+            batch.set(doc(this.db, 'activities', invActivity.id), sanitizeForFirestore(invActivity));
+
+            // Update Next Billing Date (Add 1 Month)
+            const nextDate = new Date(today);
+            nextDate.setMonth(nextDate.getMonth() + 1);
+            updatedContact.retainerNextBilling = nextDate.toISOString().split('T')[0];
+            
+            updatedContacts.push(updatedContact);
+            batch.set(doc(this.db, 'contacts', updatedContact.id), sanitizeForFirestore(updatedContact));
+        }
+
+        await batch.commit();
+        return { updatedContacts, newInvoices, newActivities };
+    }
     
     // --- IMPLEMENTATION OF BATCH RUN ---
     async runCommissionBatch(year: number, month: number): Promise<{ createdInvoices: Invoice[], updatedSourceInvoices: Invoice[] }> {
@@ -584,12 +762,12 @@ export class FirebaseDataService implements IDataService {
         if ((window as any).require) {
             try { 
                 const v = await (window as any).require('electron').ipcRenderer.invoke('get-app-version'); 
-                return v || '0.0.0'; 
+                return v || '1.3.38'; 
             } catch(e) {
                 console.error("Version Check IPC Failed:", e);
             }
         }
-        return '0.0.0'; 
+        return '1.3.38'; 
     }
 
     async generatePdf(html: string): Promise<string> {

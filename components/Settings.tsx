@@ -5,7 +5,7 @@ import {
   Database, Upload, Mail, Landmark, Key, Info, Zap, 
   DownloadCloud, Shield, Building2, Cpu, Wrench, FileText, 
   ImageIcon, BellRing, Settings2, Fingerprint, Globe, Check, X,
-  RefreshCw, Play, Code
+  RefreshCw, Play, Code, Pencil, ArrowRight
 } from 'lucide-react';
 import { UserProfile, ProductPreset, Contact, Deal, Task, BackupData, BackendConfig, Invoice, Expense, Activity, EmailTemplate, InvoiceConfig, EmailSettings } from '../types';
 import { IDataService, DEFAULT_PDF_TEMPLATE } from '../services/dataService';
@@ -184,8 +184,10 @@ export const Settings: React.FC<SettingsProps> = (props) => {
                         <div className="flex-1 space-y-4">
                             <div><label className="text-[10px] font-black uppercase text-slate-400">Firmenname</label><input value={invConfigForm.companyName} onChange={e=>setInvConfigForm({...invConfigForm, companyName: e.target.value})} className="w-full p-2 border rounded-lg" /></div>
                             <div className="grid grid-cols-2 gap-4">
-                                <div><label className="text-[10px] font-black uppercase text-slate-400">Website</label><input value={invConfigForm.website} onChange={e=>setInvConfigForm({...invConfigForm, website: e.target.value})} className="w-full p-2 border rounded-lg" /></div>
-                                <div><label className="text-[10px] font-black uppercase text-slate-400">Firmen-E-Mail</label><input value={invConfigForm.email} onChange={e=>setInvConfigForm({...invConfigForm, email: e.target.value})} className="w-full p-2 border rounded-lg" /></div>
+                                <div className="space-y-4">
+                                    <div><label className="text-[10px] font-black uppercase text-slate-400">Website</label><input value={invConfigForm.website} onChange={e=>setInvConfigForm({...invConfigForm, website: e.target.value})} className="w-full p-2 border rounded-lg" /></div>
+                                    <div><label className="text-[10px] font-black uppercase text-slate-400">Firmen-E-Mail</label><input value={invConfigForm.email} onChange={e=>setInvConfigForm({...invConfigForm, email: e.target.value})} className="w-full p-2 border rounded-lg" /></div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -206,6 +208,60 @@ export const Settings: React.FC<SettingsProps> = (props) => {
                     <div className="flex justify-end"><button type="submit" className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold">Bankdaten sichern</button></div>
                 </form>
             </SubAccordion>
+            
+            <SubAccordion title="Vertrags-Einstellungen (Pilot-Phase)" isOpen={subOpen === 'contract'} onToggle={() => setSubOpen(subOpen === 'contract' ? null : 'contract')}>
+                <form onSubmit={handleInvSubmit} className="p-6 bg-indigo-50 rounded-xl border border-indigo-100">
+                    <h4 className="text-[10px] font-black uppercase text-indigo-700 flex items-center gap-2 mb-4"><Zap className="w-3 h-3"/> Pilot-Automatik Konfiguration</h4>
+                    <div className="flex items-center gap-4 mb-2">
+                        <div className="flex-1">
+                            <label className="text-[9px] font-bold uppercase text-indigo-500 block mb-1">Start-Paket (Pilot)</label>
+                            <select 
+                                value={invConfigForm.pilotSourcePresetId || ''}
+                                onChange={e=>setInvConfigForm({...invConfigForm, pilotSourcePresetId: e.target.value})}
+                                className="w-full p-2.5 border rounded-lg text-sm bg-white"
+                            >
+                                <option value="">-- Standard (Pilot) --</option>
+                                {productPresets.map(p => (
+                                    <option key={p.id} value={p.id}>{p.title} ({p.value}€)</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="flex flex-col items-center pt-4">
+                            <div className="w-16 h-[2px] bg-indigo-200"></div>
+                            <span className="text-[9px] font-bold bg-indigo-200 text-indigo-800 px-2 rounded-full absolute -mt-2">Nach</span>
+                        </div>
+                        <div className="w-24 shrink-0 text-center">
+                            <label className="text-[9px] font-bold uppercase text-indigo-500 block mb-1">Dauer</label>
+                            <div className="relative">
+                                <input type="number" min="1" max="24" value={invConfigForm.pilotDurationMonths || 3} onChange={e=>setInvConfigForm({...invConfigForm, pilotDurationMonths: parseInt(e.target.value)})} className="w-full p-2.5 text-center border rounded-lg text-sm bg-white font-bold" />
+                                <span className="text-[8px] uppercase text-slate-400 absolute bottom-[-16px] left-0 right-0">Monate</span>
+                            </div>
+                        </div>
+                        <div className="flex flex-col items-center pt-4">
+                            <div className="w-16 h-[2px] bg-indigo-200"></div>
+                            <ArrowRight className="w-3 h-3 text-indigo-400 absolute -mt-1.5 ml-8"/>
+                        </div>
+                        <div className="flex-1">
+                            <label className="text-[9px] font-bold uppercase text-indigo-500 block mb-1">Ziel-Paket (Standard)</label>
+                            <select 
+                                value={invConfigForm.pilotTargetPresetId || ''}
+                                onChange={e=>setInvConfigForm({...invConfigForm, pilotTargetPresetId: e.target.value})}
+                                className="w-full p-2.5 border rounded-lg text-sm bg-white"
+                            >
+                                <option value="">-- Standard (1.500€) --</option>
+                                {productPresets.map(p => (
+                                    <option key={p.id} value={p.id}>{p.title} ({p.value}€)</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div className="mt-6 pt-4 border-t border-indigo-100 flex justify-end">
+                        <button type="submit" className="bg-indigo-600 text-white px-6 py-2 rounded-xl text-xs font-bold shadow-lg shadow-indigo-100 hover:scale-105 transition-all">Einstellungen speichern</button>
+                    </div>
+                </form>
+            </SubAccordion>
+
             <SubAccordion title="Steuer-Regelung & Adresse" isOpen={subOpen === 'tax'} onToggle={() => setSubOpen(subOpen === 'tax' ? null : 'tax')}>
                 <form onSubmit={handleInvSubmit} className="space-y-6">
                     <div className="grid grid-cols-2 gap-4">
@@ -314,9 +370,16 @@ export const Settings: React.FC<SettingsProps> = (props) => {
             <SubAccordion title="Produkt-Presets" isOpen={subOpen === 'presets'} onToggle={() => setSubOpen(subOpen === 'presets' ? null : 'presets')}>
                 <div className="space-y-3">
                     {productPresets.map(p => (
-                        <div key={p.id} className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-200">
+                        <div key={p.id} className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-200 group">
                             <div><p className="font-bold text-slate-800">{p.title}</p><p className="text-xs text-slate-500">{p.value.toLocaleString('de-DE', {minimumFractionDigits: 2})} €</p></div>
-                            <button onClick={() => onUpdatePresets(productPresets.filter(x => x.id !== p.id))} className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-all"><Trash2 className="w-4 h-4"/></button>
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button onClick={() => {
+                                    const t = prompt("Name ändern:", p.title);
+                                    const v = prompt("Preis ändern:", p.value.toString());
+                                    if(t && v) onUpdatePresets(productPresets.map(x => x.id === p.id ? { ...x, title: t, value: parseFloat(v) } : x));
+                                }} className="text-slate-400 hover:text-indigo-600 p-2 rounded-lg transition-all"><Pencil className="w-4 h-4"/></button>
+                                <button onClick={() => onUpdatePresets(productPresets.filter(x => x.id !== p.id))} className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-all"><Trash2 className="w-4 h-4"/></button>
+                            </div>
                         </div>
                     ))}
                     <button onClick={() => { const t = prompt("Leistung:"); const v = prompt("Preis:"); if(t && v) onUpdatePresets([...productPresets, { id: crypto.randomUUID(), title: t, value: parseFloat(v) }]); }} className="w-full py-2 border-2 border-dashed border-slate-200 rounded-xl text-slate-500 font-bold hover:bg-slate-100 transition-all flex items-center justify-center gap-2"><Plus className="w-4 h-4" /> Neues Preset</button>
@@ -333,7 +396,7 @@ export const Settings: React.FC<SettingsProps> = (props) => {
                             <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600"><Fingerprint className="w-6 h-6"/></div>
                             <div>
                                 <p className="text-xs font-black uppercase text-slate-400">Aktuelle Version</p>
-                                <p className="font-bold text-slate-800 text-lg">v1.3.37-Stable</p>
+                                <p className="font-bold text-slate-800 text-lg">v1.3.38-Stable</p>
                             </div>
                         </div>
                         <button 

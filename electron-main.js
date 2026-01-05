@@ -1,4 +1,3 @@
-
 import { app, BrowserWindow, shell, ipcMain, session } from 'electron';
 import path from 'path';
 import express from 'express';
@@ -121,6 +120,51 @@ const getImapConfig = (config) => ({
         authTimeout: 15000,
         tlsOptions: { rejectUnauthorized: false }
     }
+});
+
+// IPC Handlers for Auto-Update
+ipcMain.handle('check-for-update', async () => {
+    if (!app.isPackaged && process.env.NODE_ENV === 'development') {
+        return { error: 'Dev Modus (Keine Updates)' };
+    }
+    try {
+        const result = await autoUpdater.checkForUpdates();
+        return { 
+            updateAvailable: result?.updateInfo.version !== app.getVersion(),
+            version: result?.updateInfo.version 
+        };
+    } catch (e) {
+        console.error('Check update error:', e);
+        return { error: e.message };
+    }
+});
+
+ipcMain.handle('download-update', async () => {
+    return new Promise((resolve, reject) => {
+        autoUpdater.downloadUpdate().catch(reject);
+        resolve(true);
+    });
+});
+
+ipcMain.handle('quit-and-install', () => {
+    autoUpdater.quitAndInstall();
+});
+
+// Forward updater events to renderer
+autoUpdater.on('update-available', (info) => {
+    mainWindow.webContents.send('update-status', { status: 'available', info });
+});
+autoUpdater.on('update-not-available', (info) => {
+    mainWindow.webContents.send('update-status', { status: 'not-available', info });
+});
+autoUpdater.on('download-progress', (progressObj) => {
+    mainWindow.webContents.send('update-status', { status: 'downloading', progress: progressObj.percent });
+});
+autoUpdater.on('update-downloaded', (info) => {
+    mainWindow.webContents.send('update-status', { status: 'downloaded', info });
+});
+autoUpdater.on('error', (err) => {
+    mainWindow.webContents.send('update-status', { status: 'error', error: err.message });
 });
 
 ipcMain.handle('get-app-version', () => app.getVersion());

@@ -13,7 +13,7 @@ export enum DealStage {
   LOST = 'Verloren'
 }
 
-export type ContactType = 'lead' | 'customer' | 'partner' | 'newsletter' | 'sales'; 
+export type ContactType = 'lead' | 'customer' | 'partner' | 'newsletter' | 'sales' | 'request'; 
 
 export type TargetGroup = 
   | 'A - B2B-Entscheider' 
@@ -84,6 +84,7 @@ export interface UserProfile {
 
 export interface Contact {
   id: string;
+  firestoreId?: string; // Hidden field for real DB reference
   name: string;
   role: string;
   company: string;
@@ -99,6 +100,17 @@ export interface Contact {
   targetGroup?: TargetGroup;
   nps?: number;
   
+  // Neue Felder für Landingpage-Anfragen
+  message?: string;
+  source?: string;
+
+  // Lieferform für Kunden
+  deliveryMethod?: 'email_attachment' | 'doc_share';
+
+  // Vertragsmanagement
+  contractStartDate?: string; // Tag der Unterschrift
+  contractStage?: 'pilot' | 'standard'; // Automatische Hochstufung
+
   street?: string;
   zip?: string;
   city?: string;
@@ -233,6 +245,9 @@ export interface InvoiceConfig {
   taxRule?: 'small_business' | 'standard'; 
   emailSettings?: EmailSettings; 
   pdfTemplate?: string; 
+  pilotDurationMonths?: number; 
+  pilotSourcePresetId?: string; // NEU: Von welchem Paket gestartet wird
+  pilotTargetPresetId?: string; // Zu welchem Paket gewechselt wird
 }
 
 export interface EmailTemplate {
