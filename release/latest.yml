@@ -1,8 +1,8 @@
-version: 1.4.0
+version: 1.4.10
 files:
-  - url: SyntaxLabCRM Setup 1.4.0.exe
-    sha512: 7bRNNta6KaytLi2hiwsyRmfVCQxaWUqWHxS6i1ZFhnJp5t1oYe//cNoLgV1W5GWHUbeCJ22T5XnzHXK9idJYRA==
-    size: 97182076
-path: SyntaxLabCRM Setup 1.4.0.exe
-sha512: 7bRNNta6KaytLi2hiwsyRmfVCQxaWUqWHxS6i1ZFhnJp5t1oYe//cNoLgV1W5GWHUbeCJ22T5XnzHXK9idJYRA==
-releaseDate: '2026-01-06T16:37:58.789Z'
+  - url: SyntaxLabCRM Setup 1.4.10.exe
+    sha512: v8QNTpgiUlfqUzrYLguXIXafk2C/AHB3M2YoJeBeogFJepXD+hcU6iSy3nk3MGTSNZgokcUQV6wSfpwNY773Gg==
+    size: 97183796
+path: SyntaxLabCRM Setup 1.4.10.exe
+sha512: v8QNTpgiUlfqUzrYLguXIXafk2C/AHB3M2YoJeBeogFJepXD+hcU6iSy3nk3MGTSNZgokcUQV6wSfpwNY773Gg==
+releaseDate: '2026-01-06T17:03:30.538Z'

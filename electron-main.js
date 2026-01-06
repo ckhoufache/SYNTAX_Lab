@@ -48,7 +48,7 @@ async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
-    title: `SyntaxLabCRM v1.4.0`,
+    title: `SyntaxLabCRM v1.4.10`,
     icon: path.join(__dirname, 'dist/favicon.ico'),
     webPreferences: {
       nodeIntegration: true,
@@ -94,7 +94,10 @@ function getFolderPaths(box, parentPath = '', parentDelimiter = '/') {
     let paths = [];
     for (const key in box) {
         const child = box[key];
+        // Correct delimiter logic: prefer child's own, then parent's, then default
         const myDelimiter = child.delimiter || parentDelimiter || '/';
+        
+        // Construct full path properly
         let fullPath = parentPath ? `${parentPath}${myDelimiter}${key}` : key;
         
         paths.push({ 

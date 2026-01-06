@@ -51,7 +51,13 @@ export const EmailClient: React.FC<EmailClientProps> = ({ dataService, config, u
         try {
             const imapConfig = { user: config.imapUser, password: config.imapPassword, host: config.imapHost, port: config.imapPort, tls: config.imapTls };
             const folderList = await dataService.getEmailFolders(imapConfig);
-            setFolders(folderList.sort((a, b) => a.path.toUpperCase() === 'INBOX' ? -1 : a.path.localeCompare(b.path)));
+            // Sort: INBOX top, then others
+            const sorted = folderList.sort((a, b) => {
+                if (a.path.toUpperCase() === 'INBOX') return -1;
+                if (b.path.toUpperCase() === 'INBOX') return 1;
+                return a.path.localeCompare(b.path);
+            });
+            setFolders(sorted);
         } catch (e: any) {
             console.error("Folder Fetch Error", e);
         } finally {
@@ -131,63 +137,90 @@ export const EmailClient: React.FC<EmailClientProps> = ({ dataService, config, u
         } catch (e: any) { alert("Fehler: " + e.message); } finally { setIsSending(false); }
     };
 
-    // Ordner-Hierarchie berechnen
+    // Robust Folder Tree Construction
     const folderTree = useMemo(() => {
         const tree: any[] = [];
         const folderMap: Record<string, any> = {};
 
         folders.forEach(f => {
-            const parts = f.path.split(/[./]/);
-            let current = tree;
+            // Robust Delimiter Detection: Prefer server's delimiter, fallback to common ones based on path
+            let delimiter = f.delimiter;
+            if (!delimiter) {
+                if (f.path.includes('/')) delimiter = '/';
+                else if (f.path.includes('.')) delimiter = '.';
+                else delimiter = '/';
+            }
+
+            // Split path
+            const parts = f.path.split(delimiter).filter(Boolean);
+            
             let currentPath = '';
+            let currentLevel = tree;
 
             parts.forEach((part, idx) => {
-                currentPath = currentPath ? `${currentPath}${f.delimiter || '/'}${part}` : part;
+                // Reconstruct full path for this level
+                currentPath = currentPath ? `${currentPath}${delimiter}${part}` : part;
+                
+                // If node doesn't exist, create it
                 if (!folderMap[currentPath]) {
                     const node = { 
                         name: part, 
-                        path: currentPath, 
-                        children: [], 
-                        isBox: idx === parts.length - 1 
+                        path: currentPath, // This MUST match exactly what's used for fetching
+                        children: [],
+                        isSelectable: false // Will be set to true if this path explicitly exists in 'folders'
                     };
                     folderMap[currentPath] = node;
-                    current.push(node);
+                    currentLevel.push(node);
                 }
-                current = folderMap[currentPath].children;
+                
+                // If this is the specific folder from the list, mark it as selectable
+                if (currentPath === f.path) {
+                    folderMap[currentPath].isSelectable = true;
+                }
+
+                // Go deeper
+                currentLevel = folderMap[currentPath].children;
             });
         });
         return tree;
     }, [folders]);
 
     const renderFolder = (node: any) => {
-        const depth = node.path.split(/[./]/).length - 1;
-        const isExpanded = expandedFolders.has(node.path);
         const Icon = getFolderIcon(node.path);
         const isSelected = currentFolder === node.path;
         const hasChildren = node.children.length > 0;
+        const isExpanded = expandedFolders.has(node.path);
 
         return (
             <div key={node.path} className="flex flex-col">
                 <div 
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={(e) => handleDropOnFolder(e, node.path)}
-                    style={{ paddingLeft: `${(depth * 14) + 8}px` }}
-                    className={`group flex items-center gap-2 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                    className={`group flex items-center gap-2 py-2 px-2 text-xs font-bold rounded-xl transition-all mx-1 ${
                         isSelected ? 'bg-indigo-50 text-indigo-600' : 'text-slate-500 hover:bg-slate-50'
-                    }`}
+                    } ${!node.isSelectable ? 'opacity-70' : 'cursor-pointer'}`}
                 >
                     <button 
                         onClick={(e) => { e.stopPropagation(); toggleExpand(node.path); }}
-                        className={`p-1 hover:bg-slate-200 rounded transition-opacity ${hasChildren ? 'opacity-100' : 'opacity-0'}`}
+                        className={`p-1 hover:bg-slate-200 rounded transition-opacity ${hasChildren ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
                     >
                         {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
                     </button>
-                    <div className="flex items-center gap-2 flex-1 min-w-0" onClick={() => setCurrentFolder(node.path)}>
-                        <Icon className="w-3.5 h-3.5 shrink-0" />
+                    
+                    <div 
+                        className="flex items-center gap-2 flex-1 min-w-0" 
+                        onClick={() => node.isSelectable && setCurrentFolder(node.path)}
+                    >
+                        <Icon className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-indigo-600' : 'text-slate-400'}`} />
                         <span className="truncate">{node.name === 'INBOX' ? 'Posteingang' : node.name}</span>
                     </div>
                 </div>
-                {isExpanded && node.children.map((child: any) => renderFolder(child))}
+                
+                {hasChildren && isExpanded && (
+                    <div className="ml-4 border-l border-slate-100 pl-1">
+                        {node.children.map((child: any) => renderFolder(child))}
+                    </div>
+                )}
             </div>
         );
     };
@@ -197,7 +230,7 @@ export const EmailClient: React.FC<EmailClientProps> = ({ dataService, config, u
             <div className="flex flex-col items-center justify-center h-full bg-slate-50 text-slate-500 p-10 text-center">
                 <ShieldCheck className="w-16 h-16 mb-6 text-indigo-200"/>
                 <h2 className="text-2xl font-black text-slate-800 mb-2">E-Mail Konfiguration</h2>
-                <p className="max-w-md mb-8">Hinterlegen Sie Ihre Strato-Daten in den Einstellungen.</p>
+                <p className="max-w-md mb-8">Hinterlegen Sie Ihre Zugangsdaten in den Einstellungen.</p>
             </div>
         );
     }
@@ -214,7 +247,7 @@ export const EmailClient: React.FC<EmailClientProps> = ({ dataService, config, u
                     {foldersLoading ? (
                         <div className="py-10 text-center text-[10px] font-black uppercase text-slate-300 animate-pulse">Synchronisiere...</div>
                     ) : (
-                        folderTree.map(node => renderFolder(node))
+                        folderTree.length > 0 ? folderTree.map(node => renderFolder(node)) : <div className="text-center py-4 text-xs text-slate-400">Keine Ordner geladen</div>
                     )}
                 </div>
                 <div className="p-4 border-t border-slate-100">
@@ -226,7 +259,7 @@ export const EmailClient: React.FC<EmailClientProps> = ({ dataService, config, u
 
             <div className="w-96 bg-white border-r border-slate-100 flex flex-col shrink-0">
                 <div className="px-6 py-6 border-b border-slate-50 flex justify-between items-center bg-white/80 backdrop-blur-md sticky top-0 z-10">
-                    <h2 className="font-black text-slate-800 truncate text-sm uppercase tracking-widest">{currentFolder.split(/[./]/).pop()}</h2>
+                    <h2 className="font-black text-slate-800 truncate text-sm uppercase tracking-widest max-w-[200px]" title={currentFolder}>{currentFolder.split(/[./]/).pop()}</h2>
                     <button onClick={() => fetchEmails(currentFolder)} disabled={isLoading} className="p-2 hover:bg-slate-50 rounded-xl text-slate-400"><RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-indigo-600' : ''}`} /></button>
                 </div>
                 <div className="flex-1 overflow-y-auto custom-scrollbar">

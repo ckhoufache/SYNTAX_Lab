@@ -381,7 +381,7 @@ class LocalDataService implements IDataService {
     async processDueRetainers() { return {updatedContacts:[], newInvoices:[], newActivities:[]}; }
     async runCommissionBatch() { return {createdInvoices:[], updatedSourceInvoices:[]}; }
     async checkAndInstallUpdate() { return false; }
-    async getAppVersion() { return '1.4.0'; }
+    async getAppVersion() { return '1.4.10'; }
     async generatePdf(html: string) { 
         if ((window as any).require) {
             return await (window as any).require('electron').ipcRenderer.invoke('generate-pdf', html);

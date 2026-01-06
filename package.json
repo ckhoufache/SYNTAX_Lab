@@ -2,7 +2,7 @@
 {
   "name": "syntaxlab-crm",
   "private": true,
-  "version": "1.4.0",
+  "version": "1.4.10",
   "main": "electron-main.js",
   "type": "module",
   "scripts": {
