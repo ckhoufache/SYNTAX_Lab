@@ -4,13 +4,13 @@ import {
   Target, Zap, BarChart3, Clock, 
   AlertCircle, Landmark, RefreshCw, Terminal, ArrowUpRight,
   TrendingDown, ArrowRight, PieChart as PieIcon, Mail, Inbox,
-  ListTodo, Check, Circle
+  ListTodo, Check, Circle, Database
 } from 'lucide-react';
 import React, { useEffect, useState, useMemo } from 'react';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
 } from 'recharts';
-import { Task, Deal, Contact, Invoice, Expense, UserProfile, Activity, BackendConfig } from '../types'; 
+import { Task, Deal, Contact, Invoice, Expense, UserProfile, Activity, BackendConfig, BrainProcessStep, BrainPrompt } from '../types'; 
 import { generateDailyBriefing } from '../services/gemini';
 
 interface DashboardProps {
@@ -26,10 +26,14 @@ interface DashboardProps {
   onNavigateToKPI: () => void;
   onNavigateToEmail: () => void;
   onUpdateActivity?: (activity: Activity) => void;
+  brainProcess?: BrainProcessStep[];
+  brainPrompts?: BrainPrompt[];
 }
 
 export const Dashboard: React.FC<DashboardProps> = React.memo(({ 
-  tasks, deals, contacts, invoices = [], expenses, activities, teamMembers = [], backendConfig, onNavigateToSettings, onNavigateToKPI, onNavigateToEmail, onUpdateActivity
+  tasks, deals, contacts, invoices = [], expenses, activities, teamMembers = [], backendConfig, 
+  onNavigateToSettings, onNavigateToKPI, onNavigateToEmail, onUpdateActivity,
+  brainProcess, brainPrompts
 }) => {
   const [briefing, setBriefing] = useState<string>('');
   const [loadingBriefing, setLoadingBriefing] = useState<boolean>(false);
@@ -89,11 +93,12 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
   const handleRefreshBriefing = async () => {
     setLoadingBriefing(true);
     try {
-      const text = await generateDailyBriefing(tasks, deals, backendConfig.geminiApiKey);
+      // Pass brain data to Gemini
+      const text = await generateDailyBriefing(tasks, deals, backendConfig.geminiApiKey, brainProcess, brainPrompts);
       setBriefing(text);
     } catch (e: any) {
       setKeyError(true);
-      setBriefing("KI-Dienst nicht konfiguriert.");
+      setBriefing("KI-Dienst nicht konfiguriert oder Fehler aufgetreten.");
     } finally {
       setLoadingBriefing(false);
     }
@@ -120,6 +125,13 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
           <p className="text-slate-500 text-xs font-black uppercase tracking-widest mt-1">Operational Control Center</p>
         </div>
         <div className="flex items-center gap-6">
+          {brainProcess && brainProcess.length > 0 && (
+              <div className="hidden lg:flex items-center gap-2 bg-indigo-50 px-3 py-1.5 rounded-xl border border-indigo-100">
+                  <Database className="w-4 h-4 text-indigo-600"/>
+                  <span className="text-xs font-bold text-indigo-800">Brain Active</span>
+                  <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+              </div>
+          )}
           <div className="relative">
             <button onClick={() => setShowNotifications(!showNotifications)} className={`p-3 hover:bg-slate-50 rounded-2xl transition-all relative ${showNotifications ? 'text-indigo-600 bg-indigo-50' : 'text-slate-400'}`}>
               <Bell className="w-6 h-6"/>
@@ -157,9 +169,9 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
             <div className="space-y-5 flex-1">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 rounded-xl bg-white/20 backdrop-blur-md"><Zap className="w-6 h-6 text-indigo-100" /></div>
-                <h2 className="text-sm font-black uppercase tracking-[0.3em] text-indigo-100">Smart Insights Engine</h2>
+                <h2 className="text-sm font-black uppercase tracking-[0.3em] text-indigo-100">Smart Insights Engine {brainProcess?.length ? '+ Brain v1.4' : ''}</h2>
               </div>
-              <p className="text-2xl font-black leading-tight max-w-4xl text-white drop-shadow-lg">{loadingBriefing ? "Analysiere Geschäftsdaten..." : briefing || "Klicken Sie für einen KI-Business-Scan."}</p>
+              <p className="text-2xl font-black leading-tight max-w-4xl text-white drop-shadow-lg">{loadingBriefing ? "Analysiere Geschäftsdaten & Brain..." : briefing || "Klicken Sie für einen KI-Business-Scan."}</p>
               <div className="flex gap-3">
                 <button onClick={onNavigateToKPI} className="flex items-center gap-2 bg-white/10 hover:bg-white/20 px-6 py-2.5 rounded-2xl text-xs font-black transition-all border border-white/10">Performance Report <ArrowRight className="w-4 h-4" /></button>
                 <button onClick={onNavigateToEmail} className="flex items-center gap-2 bg-white/10 hover:bg-white/20 px-6 py-2.5 rounded-2xl text-xs font-black transition-all border border-white/10">Postfach <Mail className="w-4 h-4" /></button>

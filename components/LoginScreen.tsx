@@ -50,9 +50,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 });
                 
                 // Render the button
+                // REMOVED INVALID WIDTH PROPERTY
                 window.google.accounts.id.renderButton(
                     document.getElementById("googleButtonDiv"),
-                    { theme: "outline", size: "large", width: "100%", text: "continue_with" }
+                    { theme: "outline", size: "large", text: "continue_with" }
                 );
                 
                 setStatusMsg("Bereit.");
@@ -153,7 +154,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 <div className="p-8 flex flex-col gap-6">
                     <div className="min-h-[50px] flex items-center justify-center">
                         {/* GOOGLE BUTTON TARGET */}
-                        <div id="googleButtonDiv" className="w-full"></div>
+                        <div id="googleButtonDiv" className="w-full flex justify-center"></div>
                     </div>
                     
                     <div className="text-center text-xs text-slate-400">

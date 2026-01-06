@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, Users, KanbanSquare, Settings, Hexagon, ClipboardList, Banknote, User, LogOut, PieChart, BarChart3, Mail } from 'lucide-react';
+import { LayoutDashboard, Users, KanbanSquare, Settings, Hexagon, ClipboardList, Banknote, User, LogOut, PieChart, BarChart3, Mail, Brain } from 'lucide-react';
 import { ViewState, UserProfile } from '../types';
 
 interface SidebarProps {
@@ -15,6 +15,7 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = React.memo(({ currentView, onChangeView, userProfile, onLogout, isCollapsed, onToggle }) => {
   const [logoSrc, setLogoSrc] = useState<string>('');
   const [imgError, setImgError] = useState(false);
+  const [avatarError, setAvatarError] = useState(false);
 
   useEffect(() => {
     import('../logo.png')
@@ -82,6 +83,11 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({ currentView, onChan
             {!isCollapsed && <span className="font-medium whitespace-nowrap">Aufgaben</span>}
             <Tooltip text="Aufgaben" />
         </div>
+        <div onClick={() => onChangeView('brain')} className={navItemClass('brain')}>
+            <Brain className="w-5 h-5 shrink-0" />
+            {!isCollapsed && <span className="font-medium whitespace-nowrap">Brain</span>}
+            <Tooltip text="The Brain" />
+        </div>
         <div onClick={() => onChangeView('email')} className={navItemClass('email')}>
             <Mail className="w-5 h-5 shrink-0" />
             {!isCollapsed && <span className="font-medium whitespace-nowrap">Postfach</span>}
@@ -108,8 +114,13 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({ currentView, onChan
         {userProfile && (
             <div className={`flex items-center ${isCollapsed ? 'justify-center flex-col gap-2' : 'justify-between'}`}>
                 <div className="flex items-center gap-3 overflow-hidden">
-                    {userProfile.avatar && userProfile.avatar.length > 5 ? (
-                        <img src={userProfile.avatar} alt="User" className="w-9 h-9 rounded-full ring-2 object-cover shrink-0 ring-slate-100" />
+                    {userProfile.avatar && userProfile.avatar.length > 5 && !avatarError ? (
+                        <img 
+                            src={userProfile.avatar} 
+                            alt="User" 
+                            className="w-9 h-9 rounded-full ring-2 object-cover shrink-0 ring-slate-100" 
+                            onError={() => setAvatarError(true)}
+                        />
                     ) : (
                         <div className="w-9 h-9 rounded-full ring-2 flex items-center justify-center shrink-0 ring-slate-100 bg-slate-200">
                             <User className="w-5 h-5 text-slate-500" />

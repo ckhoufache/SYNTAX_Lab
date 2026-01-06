@@ -1,5 +1,5 @@
 
-import { Contact, Deal, Task, Invoice, Expense, Activity, UserProfile, ProductPreset, InvoiceConfig, EmailTemplate, EmailAttachment, DealStage, BackupData, EmailMessage, BackendConfig } from '../types';
+import { Contact, Deal, Task, Invoice, Expense, Activity, UserProfile, ProductPreset, InvoiceConfig, EmailTemplate, EmailAttachment, DealStage, BackupData, EmailMessage, BackendConfig, BrainTool, BrainProcessStep, BrainPrompt, BrainSOP, BrainPersona } from '../types';
 import { FirebaseDataService } from './firebaseService';
 
 declare global {
@@ -244,6 +244,18 @@ export interface IDataService {
     markEmailRead(config: any, uid: number, boxName: string): Promise<boolean>; 
     sendSmtpMail(config: any, to: string, subject: string, body: string): Promise<boolean>;
     moveEmail(config: any, uid: number, fromBox: string, toBox: string): Promise<boolean>;
+    
+    // BRAIN MODULE METHODS
+    getBrainTools(): Promise<BrainTool[]>;
+    saveBrainTool(tool: BrainTool): Promise<BrainTool>;
+    getBrainProcess(): Promise<BrainProcessStep[]>;
+    saveBrainProcess(step: BrainProcessStep): Promise<BrainProcessStep>;
+    getBrainPrompts(): Promise<BrainPrompt[]>;
+    saveBrainPrompt(prompt: BrainPrompt): Promise<BrainPrompt>;
+    getBrainSOPs(): Promise<BrainSOP[]>;
+    saveBrainSOP(sop: BrainSOP): Promise<BrainSOP>;
+    getBrainPersonas(): Promise<BrainPersona[]>;
+    saveBrainPersona(persona: BrainPersona): Promise<BrainPersona>;
 }
 
 class LocalDataService implements IDataService {
@@ -302,6 +314,13 @@ class LocalDataService implements IDataService {
         if (data.userProfile) localStorage.setItem('userProfile', JSON.stringify(data.userProfile));
         if (data.productPresets) localStorage.setItem('productPresets', JSON.stringify(data.productPresets));
         if (data.emailTemplates) localStorage.setItem('emailTemplates', JSON.stringify(data.emailTemplates));
+        
+        // Restore Brain Data
+        if (data.brainTools) localStorage.setItem('brainTools', JSON.stringify(data.brainTools));
+        if (data.brainProcess) localStorage.setItem('brainProcess', JSON.stringify(data.brainProcess));
+        if (data.brainPrompts) localStorage.setItem('brainPrompts', JSON.stringify(data.brainPrompts));
+        if (data.brainSOPs) localStorage.setItem('brainSOPs', JSON.stringify(data.brainSOPs));
+        if (data.brainPersonas) localStorage.setItem('brainPersonas', JSON.stringify(data.brainPersonas));
     }
 
     async getActivities() { return JSON.parse(localStorage.getItem('activities') || '[]'); }
@@ -362,7 +381,7 @@ class LocalDataService implements IDataService {
     async processDueRetainers() { return {updatedContacts:[], newInvoices:[], newActivities:[]}; }
     async runCommissionBatch() { return {createdInvoices:[], updatedSourceInvoices:[]}; }
     async checkAndInstallUpdate() { return false; }
-    async getAppVersion() { return '1.3.37'; }
+    async getAppVersion() { return '1.4.0'; }
     async generatePdf(html: string) { 
         if ((window as any).require) {
             return await (window as any).require('electron').ipcRenderer.invoke('generate-pdf', html);
@@ -378,6 +397,22 @@ class LocalDataService implements IDataService {
     async sendSmtpMail(config:any, to:any, sub:any, body:any) { return (window as any).require ? (window as any).require('electron').ipcRenderer.invoke('email-smtp-send', config, {to, subject:sub, body}) : false; }
     async getAllUsers() { return []; }
     async deleteProductPreset(id: string) { const l=await this.getProductPresets(); localStorage.setItem('productPresets', JSON.stringify(l.filter((p:any)=>p.id!==id))); }
+
+    // Brain Local Mocks
+    async getBrainTools() { try { return JSON.parse(localStorage.getItem('brainTools') || '[]'); } catch { return []; } }
+    async saveBrainTool(t: BrainTool) { const l = await this.getBrainTools(); localStorage.setItem('brainTools', JSON.stringify([...l, t])); return t; }
+    
+    async getBrainProcess() { try { return JSON.parse(localStorage.getItem('brainProcess') || '[]'); } catch { return []; } }
+    async saveBrainProcess(p: BrainProcessStep) { const l = await this.getBrainProcess(); localStorage.setItem('brainProcess', JSON.stringify([...l, p])); return p; }
+    
+    async getBrainPrompts() { try { return JSON.parse(localStorage.getItem('brainPrompts') || '[]'); } catch { return []; } }
+    async saveBrainPrompt(p: BrainPrompt) { const l = await this.getBrainPrompts(); localStorage.setItem('brainPrompts', JSON.stringify([...l, p])); return p; }
+    
+    async getBrainSOPs() { try { return JSON.parse(localStorage.getItem('brainSOPs') || '[]'); } catch { return []; } }
+    async saveBrainSOP(s: BrainSOP) { const l = await this.getBrainSOPs(); localStorage.setItem('brainSOPs', JSON.stringify([...l, s])); return s; }
+    
+    async getBrainPersonas() { try { return JSON.parse(localStorage.getItem('brainPersonas') || '[]'); } catch { return []; } }
+    async saveBrainPersona(p: BrainPersona) { const l = await this.getBrainPersonas(); localStorage.setItem('brainPersonas', JSON.stringify([...l, p])); return p; }
 }
 
 let instance: IDataService | null = null;

@@ -10,11 +10,14 @@ import { Settings } from './components/Settings';
 import { KPIAnalytics } from './components/KPIAnalytics'; 
 import { LoginScreen } from './components/LoginScreen';
 import { EmailClient } from './components/EmailClient';
+import { Brain } from './components/Brain'; 
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { DataServiceFactory, IDataService } from './services/dataService';
 import { 
   Contact, Deal, Task, Invoice, Expense, Activity, 
   UserProfile, BackendConfig, ViewState, 
-  ProductPreset, InvoiceConfig, EmailTemplate, BackupData, DealStage 
+  ProductPreset, InvoiceConfig, EmailTemplate, BackupData, DealStage,
+  BrainTool, BrainProcessStep, BrainPrompt, BrainSOP, BrainPersona
 } from './types';
 
 export const App = () => {
@@ -34,6 +37,14 @@ export const App = () => {
   const [productPresets, setProductPresets] = useState<ProductPreset[]>([]);
   const [invoiceConfig, setInvoiceConfig] = useState<InvoiceConfig | null>(null);
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([]);
+  
+  // BRAIN Data
+  const [brainTools, setBrainTools] = useState<BrainTool[]>([]);
+  const [brainProcess, setBrainProcess] = useState<BrainProcessStep[]>([]);
+  const [brainPrompts, setBrainPrompts] = useState<BrainPrompt[]>([]);
+  const [brainSOPs, setBrainSOPs] = useState<BrainSOP[]>([]);
+  const [brainPersonas, setBrainPersonas] = useState<BrainPersona[]>([]);
+
   const [visibleStages, setVisibleStages] = useState<DealStage[]>(Object.values(DealStage));
   const [contactFilter, setContactFilter] = useState<'all' | 'recent'>('all');
   const [focusedContactId, setFocusedContactId] = useState<string | null>(null);
@@ -60,17 +71,42 @@ export const App = () => {
 
   const loadData = useCallback(async (background = false) => {
       if (!background) setIsLoading(true);
+      
       try {
+          // 1. Load CRM Core Data
           const [c, d, t, i, e, a, up, pp, ic, et, users] = await Promise.all([
               dataService.getContacts(), dataService.getDeals(), dataService.getTasks(),
               dataService.getInvoices(), dataService.getExpenses(), dataService.getActivities(),
               dataService.getUserProfile(), dataService.getProductPresets(), dataService.getInvoiceConfig(),
               dataService.getEmailTemplates(), dataService.getAllUsers()
           ]);
-          setContacts(c); setDeals(d); setTasks(t); setInvoices(i); setExpenses(e); setActivities(a);
-          setProductPresets(pp); setInvoiceConfig(ic); setEmailTemplates(et); setTeamMembers(users);
+          setContacts(c || []); setDeals(d || []); setTasks(t || []); setInvoices(i || []); 
+          setExpenses(e || []); setActivities(a || []);
+          setProductPresets(pp || []); setInvoiceConfig(ic || null); setEmailTemplates(et || []); 
+          setTeamMembers(users || []);
           if(up) setUserProfile(up);
-      } catch (err: any) { console.error(err); } finally { if (!background) setIsLoading(false); }
+
+          // 2. Load Brain Data Safely (Promise.allSettled)
+          const brainResults = await Promise.allSettled([
+              dataService.getBrainTools(), dataService.getBrainProcess(),
+              dataService.getBrainPrompts(), dataService.getBrainSOPs(), dataService.getBrainPersonas()
+          ]);
+
+          const getResult = <T,>(result: PromiseSettledResult<T>, fallback: T): T => 
+              result.status === 'fulfilled' ? result.value : fallback;
+
+          setBrainTools(getResult(brainResults[0], []));
+          setBrainProcess(getResult(brainResults[1], []));
+          setBrainPrompts(getResult(brainResults[2], []));
+          setBrainSOPs(getResult(brainResults[3], []));
+          setBrainPersonas(getResult(brainResults[4], []));
+
+      } catch (err: any) { 
+          console.error("Critical Data Load Error:", err); 
+          if (!background) alert("Fehler beim Laden der Daten: " + err.message);
+      } finally { 
+          if (!background) setIsLoading(false); 
+      }
   }, [dataService]);
 
   useEffect(() => { if (isAuthenticated) loadData(true); }, [view, isAuthenticated, loadData]);
@@ -82,30 +118,19 @@ export const App = () => {
   const handleAddContact = async (c: Contact) => { await dataService.saveContact(c); setContacts(prev => [c, ...prev]); };
   const handleUpdateContact = async (c: Contact) => { await dataService.updateContact(c); setContacts(prev => prev.map(x => x.id === c.id ? c : x)); };
   const handleDeleteContact = async (id: string) => { await dataService.deleteContact(id); setContacts(prev => prev.filter(x => x.id !== id)); };
-  
-  const handleAddDeal = async (d: Deal) => { 
-    await dataService.saveDeal(d); 
-    setDeals(prev => [d, ...prev]); 
-  };
+  const handleAddDeal = async (d: Deal) => { await dataService.saveDeal(d); setDeals(prev => [d, ...prev]); };
   const handleUpdateDeal = async (d: Deal) => { await dataService.updateDeal(d); setDeals(prev => prev.map(x => x.id === d.id ? d : x)); };
   const handleDeleteDeal = async (id: string) => { await dataService.deleteDeal(id); setDeals(prev => prev.filter(x => x.id !== id)); };
-  
   const handleAddTask = async (t: Task) => { await dataService.saveTask(t); setTasks(prev => [t, ...prev]); };
   const handleUpdateTask = async (t: Task) => { await dataService.updateTask(t); setTasks(prev => prev.map(x => x.id === t.id ? t : x)); };
   const handleDeleteTask = async (id: string) => { await dataService.deleteTask(id); setTasks(prev => prev.filter(x => x.id !== id)); };
-  
   const handleAddInvoice = async (i: Invoice) => { await dataService.saveInvoice(i); setInvoices(prev => [i, ...prev]); };
   const handleUpdateInvoice = async (i: Invoice) => { await dataService.updateInvoice(i); setInvoices(prev => prev.map(x => x.id === i.id ? i : x)); };
   const handleDeleteInvoice = async (id: string) => { await dataService.deleteInvoice(id); setInvoices(prev => prev.filter(x => x.id !== id)); };
-  
   const handleAddExpense = async (e: Expense) => { await dataService.saveExpense(e); setExpenses(prev => [e, ...prev]); };
   const handleUpdateExpense = async (e: Expense) => { await dataService.updateExpense(e); setExpenses(prev => prev.map(x => x.id === e.id ? e : x)); };
   const handleDeleteExpense = async (id: string) => { await dataService.deleteExpense(id); setExpenses(prev => prev.filter(x => x.id !== id)); };
-  
-  const handleAddActivity = async (a: Activity) => { 
-    await dataService.saveActivity(a); 
-    setActivities(prev => [a, ...prev]); 
-  };
+  const handleAddActivity = async (a: Activity) => { await dataService.saveActivity(a); setActivities(prev => [a, ...prev]); };
   
   const handleUpdateActivity = async (a: Activity) => { 
     await dataService.saveActivity(a);
@@ -122,19 +147,101 @@ export const App = () => {
   const handleImportData = useCallback(async (data: BackupData) => { if(confirm("Überschreiben?")) { setIsLoading(true); try { await dataService.restoreBackup(data); window.location.reload(); } catch { setIsLoading(false); } } }, [dataService]);
   const handleRunRetainer = async () => { setIsLoading(true); const res = await dataService.processDueRetainers(); if(res.newInvoices.length > 0) { setInvoices(prev => [...res.newInvoices, ...prev]); setActivities(prev => [...res.newActivities, ...prev]); setContacts(prev => prev.map(c => res.updatedContacts.find(u => u.id === c.id) || c)); } setIsLoading(false); };
 
+  // --- BRAIN HANDLER ---
+  const handleBrainAddItem = async (type: string, data: any) => {
+      const id = crypto.randomUUID();
+      try {
+          switch(type) {
+              case 'process': {
+                  const newItem: BrainProcessStep = { 
+                      id, 
+                      stepId: data.stepId || '0.0', 
+                      title: data.title, 
+                      phase: data.phase, 
+                      description: data.description, 
+                      tools: '', 
+                      linkedSop: '' 
+                  };
+                  await dataService.saveBrainProcess(newItem);
+                  setBrainProcess(prev => [...prev, newItem]);
+                  break;
+              }
+              case 'sops': {
+                  const newItem: BrainSOP = { 
+                      id, 
+                      sopId: data.sopId || 'SOP-00', 
+                      title: data.title, 
+                      content: data.content, 
+                      path: '', 
+                      lastUpdate: new Date().toISOString().split('T')[0], 
+                      category: 'sop' 
+                  };
+                  await dataService.saveBrainSOP(newItem);
+                  setBrainSOPs(prev => [...prev, newItem]);
+                  break;
+              }
+              case 'prompts': {
+                  const newItem: BrainPrompt = { 
+                      id, 
+                      promptId: data.promptId || 'PMT-00', 
+                      name: data.name, 
+                      content: data.content, 
+                      tool: data.tool || 'ChatGPT', 
+                      inputFormat: 'Text' 
+                  };
+                  await dataService.saveBrainPrompt(newItem);
+                  setBrainPrompts(prev => [...prev, newItem]);
+                  break;
+              }
+              case 'personas': {
+                  const newItem: BrainPersona = { id, telegramId: '', name: data.name, role: data.role, ...data };
+                  await dataService.saveBrainPersona(newItem);
+                  setBrainPersonas(prev => [...prev, newItem]);
+                  break;
+              }
+              case 'tools': {
+                  const newItem: BrainTool = { id, name: data.name, status: 'Aktiv', ...data };
+                  await dataService.saveBrainTool(newItem);
+                  setBrainTools(prev => [...prev, newItem]);
+                  break;
+              }
+          }
+      } catch(e: any) {
+          console.error("Failed to save brain item", e);
+          alert("Fehler beim Speichern: " + e.message);
+      }
+  };
+
   if (!isAuthenticated) return <LoginScreen onLogin={handleLogin} backendConfig={backendConfig} onUpdateConfig={handleUpdateBackendConfig} isLoading={isLoading} />;
 
   return (
     <div className="flex h-screen overflow-hidden font-sans bg-slate-50 relative">
         <Sidebar currentView={view} onChangeView={setView} userProfile={userProfile} onLogout={handleLogout} isCollapsed={isSidebarCollapsed} onToggle={() => setIsSidebarCollapsed(!isSidebarCollapsed)} />
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
-            {view === 'dashboard' && <Dashboard tasks={tasks} deals={deals} contacts={contacts} invoices={invoices} expenses={expenses} activities={activities} backendConfig={backendConfig} onNavigateToSettings={() => setView('settings')} onNavigateToKPI={() => setView('kpi')} onNavigateToEmail={() => setView('email')} onUpdateActivity={handleUpdateActivity} />}
-            {view === 'contacts' && invoiceConfig && <Contacts contacts={contacts} activities={activities} deals={deals} invoices={invoices} expenses={expenses} invoiceConfig={invoiceConfig} onAddContact={handleAddContact} onUpdateContact={handleUpdateContact} onDeleteContact={handleDeleteContact} onAddActivity={handleAddActivity} onDeleteActivity={handleDeleteActivity} onAddDeal={handleAddDeal} initialFilter={contactFilter} onClearFilter={() => setContactFilter('all')} focusedId={focusedContactId} onClearFocus={() => setFocusedContactId(null)} emailTemplates={emailTemplates} onImportCSV={(csv) => dataService.importContactsFromCSV(csv)} onBulkDeleteContacts={(ids) => ids.forEach(id => handleDeleteContact(id))} />}
+            {view === 'dashboard' && <Dashboard tasks={tasks} deals={deals} contacts={contacts} invoices={invoices} expenses={expenses} activities={activities} backendConfig={backendConfig} onNavigateToSettings={() => setView('settings')} onNavigateToKPI={() => setView('kpi')} onNavigateToEmail={() => setView('email')} onUpdateActivity={handleUpdateActivity} brainProcess={brainProcess} brainPrompts={brainPrompts} />}
+            {view === 'contacts' && invoiceConfig && <Contacts contacts={contacts} activities={activities} invoices={invoices} expenses={expenses} invoiceConfig={invoiceConfig} onAddContact={handleAddContact} onUpdateContact={handleUpdateContact} onDeleteContact={handleDeleteContact} onAddActivity={handleAddActivity} onDeleteActivity={handleDeleteActivity} onAddDeal={handleAddDeal} initialFilter={contactFilter} onClearFilter={() => setContactFilter('all')} focusedId={focusedContactId} onClearFocus={() => setFocusedContactId(null)} emailTemplates={emailTemplates} onImportCSV={(csv) => dataService.importContactsFromCSV(csv)} onBulkDeleteContacts={(ids) => ids.forEach(id => handleDeleteContact(id))} />}
             {view === 'pipeline' && <Pipeline deals={deals} contacts={contacts} activities={activities} tasks={tasks} invoices={invoices} invoiceConfig={invoiceConfig} emailTemplates={emailTemplates} onAddDeal={handleAddDeal} onUpdateDeal={handleUpdateDeal} onDeleteDeal={handleDeleteDeal} onUpdateContact={handleUpdateContact} visibleStages={visibleStages} setVisibleStages={setVisibleStages} productPresets={productPresets} onAddTask={handleAddTask} onAutoDeleteTask={handleDeleteTask} focusedDealId={focusedDealId} onClearFocus={() => setFocusedDealId(null)} onAddInvoice={handleAddInvoice} onAddActivity={handleAddActivity} onDeleteActivity={handleDeleteActivity} onNavigateToContacts={(f, id) => {setView('contacts'); setContactFilter(f); setFocusedContactId(id||null);}} />}
             {view === 'tasks' && <Tasks tasks={tasks} onAddTask={handleAddTask} onUpdateTask={handleUpdateTask} onDeleteTask={handleDeleteTask} focusedTaskId={focusedTaskId} onClearFocus={() => setFocusedTaskId(null)} teamMembers={teamMembers} />}
             {view === 'email' && <EmailClient dataService={dataService} config={backendConfig} userProfile={userProfile} />}
             {view === 'finances' && invoiceConfig && <Finances invoices={invoices} contacts={contacts} expenses={expenses} invoiceConfig={invoiceConfig} onAddInvoice={handleAddInvoice} onUpdateInvoice={handleUpdateInvoice} onDeleteInvoice={handleDeleteInvoice} onAddExpense={handleAddExpense} onUpdateExpense={handleUpdateExpense} onDeleteExpense={handleDeleteExpense} onAddActivity={handleAddActivity} onRunRetainer={handleRunRetainer} />}
             {view === 'kpi' && <KPIAnalytics invoices={invoices} contacts={contacts} expenses={expenses} deals={deals} />}
+            
+            {/* Brain Component Render Check - Added Key prop to force remount */}
+            {view === 'brain' && (
+                <ErrorBoundary>
+                    <Brain 
+                        key="brain-view"
+                        process={brainProcess || []}
+                        prompts={brainPrompts || []}
+                        sops={brainSOPs || []}
+                        personas={brainPersonas || []}
+                        tools={brainTools || []}
+                        onSync={() => loadData(false)}
+                        onAddItem={handleBrainAddItem}
+                    />
+                </ErrorBoundary>
+            )}
+
             {view === 'settings' && userProfile && invoiceConfig && <Settings userProfile={userProfile} onUpdateProfile={handleUpdateProfile} productPresets={productPresets} onUpdatePresets={handleUpdatePresets} contacts={contacts} deals={deals} tasks={tasks} invoices={invoices} expenses={expenses} activities={activities} onImportData={handleImportData} backendConfig={backendConfig} onUpdateBackendConfig={handleUpdateBackendConfig} dataService={dataService} invoiceConfig={invoiceConfig} onUpdateInvoiceConfig={handleUpdateInvoiceConfig} emailTemplates={emailTemplates} onAddTemplate={handleAddTemplate} onUpdateTemplate={handleUpdateTemplate} onDeleteTemplate={handleDeleteTemplate} />}
         </div>
     </div>

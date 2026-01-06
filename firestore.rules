@@ -1,0 +1,63 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- HILFSFUNKTIONEN ---
+    
+    // Prüft, ob der User eingeloggt ist UND in der Whitelist steht
+    function isAuthorizedCRMUser() {
+      return request.auth != null && 
+             exists(/databases/$(database)/documents/allowed_users/$(request.auth.token.email));
+    }
+    
+    // Prüft, ob die Daten von der Landingpage valide sind (Sicherheit)
+    function isValidLead() {
+       let data = request.resource.data;
+       return 
+         // 1. Pflichtfelder müssen existieren
+         data.keys().hasAll(['name', 'email']) &&
+         
+         // 2. Datentyp-Validierung
+         data.name is string && data.email is string &&
+         
+         // 3. Längenbegrenzung
+         data.name.size() > 1 && data.name.size() < 100 &&
+         data.email.size() > 5 && data.email.size() < 100 &&
+         
+         // 4. Optional: Nachricht prüfen
+         (!('message' in data) || (data.message is string && data.message.size() < 2000)) &&
+         
+         // 5. WICHTIG: Verhindern, dass Hacker Admin-Flags setzen
+         (!('retainerActive' in data) || data.retainerActive == false) &&
+         (!('role' in data) || data.role == 'Lead' || data.role == 'Anfrage');
+    }
+
+    // --- REGELN PRO COLLECTION ---
+
+    // 1. allowed_users (Whitelist)
+    match /allowed_users/{email} {
+      allow read: if request.auth != null; 
+      allow write: if isAuthorizedCRMUser(); 
+    }
+
+    // 2. contacts (Hier landen die Leads der Landingpage)
+    match /contacts/{contactId} {
+      allow read, update, delete: if isAuthorizedCRMUser();
+      allow create: if isAuthorizedCRMUser() || isValidLead();
+    }
+
+    // 3. Alle anderen CRM-Daten (inkl. BRAIN)
+    // Wir fügen hier die neuen 'brain_*' Collections hinzu
+    match /{collectionName}/{docId} {
+      allow read, write: if isAuthorizedCRMUser() && 
+                         collectionName in [
+                           // Core CRM
+                           'deals', 'tasks', 'invoices', 'expenses', 'activities', 
+                           'productPresets', 'invoiceConfig', 'emailTemplates', 'userProfile',
+                           
+                           // Brain Module (NEU)
+                           'brain_tools', 'brain_process', 'brain_prompts', 'brain_sops', 'brain_personas'
+                         ];
+    }
+  }
+}

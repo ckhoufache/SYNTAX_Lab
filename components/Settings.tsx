@@ -10,6 +10,23 @@ import {
 import { UserProfile, ProductPreset, Contact, Deal, Task, BackupData, BackendConfig, Invoice, Expense, Activity, EmailTemplate, InvoiceConfig, EmailSettings } from '../types';
 import { IDataService, DEFAULT_PDF_TEMPLATE } from '../services/dataService';
 
+// Safer ID generator that works in non-secure contexts
+const generateId = () => {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        return crypto.randomUUID();
+    }
+    return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+};
+
+// Robust number parser (handles "1.500,00" and "1500.00")
+const parseGermanNumber = (str: string): number => {
+    if (!str) return 0;
+    // Replace dots (thousands) with nothing, replace comma with dot
+    const cleanStr = str.replace(/\./g, '').replace(',', '.');
+    const num = parseFloat(cleanStr);
+    return isNaN(num) ? 0 : num;
+};
+
 export interface SettingsProps {
   userProfile: UserProfile;
   onUpdateProfile: (profile: UserProfile) => void;
@@ -84,6 +101,13 @@ export const Settings: React.FC<SettingsProps> = (props) => {
   });
   const [geminiKey, setGeminiKey] = useState(backendConfig.geminiApiKey || '');
 
+  // -- PRESET EDITING STATES --
+  const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
+  const [editPresetTitle, setEditPresetTitle] = useState('');
+  const [editPresetValue, setEditPresetValue] = useState('');
+  const [newPresetTitle, setNewPresetTitle] = useState('');
+  const [newPresetValue, setNewPresetValue] = useState('');
+
   useEffect(() => { setProfileForm(userProfile); }, [userProfile]);
   useEffect(() => { setInvConfigForm(invoiceConfig); }, [invoiceConfig]);
 
@@ -122,6 +146,33 @@ export const Settings: React.FC<SettingsProps> = (props) => {
     } finally {
         setIsUpdating(false);
     }
+  };
+
+  // -- PRESET ACTIONS --
+  const startEditingPreset = (p: ProductPreset) => {
+      setEditingPresetId(p.id);
+      setEditPresetTitle(p.title);
+      setEditPresetValue(p.value.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  };
+
+  const saveEditedPreset = () => {
+      if (editingPresetId) {
+          const num = parseGermanNumber(editPresetValue);
+          onUpdatePresets(productPresets.map(x => x.id === editingPresetId ? { ...x, title: editPresetTitle, value: num } : x));
+          setEditingPresetId(null);
+      }
+  };
+
+  const cancelEditPreset = () => {
+      setEditingPresetId(null);
+  };
+
+  const addNewPreset = () => {
+      if (!newPresetTitle || !newPresetValue) return;
+      const num = parseGermanNumber(newPresetValue);
+      onUpdatePresets([...productPresets, { id: generateId(), title: newPresetTitle, value: num }]);
+      setNewPresetTitle('');
+      setNewPresetValue('');
   };
 
   return (
@@ -363,26 +414,75 @@ export const Settings: React.FC<SettingsProps> = (props) => {
                     <button onClick={() => {
                         const title = prompt("Name der Vorlage:");
                         const subject = prompt("Betreff:");
-                        if(title && subject) onAddTemplate({ id: crypto.randomUUID(), title, subject, body: '' });
+                        if(title && subject) onAddTemplate({ id: generateId(), title, subject, body: '' });
                     }} className="w-full py-2 border-2 border-dashed border-slate-200 rounded-xl text-slate-500 font-bold hover:bg-slate-100 transition-all flex items-center justify-center gap-2"><Plus className="w-4 h-4" /> Vorlage hinzufügen</button>
                 </div>
             </SubAccordion>
+            
             <SubAccordion title="Produkt-Presets" isOpen={subOpen === 'presets'} onToggle={() => setSubOpen(subOpen === 'presets' ? null : 'presets')}>
                 <div className="space-y-3">
+                    {/* EXISTING PRESETS LIST */}
                     {productPresets.map(p => (
-                        <div key={p.id} className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-200 group">
-                            <div><p className="font-bold text-slate-800">{p.title}</p><p className="text-xs text-slate-500">{p.value.toLocaleString('de-DE', {minimumFractionDigits: 2})} €</p></div>
-                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button onClick={() => {
-                                    const t = prompt("Name ändern:", p.title);
-                                    const v = prompt("Preis ändern:", p.value.toString());
-                                    if(t && v) onUpdatePresets(productPresets.map(x => x.id === p.id ? { ...x, title: t, value: parseFloat(v) } : x));
-                                }} className="text-slate-400 hover:text-indigo-600 p-2 rounded-lg transition-all"><Pencil className="w-4 h-4"/></button>
-                                <button onClick={() => onUpdatePresets(productPresets.filter(x => x.id !== p.id))} className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-all"><Trash2 className="w-4 h-4"/></button>
-                            </div>
+                        <div key={p.id} className="p-3 bg-white rounded-xl border border-slate-200 transition-all group">
+                            {editingPresetId === p.id ? (
+                                // EDIT MODE
+                                <div className="flex gap-2 items-center">
+                                    <input 
+                                        autoFocus
+                                        value={editPresetTitle} 
+                                        onChange={e => setEditPresetTitle(e.target.value)}
+                                        className="flex-1 px-2 py-1 border rounded text-sm font-bold text-slate-800"
+                                        placeholder="Leistungsname"
+                                    />
+                                    <input 
+                                        value={editPresetValue} 
+                                        onChange={e => setEditPresetValue(e.target.value)}
+                                        className="w-24 px-2 py-1 border rounded text-sm font-mono text-right"
+                                        placeholder="Preis"
+                                    />
+                                    <button onClick={saveEditedPreset} className="p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"><Check className="w-3 h-3"/></button>
+                                    <button onClick={cancelEditPreset} className="p-2 bg-slate-100 text-slate-500 rounded-lg hover:bg-slate-200"><X className="w-3 h-3"/></button>
+                                </div>
+                            ) : (
+                                // VIEW MODE
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="font-bold text-slate-800">{p.title}</p>
+                                        <p className="text-xs text-slate-500">{p.value.toLocaleString('de-DE', {minimumFractionDigits: 2})} €</p>
+                                    </div>
+                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button onClick={() => startEditingPreset(p)} className="text-slate-400 hover:text-indigo-600 p-2 rounded-lg transition-all"><Pencil className="w-4 h-4"/></button>
+                                        <button onClick={() => onUpdatePresets(productPresets.filter(x => x.id !== p.id))} className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-all"><Trash2 className="w-4 h-4"/></button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     ))}
-                    <button onClick={() => { const t = prompt("Leistung:"); const v = prompt("Preis:"); if(t && v) onUpdatePresets([...productPresets, { id: crypto.randomUUID(), title: t, value: parseFloat(v) }]); }} className="w-full py-2 border-2 border-dashed border-slate-200 rounded-xl text-slate-500 font-bold hover:bg-slate-100 transition-all flex items-center justify-center gap-2"><Plus className="w-4 h-4" /> Neues Preset</button>
+
+                    {/* ADD NEW PRESET FORM */}
+                    <div className="pt-2 border-t border-slate-100">
+                        <div className="flex gap-2 items-center bg-slate-50 p-2 rounded-xl">
+                            <input 
+                                value={newPresetTitle}
+                                onChange={e => setNewPresetTitle(e.target.value)}
+                                placeholder="Neue Leistung..." 
+                                className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-indigo-300"
+                            />
+                            <input 
+                                value={newPresetValue}
+                                onChange={e => setNewPresetValue(e.target.value)}
+                                placeholder="Preis" 
+                                className="w-24 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-right outline-none focus:border-indigo-300"
+                            />
+                            <button 
+                                onClick={addNewPreset} 
+                                disabled={!newPresetTitle || !newPresetValue}
+                                className="bg-indigo-600 text-white p-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                            >
+                                <Plus className="w-4 h-4" />
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </SubAccordion>
          </SettingsCategory>

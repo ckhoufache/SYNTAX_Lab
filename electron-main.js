@@ -1,3 +1,4 @@
+
 import { app, BrowserWindow, shell, ipcMain, session } from 'electron';
 import path from 'path';
 import express from 'express';
@@ -47,7 +48,7 @@ async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
-    title: `SyntaxLabCRM v${app.getVersion()}`,
+    title: `SyntaxLabCRM v1.4.0`,
     icon: path.join(__dirname, 'dist/favicon.ico'),
     webPreferences: {
       nodeIntegration: true,

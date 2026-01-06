@@ -1,5 +1,5 @@
 
-export type ViewState = 'dashboard' | 'contacts' | 'pipeline' | 'settings' | 'tasks' | 'finances' | 'email' | 'kpi';
+export type ViewState = 'dashboard' | 'contacts' | 'pipeline' | 'settings' | 'tasks' | 'finances' | 'email' | 'kpi' | 'brain';
 export type Theme = 'light' | 'dark';
 
 export enum DealStage {
@@ -257,6 +257,67 @@ export interface EmailTemplate {
     body: string;
 }
 
+// --- BRAIN MODULE TYPES ---
+
+export interface BrainTool {
+    id: string;
+    name: string;
+    type: string;
+    status: 'Aktiv' | 'Inaktiv';
+    cost: string;
+    purpose: string;
+    linkedSop?: string;
+}
+
+export interface BrainProcessStep {
+    id: string;
+    phase: string;
+    stepId: string; // e.g. "1.1"
+    title: string;
+    description: string;
+    tools?: string;
+    linkedSop?: string;
+}
+
+export interface BrainPrompt {
+    id: string;
+    promptId: string; // e.g. "PMT-SALES-01"
+    name: string;
+    tool: string;
+    inputFormat: string;
+    content: string; // System Prompt
+}
+
+export interface BrainSOP {
+    id: string;
+    sopId: string; // e.g. "SOP-01-01" or "LEG-01"
+    title: string;
+    path: string; // e.g. "01_Management"
+    content: string; // HTML Content
+    lastUpdate: string;
+    category: 'sop' | 'legal';
+}
+
+export interface BrainPersona {
+    id: string;
+    telegramId: string;
+    name: string;
+    role: string;
+    industry: string;
+    archetype: string;
+    directness: string;
+    targetGroup: string;
+    noGo: string;
+    style: string;
+    level: string;
+    signature: string;
+    emotion: string;
+    syntax: string;
+    dos: string;
+    donts: string;
+    summary: string;
+}
+
 export interface BackupData {
   contacts: Contact[];
   deals: Deal[];
@@ -268,6 +329,11 @@ export interface BackupData {
   userProfile: UserProfile;
   productPresets: ProductPreset[];
   emailTemplates?: EmailTemplate[];
+  brainTools?: BrainTool[];
+  brainProcess?: BrainProcessStep[];
+  brainPrompts?: BrainPrompt[];
+  brainSOPs?: BrainSOP[];
+  brainPersonas?: BrainPersona[];
   theme: Theme;
   timestamp: string;
   version: string;

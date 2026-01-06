@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { Search, Plus, Linkedin, X, Pencil, Trash2, Star, Heart, Target, Filter, History, MessageSquare, Info, Clock, Calendar, Send, User, KanbanSquare, Check, Landmark, ShieldCheck, Globe, AlertCircle, Package } from 'lucide-react';
 import { Contact, Activity, EmailTemplate, Invoice, Expense, InvoiceConfig, TargetGroup, Deal, DealStage } from '../types';
@@ -319,7 +318,11 @@ export const Contacts: React.FC<ContactsProps> = ({
                       }`}>
                         {contact.type === 'request' ? 'Anfrage' : contact.type || 'Lead'}
                       </span>
-                      {contactsInPipeline.has(contact.id) && <KanbanSquare className="w-3 h-3 text-indigo-400" title="In Pipeline" />}
+                      {contactsInPipeline.has(contact.id) && (
+                        <span title="In Pipeline" className="flex items-center">
+                          <KanbanSquare className="w-3 h-3 text-indigo-400" />
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
